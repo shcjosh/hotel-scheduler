@@ -19,6 +19,7 @@ class SolveResult:
     violations: list = None
     objective_value: float | None = None
     soft_constraint_stats: dict | None = None
+    diagnostics: dict | None = None
 
 
 def build_fixed(data: ShiftScheduleData) -> dict[tuple[int, int], str]:
@@ -91,7 +92,8 @@ def solve(data: ShiftScheduleData, max_time: float = 30.0) -> SolveResult:
     error = "排班失敗（無合法解）"
     if issues:
         error += "：" + "; ".join(issues)
-    return SolveResult(False, None, error, solve_time, issues)
+    from app.scheduler.diagnostics import diagnose_detailed
+    return SolveResult(False, None, error, solve_time, issues, None, None, diagnose_detailed(data))
 
 
 def _extract_soft_stats(solver, trackers) -> dict:

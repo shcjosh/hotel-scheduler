@@ -7,10 +7,14 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.database.models import Employee
 from app.schemas.schedule import (
+    CellUpdateRequest,
     MonthScheduleView,
     ScheduleEntryCreate,
     ScheduleEntryOut,
     ScheduleEntryUpdate,
+    ScheduleValidationResponse,
+    ValidateCellRequest,
+    ValidateCellResponse,
 )
 from app.services import schedule_service
 
@@ -26,12 +30,54 @@ def _validate_employee(db: Session, employee_id: int) -> None:
         )
 
 
+@router.get("/schedules/{year}/{month}/validation", response_model=ScheduleValidationResponse)
+def get_schedule_validation(year: int, month: int, db: Session = Depends(get_db)):
+    return schedule_service.get_validation_report(db, year, month)
+
+
+@router.post("/schedules/validate-cell", response_model=ValidateCellResponse)
+def validate_cell(req: ValidateCellRequest, db: Session = Depends(get_db)):
+    try:
+        result = schedule_service.validate_cell(
+            db, req.employee_id, req.year, req.month, req.day, req.new_shift
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return ValidateCellResponse(
+        violations=result["violations"],
+        warnings=result["warnings"],
+    )
+
+
+@router.put(
+    "/schedules/{employee_id}/{year}/{month}/{day}",
+    response_model=MonthScheduleView,
+)
+def update_schedule_cell(
+    employee_id: int, year: int, month: int, day: int,
+    req: CellUpdateRequest, db: Session = Depends(get_db),
+):
+    try:
+        schedule_service.upsert_cell(db, employee_id, year, month, day, req.shift)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    num_days = calendar.monthrange(year, month)[1]
+    view = schedule_service.get_month_view(db, year, month, num_days)
+    return MonthScheduleView(
+        year=year, month=month, num_days=num_days,
+        schedule=view["schedule"], sources=view["sources"],
+    )
+
+
 @router.get("/schedules/{year}/{month}", response_model=MonthScheduleView)
 def get_month_schedule(year: int, month: int, db: Session = Depends(get_db)):
     num_days = calendar.monthrange(year, month)[1]
-    schedule = schedule_service.get_month_view(db, year, month, num_days)
+    view = schedule_service.get_month_view(db, year, month, num_days)
     return MonthScheduleView(
-        year=year, month=month, num_days=num_days, schedule=schedule
+        year=year, month=month, num_days=num_days,
+        schedule=view["schedule"], sources=view["sources"],
     )
 
 

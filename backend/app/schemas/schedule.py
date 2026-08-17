@@ -42,3 +42,46 @@ class MonthScheduleView(BaseModel):
     month: int
     num_days: int
     schedule: dict[str, list[str]]
+    sources: dict[str, list[str]] = {}
+
+
+class CellUpdateRequest(BaseModel):
+    shift: str
+
+
+class ValidateCellRequest(BaseModel):
+    employee_id: int
+    year: int = Field(ge=2000, le=2100)
+    month: int = Field(ge=1, le=12)
+    day: int = Field(ge=1, le=31)
+    new_shift: str
+
+
+class CellViolation(BaseModel):
+    rule: str
+    severity: str
+    message: str
+
+
+class ValidateCellResponse(BaseModel):
+    violations: list[CellViolation]
+    warnings: list[CellViolation]
+
+
+class RuleStat(BaseModel):
+    violations: int
+    description: str
+
+
+class ValidationSummary(BaseModel):
+    total_violations: int
+    hard_violations: int
+    soft_warnings: int
+    is_valid: bool
+
+
+class ScheduleValidationResponse(BaseModel):
+    summary: ValidationSummary
+    violations: list[dict]
+    warnings: list[dict]
+    per_rule_summary: dict[str, RuleStat]

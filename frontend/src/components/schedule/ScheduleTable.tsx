@@ -1,4 +1,4 @@
-import type { MonthScheduleView } from '../../types'
+import type { Employee, MonthScheduleView } from '../../types'
 import { getWeekday, getWeekdayLabel, isWeekend } from '../../utils/date'
 import { ShiftCell } from './ShiftCell'
 import { DailyCoverage } from './DailyCoverage'
@@ -6,11 +6,14 @@ import { cn } from '../../utils/cn'
 
 interface ScheduleTableProps {
   view: MonthScheduleView
+  employees: Employee[]
+  onCellClick?: (empName: string, day: number) => void
 }
 
-export function ScheduleTable({ view }: ScheduleTableProps) {
-  const { schedule, num_days: numDays, year, month } = view
+export function ScheduleTable({ view, employees, onCellClick }: ScheduleTableProps) {
+  const { schedule, sources, num_days: numDays, year, month } = view
   const names = Object.keys(schedule)
+  const empByName = new Map(employees.map((e) => [e.name, e]))
 
   return (
     <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -33,12 +36,7 @@ export function ScheduleTable({ view }: ScheduleTableProps) {
                   )}
                 >
                   <div className="text-sm font-semibold text-gray-800">{day}</div>
-                  <div
-                    className={cn(
-                      'text-[10px]',
-                      weekend ? 'text-red-500' : 'text-gray-400',
-                    )}
-                  >
+                  <div className={cn('text-[10px]', weekend ? 'text-red-500' : 'text-gray-400')}>
                     {getWeekdayLabel(weekday)}
                   </div>
                 </th>
@@ -47,28 +45,39 @@ export function ScheduleTable({ view }: ScheduleTableProps) {
           </tr>
         </thead>
         <tbody>
-          {names.map((name) => (
-            <tr key={name} className="hover:bg-indigo-50/40">
-              <th className="sticky left-0 z-10 w-28 border-b border-r border-gray-200 bg-white px-3 py-1.5 text-left text-sm font-medium text-gray-700">
-                {name}
-              </th>
-              {view.schedule[name].map((shift, d) => {
-                const day = d + 1
-                const weekend = isWeekend(year, month, day)
-                return (
-                  <td
-                    key={day}
-                    className={cn(
-                      'border-b border-r border-gray-200 px-1 py-1 text-center',
-                      weekend && 'bg-gray-50',
-                    )}
-                  >
-                    <ShiftCell shift={shift} compact />
-                  </td>
-                )
-              })}
-            </tr>
-          ))}
+          {names.map((name) => {
+            const emp = empByName.get(name)
+            const locked = emp?.role === 'night'
+            return (
+              <tr key={name} className="hover:bg-indigo-50/40">
+                <th className="sticky left-0 z-10 w-28 border-b border-r border-gray-200 bg-white px-3 py-1.5 text-left text-sm font-medium text-gray-700">
+                  {name}
+                </th>
+                {schedule[name].map((shift, d) => {
+                  const day = d + 1
+                  const weekend = isWeekend(year, month, day)
+                  const source = sources?.[name]?.[d]
+                  return (
+                    <td
+                      key={day}
+                      className={cn(
+                        'border-b border-r border-gray-200 px-1 py-1 text-center',
+                        weekend && 'bg-gray-50',
+                      )}
+                    >
+                      <ShiftCell
+                        shift={shift}
+                        source={source}
+                        locked={locked}
+                        compact
+                        onClick={() => onCellClick?.(name, day)}
+                      />
+                    </td>
+                  )
+                })}
+              </tr>
+            )
+          })}
         </tbody>
         <DailyCoverage view={view} />
       </table>

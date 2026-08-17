@@ -54,4 +54,5 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
         if result.objective_value is not None
         else None,
         soft_constraint_stats=result.soft_constraint_stats,
+        diagnostics=result.diagnostics,
     )

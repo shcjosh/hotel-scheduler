@@ -158,8 +158,8 @@ def validate_night_schedule(db: Session, year: int, month: int) -> dict:
     viols = validator.validate(night_data, night_partial)
     return {
         "violations": [
-            {"rule": code, "message": msg}
-            for code, msg in viols
-            if code in ("H2", "H3", "H4", "H12")
+            {"rule": v["rule"], "message": v["message"]}
+            for v in viols
+            if v["rule"] in ("H2", "H3", "H4", "H12")
         ]
     }

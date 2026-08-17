@@ -31,6 +31,7 @@ export interface MonthScheduleView {
   month: number
   num_days: number
   schedule: Record<string, string[]>
+  sources: Record<string, string[]>
 }
 
 export interface SolveResponse {
@@ -41,4 +42,8 @@ export interface SolveResponse {
   violations: string[] | null
   objective_value: number | null
   soft_constraint_stats: Record<string, number> | null
+  diagnostics: {
+    likely_causes: { type: string; severity: string; message: string; suggestion: string }[]
+    constraint_analysis: Record<string, number>
+  } | null
 }

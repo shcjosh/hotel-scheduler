@@ -99,9 +99,10 @@ def main():
     schedule_service.replace_month_schedule(db, 2026, 8, entries)
 
     view = schedule_service.get_month_view(db, 2026, 8, data.num_days)
-    print(f"Seeded {len(view)} employees, August 2026 schedule saved.")
+    sched = view["schedule"]
+    print(f"Seeded {len(sched)} employees, August 2026 schedule saved.")
     print(f"objective={result.objective_value}, solve_time={result.solve_time:.3f}s")
-    print("Sample (王先生):", view.get("王先生"))
+    print("Sample (王先生):", sched.get("王先生"))
     db.close()
 
 
