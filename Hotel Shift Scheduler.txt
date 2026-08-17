@@ -1,0 +1,1040 @@
+================================================================================
+              飯店排班系統 (Hotel Shift Scheduler) — 完整規格書
+================================================================================
+版本: 1.0
+日期: 2026-08-17
+用途: 供 opencode 逐階段實作開發使用
+架構: Portable Desktop App (Windows 10/11)
+
+================================================================================
+一、專案概述
+================================================================================
+
+目標:
+  開發一個飯店排班應用程式，負責排定 A/B/C 班次，D 班（大夜）由另一館
+  負責人排定後手動輸入。系統依據排班規則自動求解最佳班表。
+
+部署需求:
+  - Portable / Standalone：單一資料夾，不需安裝
+  - 目標環境：Windows 10 / 11 (x64)
+  - 雙擊 .exe 啟動 → 自動開啟瀏覽器 → localhost 使用
+  - 資料儲存在資料夾內的 SQLite 檔案
+  - 整個資料夾可複製到任何 Windows 10/11 機器直接使用
+
+技術棧:
+  Backend : Python 3.11 + FastAPI + OR-Tools (CP-SAT Solver)
+  Frontend: React 18 + TypeScript + Vite + Tailwind CSS + shadcn/ui
+  Database: SQLite (檔案式，隨資料夾攜帶)
+  State   : Zustand
+  HTTP    : TanStack Query (React Query)
+  打包    : PyInstaller (Backend → .exe) + Vite build (Frontend → static)
+
+================================================================================
+二、班次定義
+================================================================================
+
+班次    時間             每日人數    性質
+------  ---------------  --------    --------------------------------
+A       07:30 - 15:30    1~2 人      早班，每天必須有人
+B       11:30 - 19:30    0~2 人      中班，非必需
+C       15:30 - 23:30    1~2 人      晚班，每天必須有人
+D       23:30 - 07:30    0~1 人      大夜班，手動輸入為主
+
+說明:
+  - 24 小時營業，A+C 涵蓋 07:30-23:30，D 班涵蓋 23:30-07:30
+  - D 班不在本系統的自動排班責任範圍
+  - D 班由另一館負責人排班，Josh 手動輸入到系統
+  - 當大夜專職人員不足時，另一館會回報哪天缺 D 班，
+    由 Josh 系統中的 C+D 備援人員補上
+
+================================================================================
+三、員工角色分類
+================================================================================
+
+角色            排班方式      可上班班次      預設偏好    說明
+------------    ----------    -----------    --------    ---------------------
+一般員工        自動排班      A / B / C       使用者設定  主要排班對象
+大夜專職        手動輸入      D 為主          D           在系統內顯示，
+                                                          D 班由另一館排定
+                                                          後手動 Key 入
+C+D 備援        自動排班      C 為主, D 備援  C           平常排 C 班；
+                                                          收到缺 D 指示時
+                                                          改排 D 班，C 班
+                                                          由系統找人遞補
+
+D 班備援觸發流程:
+  1. 另一館負責人排 3 位大夜專職的 D 班
+  2. 大夜不足時，回報「某日缺 D」
+  3. Josh 在系統標記該日為「D 班備援日」
+  4. C+D 備援人員當日改排 D 班（非 C 班）
+  5. 系統自動找人遞補當日 C 班
+  6. 若無人可遞補 C 班 → 排班失敗，回報錯誤
+
+角色預設值（可在 UI 調整）:
+  一般員工   → available_shifts = ["A","B","C"], preferred_shift = null
+  大夜專職   → available_shifts = ["D"],         preferred_shift = "D"
+  C+D 備援  → available_shifts = ["C","D"],      preferred_shift = "C"
+
+================================================================================
+四、排班規則 — 硬性約束（13 條，必須滿足）
+================================================================================
+
+H1  每日班次覆蓋
+    每天至少 1 人 A 班、至少 1 人 C 班。
+    B 班 0~2 人，D 班 0~1 人，A/C 班各最多 2 人。
+
+H2  每週休 2 天
+    週一至週日為一週。
+    每人每週一般休假恰好 2 天。
+    跨月不重置（如 7/27~8/2 為同一週，7 月已休 2 天則 8/1 不可再休）。
+    特休不計入此 2 天。
+    不完整週（月初/月末 < 5 天）最多休 2 天。
+
+H3  週末休假限制
+    每人每月最多休 1 個週六 + 1 個週日。
+    特休不受此限制。
+
+H4  連續上班上限
+    每人最多連續上班 5 天。
+    任意連續 6 天至少 1 天休或特休。
+    特休可中斷連續上班天數累計。
+
+H5  班次銜接禁止（硬性）
+    以下銜接禁止，中間至少須隔 1 天休假或特休：
+      C → A  禁止
+      D → A  絕對禁止
+      D → C  禁止
+
+H6  指定休假
+    每人每月最多 2 天指定休假，可選 0~2 天，可不指定。
+    指定休假當天必須排為休假。
+
+H7  可用班次限制
+    只能安排員工勾選的可上班班次（available_shifts）。
+
+H8  跨月班次銜接
+    載入上月最後 5 天排班資料。
+    確保本月第 1 天不違反班次銜接規則（H5）。
+    確保本月開頭不違反連續上班上限（H4）。
+
+H9  跨月週連續性
+    每週休 2 天的計算不因月份切換而重置。
+    跨月週的休假天數須合併計算。
+
+H10 一人一天一班
+    每人每天最多排 1 個班次（含休假/特休）。
+
+H11 D 班備援邏輯
+    標記為 D 班備援日的當天：
+      - C+D 備援人員改排 D 班
+      - 原本該人員的 C 班由系統自動找人遞補
+      - 若無人可遞補 C 班 → 排班失敗，回報錯誤
+
+H12 連休 2 日限制
+    每人每月最多 2 次「連續 ≥2 天休假」。
+    判定規則：
+      - 一般休假（自動排程）→ 參與連休計算
+      - 指定休假             → 參與連休計算
+      - 特休                 → 不參與，且會打斷連續判定
+    連續 3 天以上休假仍算 1 次（不常出現）。
+    特休不計入且會打斷連休判定（如 8/5 休 + 8/6 特休 → 不算連休）。
+    每月累計 ≤ 2 次。
+
+H13 大夜專職手動輸入
+    大夜專職人員的 D 班由手動輸入。
+    系統驗證大夜人員的休假規則合規
+    （每週休 2 天、連續上班上限、連休 2 日限制等同樣適用）。
+
+================================================================================
+五、排班規則 — 軟性約束（7 條，盡量滿足，影響最佳化目標）
+================================================================================
+
+S1  避免連續 5 天上班
+    盡量不要排到連續 5 天上班。
+
+S2  B→A 盡量避免
+    B 班隔天盡量不接 A 班。
+
+S3  C→B 盡量避免
+    C 班隔天盡量不接 B 班。
+
+S4  C→D 盡量減少
+    C 班隔天接 D 班允許但盡量少排
+    （C+D 備援補 D 班時可能出現）。
+
+S5  偏好班次
+    盡量滿足員工設定的偏好班次。
+
+S6  公平分配
+    盡量均衡各員工的總上班天數（最大最小值差最小化）。
+
+S7  D 班備援最小化
+    盡量讓 C+D 備援人員上 C 班而非 D 班。
+
+================================================================================
+六、班次銜接矩陣
+================================================================================
+
+前日↓ ＼ 今日→    A       B       C       D       一般休    特休
+---------------  ------  ------  ------  ------  -------   ------
+A                 ✅      ✅      ✅      —       ✅        ✅
+B                 ⚠️(S2)   ✅      ✅      —       ✅        ✅
+C                 ❌(H5)  ⚠️(S3)   ✅      ⚠️(S4)   ✅        ✅
+D                 ❌(H5)   ✅     ❌(H5)   ✅      ✅        ✅
+一般休             ✅      ✅      ✅      ✅      ✅        ✅
+特休               ✅      ✅      ✅      ✅      ✅        ✅
+
+✅ = 允許
+⚠️ = 盡量避免（軟性約束）
+❌ = 禁止（硬性約束，至少隔 1 天休/特休）
+— = 基本不會出現（因 D 班排班邏輯，A→D 和 B→D 不會發生）
+
+================================================================================
+七、特休（年假）規則
+================================================================================
+
+特休不受以下限制：
+  - 每月指定休假 2 天額度（特休不佔用）
+  - 每週休 2 天限制（特休不計入）
+  - 週末休假限制（特休可休週六/週日）
+  - 連休 2 日限制（特休不參與且會打斷連休判定）
+
+特休受以下限制：
+  - 連續上班上限（特休算休假，可中斷連續上班天數累計）
+
+特休使用：
+  - 可任意天數、任意日期使用
+  - 排班表中與一般休假視覺區分（特休 = 紫色，一般休 = 紅色）
+
+================================================================================
+八、連休 2 日判定邏輯
+================================================================================
+
+參與連休計算的休假類型:
+  一般休假（自動排程）  → 參與 ✅
+  指定休假              → 參與 ✅
+  特休                  → 不參與 ❌（且打斷連休判定）
+
+判定規則:
+  - 連續 ≥2 天的「參與型休假」段 → 算 1 次
+  - 連續 3 天以上 → 仍算 1 次
+  - 每月累計 ≤ 2 次
+  - 特休會打斷連續判定（特休那天不算，且前後分開計算）
+
+範例:
+  8/5(休) 8/6(休)                         → 1 次連休 ✅
+  8/5(休) 8/6(休) 8/20(休) 8/21(休)       → 2 次 ✅（已達上限）
+  上述 + 8/28(休) 8/29(休)                → 3 次 ❌ 超過限制
+  8/5(休) 8/6(特休)                       → 不算連休 ✅（特休打斷）
+  8/5(休) 8/6(休) 8/7(特休)               → 8/5-8/6 算 1 次；8/7 不影響
+  8/5(休) 8/6(休) 8/7(休)                 → 連續 3 天，算 1 次
+  8/5(指定休) 8/6(指定休)                 → 算 1 次連休
+
+跨月連休判定:
+  按月歸屬計算。如 7/30(休) 7/31(休) 8/1(休) 8/2(休)：
+  → 7 月算 1 次（7/30-7/31）
+  → 8 月算 1 次（8/1-8/2）
+  → 合計 2 次，各月分別計算
+
+================================================================================
+九、跨月銜接機制
+================================================================================
+
+需要載入上月最後 5 天的排班資料，用於驗證三件事:
+
+1. 班次銜接
+   上月最後一天的班次 → 本月第一天，須符合銜接矩陣。
+   例: 7/31 為 C 班 → 8/1 不可為 A 班。
+
+2. 連續上班天數
+   上月最後 N 天若連續上班，本月開頭繼續累計，不得超過 5 天。
+   例: 7/29(休) 7/30(B) 7/31(C) → 8/1 可上班（已連續 2 天）
+       7/27(A) 7/28(B) 7/29(C) 7/30(A) 7/31(B) → 8/1 必須休（已連續 5 天）
+
+3. 跨月週休假
+   跨月週的休假天數合併計算，不因月份切換重置。
+   例: 7/27(一)~8/2(日) 為同一週，7 月已休 2 天 → 8/1~8/2 不可再休。
+
+4. 跨月連休
+   按月歸屬計算（見上方「跨月連休判定」）。
+
+資料來源:
+  (a) 自動讀取上月排班結果（若系統中有上月資料）
+  (b) 手動輸入上月最後 5 天班次（首次使用或無上月資料時）
+
+================================================================================
+十、資料庫 Schema (SQLite)
+================================================================================
+
+----------------------------------------
+TABLE: employees
+----------------------------------------
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT
+  name                TEXT NOT NULL
+  role                TEXT NOT NULL  -- 'general' | 'night' | 'cd_backup'
+  available_shifts    TEXT NOT NULL  -- JSON array, e.g. '["A","B","C"]'
+  preferred_shift     TEXT           -- 'A' | 'B' | 'C' | 'D' | NULL
+  scheduling_mode     TEXT NOT NULL  -- 'auto' | 'manual'
+  is_active           INTEGER NOT NULL DEFAULT 1
+  created_at          TEXT NOT NULL  -- ISO datetime
+  updated_at          TEXT NOT NULL  -- ISO datetime
+
+  INDEX: idx_employee_name (name)
+  INDEX: idx_employee_role (role)
+
+----------------------------------------
+TABLE: schedule_entries
+----------------------------------------
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT
+  employee_id         INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE
+  year                INTEGER NOT NULL
+  month               INTEGER NOT NULL
+  day                 INTEGER NOT NULL
+  shift               TEXT NOT NULL  -- 'A' | 'B' | 'C' | 'D' | 'OFF' | 'SPECIAL'
+  source              TEXT NOT NULL  -- 'auto' | 'manual' | 'night_input' |
+                                      -- 'backup' | 'designated' | 'special'
+  created_at          TEXT NOT NULL
+  updated_at          TEXT NOT NULL
+
+  UNIQUE: (employee_id, year, month, day)
+  INDEX: idx_schedule_ym (year, month)
+  INDEX: idx_schedule_emp_ym (employee_id, year, month)
+
+----------------------------------------
+TABLE: designated_off_days
+----------------------------------------
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT
+  employee_id         INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE
+  year                INTEGER NOT NULL
+  month               INTEGER NOT NULL
+  day                 INTEGER NOT NULL
+  created_at          TEXT NOT NULL
+
+  UNIQUE: (employee_id, year, month, day)
+  INDEX: idx_designated_ym (year, month)
+
+  -- 每人每月最多 2 天（應用層驗證）
+
+----------------------------------------
+TABLE: special_leaves
+----------------------------------------
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT
+  employee_id         INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE
+  year                INTEGER NOT NULL
+  month               INTEGER NOT NULL
+  day                 INTEGER NOT NULL
+  created_at          TEXT NOT NULL
+
+  UNIQUE: (employee_id, year, month, day)
+  INDEX: idx_special_ym (year, month)
+
+  -- 無天數限制
+
+----------------------------------------
+TABLE: d_backup_requests
+----------------------------------------
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT
+  year                INTEGER NOT NULL
+  month               INTEGER NOT NULL
+  day                 INTEGER NOT NULL
+  assigned_employee_id INTEGER REFERENCES employees(id)  -- NULL = 未指派
+  status              TEXT NOT NULL DEFAULT 'pending'  -- 'pending' | 'assigned' | 'failed'
+  note                TEXT
+  created_at          TEXT NOT NULL
+
+  UNIQUE: (year, month, day)
+  INDEX: idx_backup_ym (year, month)
+
+----------------------------------------
+TABLE: previous_month_links
+----------------------------------------
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT
+  employee_id         INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE
+  year                INTEGER NOT NULL   -- 目標月份（即本月）
+  month               INTEGER NOT NULL   -- 目標月份（即本月）
+  day_5_shift         TEXT  -- 上月倒數第 5 天班次
+  day_4_shift         TEXT  -- 上月倒數第 4 天班次
+  day_3_shift         TEXT  -- 上月倒數第 3 天班次
+  day_2_shift         TEXT  -- 上月倒數第 2 天班次
+  day_1_shift         TEXT  -- 上月最後 1 天班次
+  source              TEXT NOT NULL DEFAULT 'auto'  -- 'auto' | 'manual'
+  created_at          TEXT NOT NULL
+
+  UNIQUE: (employee_id, year, month)
+
+================================================================================
+十一、API 端點設計 (REST, prefix: /api/v1)
+================================================================================
+
+----------------------------------------
+模組一：員工管理
+----------------------------------------
+GET    /employees                         取得所有在職員工
+POST   /employees                         新增員工
+PUT    /employees/{id}                    更新員工資料
+DELETE /employees/{id}                    刪除員工（軟刪除，is_active=0）
+
+----------------------------------------
+模組二：休假管理
+----------------------------------------
+GET    /off-days/{year}/{month}                    取得當月所有員工的休假設定
+POST   /off-days/designated                        新增指定休假
+DELETE /off-days/designated/{employee_id}/{year}/{month}/{day}  刪除指定休假
+POST   /off-days/special                           新增特休
+DELETE /off-days/special/{employee_id}/{year}/{month}/{day}     刪除特休
+GET    /off-days/summary/{year}/{month}            取得連休 2 日計數摘要
+
+----------------------------------------
+模組三：跨月設定
+----------------------------------------
+GET    /cross-month/{year}/{month}                 取得跨月銜接資料
+POST   /cross-month/{year}/{month}                 手動輸入/更新跨月銜接
+GET    /cross-month/preview/{year}/{month}         取得銜接合規預覽
+
+----------------------------------------
+模組四：排班引擎
+----------------------------------------
+POST   /solve                          執行自動排班
+  Request Body:
+    {
+      "year": 2026,
+      "month": 8,
+      "max_solve_time": 30,
+      "enable_d_backup": true
+    }
+  Response:
+    {
+      "success": true,
+      "schedule": { "王先生": ["A","C","休",...], ... },
+      "stats": { ... },
+      "violations": [],
+      "solve_time": 3.2
+    }
+
+POST   /solve/validate                 驗證現有排班合規性（不重新排班）
+
+----------------------------------------
+模組五：排班結果
+----------------------------------------
+GET    /schedules/{year}/{month}                   取得月排班表
+PUT    /schedules/{employee_id}/{year}/{month}/{day}  手動微調單一格位
+GET    /schedules/{year}/{month}/stats             取得統計報表
+GET    /schedules/{year}/{month}/validation        取得規則驗證報告
+
+----------------------------------------
+模組六：大夜班表
+----------------------------------------
+GET    /night/{year}/{month}                        取得大夜班表
+PUT    /night/{year}/{month}/{day}                  輸入/更新大夜班（指定 employee_id + shift）
+DELETE /night/{year}/{month}/{day}                  清除該日大夜班
+POST   /night/backup-request                        新增 D 班備援指示
+DELETE /night/backup-request/{id}                   刪除 D 班備援指示
+GET    /night/backup-requests/{year}/{month}        取得當月所有 D 班備援指示
+
+================================================================================
+十二、前端頁面設計
+================================================================================
+
+----------------------------------------
+路由
+----------------------------------------
+/                           排班表總覽（首頁）
+/employees                  員工管理
+/off-days                   休假管理（月曆 UI）
+/cross-month                跨月設定
+/night                      大夜班表輸入
+/solve                      排班引擎（一鍵排班 + 診斷）
+/stats                      統計報表
+
+----------------------------------------
+頁面一：排班表總覽（首頁）
+----------------------------------------
+  - 月份選擇器（年/月下拉）
+  - 月排班表：
+      橫軸 = 日期（1~31），含星期標示
+      縱軸 = 員工姓名
+      格位 = 班次色塊
+  - 每日覆蓋檢查列：
+      顯示每天各班次人數，A/C 班無人時標紅
+  - 班次色塊定義：
+      A = 藍色 (#e3f2fd)
+      B = 橙色 (#fff3e0)
+      C = 紫色 (#f3e5f5)
+      D = 深藍 (#1a237e, 白字)
+      休 = 紅色 (#ffcdd2)
+      特休 = 紫紅 (#e1bee7)
+  - 手動微調：
+      點擊格位 → 下拉選班次 → 即時合規檢查 → 違規標紅提示
+  - 匯出按鈕（CSV / 列印）
+
+----------------------------------------
+頁面二：員工管理
+----------------------------------------
+  - 員工列表表格：姓名、角色、可上班班次、偏好班次、狀態
+  - 新增/編輯員工表單：
+      姓名（文字輸入）
+      角色（下拉：一般員工 / 大夜專職 / C+D 備援）
+      可上班班次（複選核取方塊：A / B / C / D，依角色預設但可調整）
+      偏好班次（下拉：A / B / C / D / 無，僅顯示已勾選的班次）
+  - 刪除按鈕（軟刪除）
+
+----------------------------------------
+頁面三：休假管理
+----------------------------------------
+  - 月份選擇器
+  - 員工選擇下拉
+  - 休假模式切換：「指定休假」/「特休」
+  - 月曆 UI：
+      點擊日期 → 切換該日休假狀態
+      指定休假 = 紅色標記
+      特休 = 紫色標記
+  - 指定休假限制：每人每月 ≤2 天，超過時警告並阻止
+  - 連休 2 日計數器：
+      即時顯示「已用 X/2 次連休」
+      當指定休假造成第 3 次連休時警告並阻止
+  - 底部摘要表格：所有員工的指定休假天數、特休天數、連休次數
+
+----------------------------------------
+頁面四：跨月設定
+----------------------------------------
+  - 月份選擇器（選擇要排班的月份）
+  - 自動載入按鈕：從上月排班結果自動讀取最後 5 天
+  - 手動輸入表格：
+      橫軸 = 上月倒數 5 天日期
+      縱軸 = 員工姓名
+      格位 = 下拉選班次
+  - 銜接預覽：
+      顯示上月最後一天 → 本月第一天的銜接合規檢查
+      標示違規項目（如「王先生 7/31 C → 8/1 A 違規」）
+  - 跨月週休假摘要：
+      顯示跨月週已休天數
+      標示哪些員工本週已達 2 天上限
+
+----------------------------------------
+頁面五：大夜班表輸入
+----------------------------------------
+  - 月份選擇器
+  - 大夜班表輸入表格：
+      橫軸 = 日期
+      縱軸 = 大夜專職人員
+      格位 = 下拉（D 班 / 休）
+      輸入後即時驗證合規性
+  - D 班備援指示區塊：
+      點擊日期 → 標記為「D 班備援日」
+      顯示已標記的備援日列表
+      可刪除備援指示
+  - 合規驗證報告：
+      顯示大夜人員的休假規則驗證結果
+
+----------------------------------------
+頁面六：排班引擎（一鍵排班）
+----------------------------------------
+  - 月份選擇器
+  - 求解參數設定：
+      求解時間上限（預設 30 秒）
+      是否啟用 D 班備援邏輯（核取方塊）
+  - 「開始排班」按鈕
+  - 排班中 loading 動畫
+  - 排班結果：
+      成功 → 顯示排班表（同首頁格式）+ 統計摘要
+      失敗 → 顯示錯誤診斷報告：
+        - 衝突日期
+        - 衝突原因
+        - 建議解決方案
+  - 統計摘要：
+      每人本月 A/B/C/D 班次數
+      休假天數、特休天數
+      最大連續上班天數
+      連休 2 日次數
+
+----------------------------------------
+頁面七：統計報表
+----------------------------------------
+  - 月份選擇器
+  - 每人統計表格：
+      A 班次數、B 班次數、C 班次數、D 班次數
+      總上班天數、休假天數、特休天數
+      最大連續上班天數
+      連休 2 日次數（X/2）
+  - 公平性指標：
+      各員工總上班天數的最大最小差值
+  - 每日覆蓋統計：
+      每天各班次人數一覽
+
+================================================================================
+十三、排班引擎核心設計
+================================================================================
+
+----------------------------------------
+求解流程
+----------------------------------------
+1. 載入資料
+   - 員工列表（含角色、可用班次、偏好）
+   - 指定休假 + 特休
+   - 跨月銜接（上月最後 5 天）
+   - 大夜班表（手動輸入，固定不變）
+   - D 班備援指示
+
+2. 前處理
+   - 計算每週分組（含跨月週）
+   - 識別週六/週日
+   - 標記 D 備援日 → C+D 備援人員強制排 D
+   - 計算跨月週已休天數
+   - 固定大夜專職人員的班次（手動輸入值）
+   - 固定指定休假與特休的格位
+
+3. 建構 CP-SAT 模型
+   - 決策變數: x[emp, day, shift] ∈ {0, 1}
+   - 13 條硬性約束
+   - 7 條軟性約束 → 目標函數
+
+4. 求解
+   - CP-SAT Solver
+   - 逾時 30 秒（可調）
+   - 8 worker 平行
+
+5. 後處理
+   - 提取排班結果
+   - 統計報表
+   - 規則驗證報告
+   - 儲存至資料庫
+
+----------------------------------------
+決策變數
+----------------------------------------
+  x[e, d, s] = 1  若員工 e 在第 d 天上 s 班
+  e ∈ {0, ..., num_employees - 1}
+  d ∈ {0, ..., num_days - 1}
+  s ∈ {A, B, C, D, OFF, SPECIAL}
+
+  對於大夜專職人員：班次固定為手動輸入值，不設決策變數
+  對於指定休假/特休日：班次固定，不設決策變數
+  對於 D 備援日的 C+D 備援人員：固定為 D 班，不設決策變數
+
+----------------------------------------
+硬性約束實作對照
+----------------------------------------
+H1  每日覆蓋:
+    for each day d:
+      sum(x[e,d,A] for e) >= 1
+      sum(x[e,d,A] for e) <= 2
+      sum(x[e,d,C] for e) >= 1
+      sum(x[e,d,C] for e) <= 2
+      sum(x[e,d,B] for e) <= 2
+      sum(x[e,d,D] for e) <= 1
+
+H2  每週休2天:
+    for each emp e, for each week w:
+      if len(w) >= 5:
+        sum(x[e,d,OFF] for d in w) == 2
+      else:
+        sum(x[e,d,OFF] for d in w) <= 2
+    (特休不計入 OFF；OFF = 一般休假 + 指定休假)
+
+H3  週末限制:
+    for each emp e:
+      sum(x[e,d,OFF] for d in saturdays) <= 1
+      sum(x[e,d,OFF] for d in sundays) <= 1
+
+H4  連續上班上限:
+    for each emp e, for d in 0..num_days-6:
+      sum(x[e,d+i,OFF or SPECIAL] for i in 0..5) >= 1
+    (含跨月：上月最後 5 天的連續上班天數須一起計算)
+
+H5  班次銜接禁止:
+    for each emp e, for d in 0..num_days-2:
+      x[e,d,C] + x[e,d+1,A] <= 1    (C→A 禁止)
+      x[e,d,D] + x[e,d+1,A] <= 1    (D→A 禁止)
+      x[e,d,D] + x[e,d+1,C] <= 1    (D→C 禁止)
+    (含跨月：上月最後一天 → 本月第一天)
+
+H6  指定休假:
+    for each emp e, for each designated day d:
+      x[e,d,OFF] == 1
+
+H7  可用班次:
+    for each emp e, for each day d, for s not in e.available_shifts:
+      x[e,d,s] == 0
+
+H8  跨月班次銜接:
+    上月最後一天班次 → 本月第一天，套用 H5 銜接規則
+
+H9  跨月週連續性:
+    跨月週的 OFF 天數合併計算（上月部分 + 本月部分 = 該週總休假）
+    若上月部分已休 2 天 → 本月部分不可再休
+
+H10 一天一班:
+    for each emp e, for each day d:
+      sum(x[e,d,s] for s in ALL_SHIFTS) == 1
+
+H11 D班備援:
+    for each D backup day d:
+      cd_backup_employee 的 x[e,d,D] == 1 (固定)
+      sum(x[other_e,d,C] for other_e) >= 1 (確保 C 班有人)
+
+H12 連休2日限制:
+    for each emp e:
+      連續 ≥2 天 OFF 的段數 <= 2
+      (特休不計入，且打斷連續判定)
+
+H13 大夜專職手動:
+    大夜專職人員的班次固定為手動輸入值
+    同樣驗證 H2/H3/H4/H12 等規則
+
+----------------------------------------
+軟性約束 → 目標函數
+----------------------------------------
+最大化以下加總:
+
+  S1 避免連續5天 (權重 -10):
+    for each emp e, for d in 0..num_days-5:
+      is_five = (sum(work for 5 consecutive days) == 5)
+      objective += is_five * (-10)
+
+  S2 B→A避免 (權重 -5):
+    for each emp e, for d in 0..num_days-2:
+      objective += x[e,d,B] * x[e,d+1,A] * (-5)
+    (需線性化：引入輔助布林變數)
+
+  S3 C→B避免 (權重 -5):
+    for each emp e, for d in 0..num_days-2:
+      objective += x[e,d,C] * x[e,d+1,B] * (-5)
+
+  S4 C→D減少 (權重 -8):
+    for each emp e, for d in 0..num_days-2:
+      objective += x[e,d,C] * x[e,d+1,D] * (-8)
+
+  S5 偏好班次 (權重 +5):
+    for each emp e with preferred_shift p, for each day d:
+      objective += x[e,d,p] * 5
+
+  S6 公平分配 (權重 -3):
+    max_work = max(total_work_days across employees)
+    min_work = min(total_work_days across employees)
+    objective += (max_work - min_work) * (-3)
+
+  S7 D班備援最小化 (權重 -2):
+    for each cd_backup emp e, for each day d:
+      objective += x[e,d,D] * (-2)
+    (非備援日的 D 班額外懲罰)
+
+================================================================================
+十四、Portable 打包方案
+================================================================================
+
+----------------------------------------
+目錄結構（打包後）
+----------------------------------------
+hotel-scheduler/
+├── hotel-scheduler.exe        ← 雙擊啟動
+├── data/
+│   └── scheduler.db           ← SQLite 資料庫
+├── static/                    ← React build 靜態檔案
+│   ├── index.html
+│   └── assets/
+│       ├── *.js
+│       └── *.css
+├── config.ini                 ← 埠號等設定
+└── README.txt                 ← 使用說明
+
+----------------------------------------
+啟動流程
+----------------------------------------
+1. 使用者雙擊 hotel-scheduler.exe
+2. 程式檢查 data/ 目錄是否存在，不存在則建立
+3. 程式檢查 data/scheduler.db 是否存在，不存在則建立並初始化 Schema
+4. FastAPI 伺服器在 localhost:8000 啟動
+5. 自動開啟預設瀏覽器到 http://localhost:8000
+6. 使用者在瀏覽器中使用所有功能
+7. 關閉瀏覽器後，.exe 仍在背景執行
+8. 使用者可從系統匣圖示或 Ctrl+C 關閉程式
+
+----------------------------------------
+PyInstaller 打包指令
+----------------------------------------
+pyinstaller --onefile --name hotel-scheduler \
+  --add-data "static:static" \
+  --add-data "config.ini:." \
+  --hidden-import ortools.sat.python.cp_model \
+  --hidden-import uvicorn.logging \
+  --hidden-import uvicorn.protocols \
+  --hidden-import uvicorn.protocols.http \
+  --hidden-import uvicorn.protocols.http.auto \
+  --hidden-import uvicorn.protocols.websockets \
+  --hidden-import uvicorn.protocols.websockets.auto \
+  --hidden-import uvicorn.lifespan \
+  --hidden-import uvicorn.lifespan.on \
+  app/main.py
+
+----------------------------------------
+啟動腳本 (app/main.py)
+----------------------------------------
+import os
+import sys
+import webbrowser
+import threading
+import uvicorn
+
+def open_browser():
+    import time
+    time.sleep(1.5)
+    webbrowser.open("http://localhost:8000")
+
+def get_base_path():
+    """取得資源路徑（PyInstaller 打包後的路径）"""
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+def main():
+    base_path = get_base_path()
+
+    # 確保 data 目錄存在
+    data_dir = os.path.join(base_path, "data")
+    os.makedirs(data_dir, exist_ok=True)
+
+    # 設定 SQLite 路徑
+    db_path = os.path.join(data_dir, "scheduler.db")
+    os.environ["DB_PATH"] = db_path
+
+    # 設定 static 目錄
+    static_dir = os.path.join(base_path, "static")
+    os.environ["STATIC_DIR"] = static_dir
+
+    # 啟動瀏覽器
+    threading.Thread(target=open_browser, daemon=True).start()
+
+    # 啟動 FastAPI
+    uvicorn.run("app.api:app", host="127.0.0.1", port=8000, log_level="info")
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+十五、後端專案目錄結構
+================================================================================
+
+backend/
+├── app/
+│   ├── __init__.py
+│   ├── main.py                      ← 啟動入口（PyInstaller entry point）
+│   ├── api.py                       ← FastAPI app 定義 + static files mount
+│   ├── config.py                    ← 配置（DB 路徑、static 路徑）
+│   ├── database/
+│   │   ├── __init__.py
+│   │   ├── connection.py            ← SQLite 連線 + 初始化
+│   │   └── models.py                ← SQLAlchemy models
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── deps.py                  ← 依賴注入（DB session 等）
+│   │   └── routes/
+│   │       ├── __init__.py
+│   │       ├── employees.py
+│   │       ├── off_days.py
+│   │       ├── cross_month.py
+│   │       ├── night.py
+│   │       ├── solve.py
+│   │       └── schedules.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── employee_service.py
+│   │   ├── schedule_service.py
+│   │   ├── off_day_service.py
+│   │   ├── cross_month_service.py
+│   │   └── night_service.py
+│   ├── scheduler/                   ← 排班引擎核心
+│   │   ├── __init__.py
+│   │   ├── engine.py                ← CP-SAT 主邏輯
+│   │   ├── data_loader.py           ← 載入排班所需資料
+│   │   ├── constraints/
+│   │   │   ├── __init__.py
+│   │   │   ├── hard.py              ← H1~H13
+│   │   │   └── soft.py              ← S1~S7 + 目標函數
+│   │   ├── diagnostics.py           ← 排班失敗診斷
+│   │   └── validator.py             ← 規則驗證器（手動微調用）
+│   └── schemas/                     ← Pydantic schemas
+│       ├── __init__.py
+│       ├── employee.py
+│       ├── schedule.py
+│       ├── off_days.py
+│       ├── cross_month.py
+│       └── solve.py
+├── requirements.txt
+├── build.spec                       ← PyInstaller spec 檔
+└── README.md
+
+requirements.txt:
+  fastapi>=0.104.0
+  uvicorn[standard]>=0.24.0
+  sqlalchemy>=2.0.0
+  ortools>=9.8.0
+  pydantic>=2.0.0
+  pyinstaller>=6.0.0 (僅打包用)
+
+================================================================================
+十六、前端專案目錄結構
+================================================================================
+
+frontend/
+├── src/
+│   ├── main.tsx                     ← React entry
+│   ├── App.tsx                      ← 路由定義
+│   ├── api/                         ← API client
+│   │   ├── client.ts                ← Axios/fetch 封裝
+│   │   ├── employees.ts
+│   │   ├── offDays.ts
+│   │   ├── schedules.ts
+│   │   ├── crossMonth.ts
+│   │   ├── night.ts
+│   │   └── solve.ts
+│   ├── components/
+│   │   ├── layout/
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── Header.tsx
+│   │   │   └── Layout.tsx
+│   │   ├── schedule/
+│   │   │   ├── ScheduleTable.tsx    ← 月排班表
+│   │   │   ├── ShiftCell.tsx        ← 班次格位（含微調）
+│   │   │   ├── DailyCoverage.tsx    ← 每日覆蓋檢查列
+│   │   │   └── ShiftLegend.tsx      ← 色塊圖例
+│   │   ├── employee/
+│   │   │   ├── EmployeeForm.tsx
+│   │   │   └── EmployeeList.tsx
+│   │   ├── off-days/
+│   │   │   ├── OffDayCalendar.tsx   ← 月曆休假勾選
+│   │   │   └── ConsecutiveOffCounter.tsx
+│   │   ├── cross-month/
+│   │   │   ├── CrossMonthForm.tsx
+│   │   │   └── CrossMonthPreview.tsx
+│   │   ├── night/
+│   │   │   ├── NightInputTable.tsx
+│   │   │   └── DBackupRequestPanel.tsx
+│   │   └── ui/                      ← shadcn/ui 元件
+│   ├── pages/
+│   │   ├── SchedulePage.tsx         ← 排班表總覽（首頁）
+│   │   ├── EmployeesPage.tsx
+│   │   ├── OffDaysPage.tsx
+│   │   ├── CrossMonthPage.tsx
+│   │   ├── NightPage.tsx
+│   │   ├── SolvePage.tsx
+│   │   └── StatsPage.tsx
+│   ├── stores/                      ← Zustand
+│   │   ├── scheduleStore.ts
+│   │   ├── employeeStore.ts
+│   │   └── uiStore.ts
+│   ├── types/
+│   │   └── index.ts                 ← TypeScript 型別定義
+│   ├── utils/
+│   │   ├── date.ts                  ← 日期工具（週分組、週六日識別等）
+│   │   ├── shift.ts                 ← 班次工具（顏色、標籤等）
+│   │   └── validation.ts            ← 前端即時驗證
+│   └── styles/
+│       └── globals.css              ← Tailwind + 全域樣式
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── tailwind.config.js
+└── index.html
+
+前端 build 後產出至 backend/static/ 目錄，由 FastAPI 托管。
+
+================================================================================
+十七、開發階段規劃
+================================================================================
+
+Phase 1: Backend 骨架 + DB Schema + 基礎 API
+  - FastAPI app 建立
+  - SQLAlchemy models + SQLite 連線 + 自動建表
+  - 員工 CRUD API
+  - 基礎 schedule_entries CRUD API
+
+Phase 2: 排班引擎核心（硬性約束）
+  - data_loader: 載入所有排班所需資料
+  - CP-SAT 模型建構
+  - 實作 H1~H13 硬性約束
+  - 基本求解 + 結果提取
+  - 單元測試（小型資料集驗證）
+
+Phase 3: 軟性約束 + 目標函數
+  - 實作 S1~S7 軟性約束
+  - 目標函數加權調整
+  - 求解品質驗證
+
+Phase 4: 前端骨架 + 排班表頁面
+  - Vite + React + Tailwind + shadcn/ui 建立
+  - 路由設定
+  - 排班表頁面（顯示 API 回傳的排班結果）
+  - 色塊表格元件
+
+Phase 5: 員工管理 + 休假管理 UI
+  - 員工管理頁面（CRUD + 角色設定）
+  - 休假管理頁面（月曆 UI + 指定休假 + 特休）
+  - 連休 2 日計數器
+
+Phase 6: 跨月設定 + 大夜班表 UI
+  - 跨月設定頁面（自動載入 + 手動輸入 + 預覽）
+  - 大夜班表輸入頁面
+  - D 班備援指示 UI
+
+Phase 7: 手動微調 + 規則驗證報告
+  - 排班表格位點擊微調
+  - 即時合規檢查
+  - 規則驗證報告頁面
+  - 排班失敗診斷報告
+
+Phase 8: 統計報表 + 打包部署
+  - 統計報表頁面
+  - PyInstaller 打包
+  - 前端 build 整合
+  - Portable 資料夾測試
+  - Windows 10/11 相容性測試
+
+================================================================================
+十八、關鍵實作注意事項
+================================================================================
+
+1. 班次銜接的跨月處理
+   - 需將上月最後一天班次作為「day -1」加入銜接矩陣檢查
+   - 連續上班天數需從上月最後 5 天開始累計
+
+2. 每週休 2 天的跨月處理
+   - 跨月週的休假計算需合併上月和本月的資料
+   - 上月已休天數從 previous_month_links 或上月 schedule_entries 讀取
+
+3. 連休 2 日判定
+   - 特休會打斷連續判定（特休那天視為「非參與型」，重置連續計數）
+   - 需實作掃描邏輯：逐日檢查是否為參與型休假，計算連續段數
+
+4. D 班備援
+   - 備援日 C+D 備援人員的班次固定為 D（不設決策變數）
+   - 需確保當日 C 班至少有 1 人（排除該 C+D 備援人員）
+   - 若無人可上 C 班 → 排班失敗
+
+5. 大夜專職人員
+   - 班次由手動輸入固定，不參與自動排班
+   - 但需驗證其休假規則合規（H2/H3/H4/H12）
+   - 大夜人員的班次也需納入跨月銜接檢查
+
+6. OR-Tools 線性化
+   - 軟性約束中的乘法項（如 x[e,d,B] * x[e,d+1,A]）需線性化
+   - 使用輔助布林變數 + OnlyEnforceIf 技巧
+
+7. SQLite 路徑
+   - 打包後 DB 路徑需根據 sys.executable 動態計算
+   - 確保 data/ 目錄與 .exe 同層
+
+8. 前端即時驗證
+   - 手動微調時需呼叫後端 /solve/validate API
+   - 或前端實作輕量級規則檢查（即時回饋）
+
+9. 月份天數處理
+   - 使用 Python calendar.monthrange() 取得當月天數
+   - 注意 2 月閏年
+
+10. 時區
+    - 系統為本地使用，不需處理時區轉換
+    - 日期使用 datetime.date 即可
+
+================================================================================
+規格書結束
+================================================================================

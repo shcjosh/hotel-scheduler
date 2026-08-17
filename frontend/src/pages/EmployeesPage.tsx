@@ -1,0 +1,91 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { UserPlus } from 'lucide-react'
+import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '../api/employees'
+import type { EmployeePayload } from '../api/employees'
+import { EmployeeList } from '../components/employee/EmployeeList'
+import { EmployeeForm } from '../components/employee/EmployeeForm'
+import { Button } from '../components/ui/button'
+import type { Employee } from '../types'
+
+export function EmployeesPage() {
+  const queryClient = useQueryClient()
+  const { data: employees = [], isLoading, isError, error } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => getEmployees(),
+  })
+
+  const [formOpen, setFormOpen] = useState(false)
+  const [editing, setEditing] = useState<Employee | null>(null)
+
+  const createMut = useMutation({
+    mutationFn: (payload: EmployeePayload) => createEmployee(payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  })
+  const updateMut = useMutation({
+    mutationFn: ({ id, payload }: { id: number; payload: EmployeePayload }) =>
+      updateEmployee(id, payload),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  })
+
+  function openCreate() {
+    setEditing(null)
+    setFormOpen(true)
+  }
+  function openEdit(emp: Employee) {
+    setEditing(emp)
+    setFormOpen(true)
+  }
+  async function handleSubmit(payload: EmployeePayload) {
+    if (editing) {
+      await updateMut.mutateAsync({ id: editing.id, payload })
+    } else {
+      await createMut.mutateAsync(payload)
+    }
+  }
+  async function handleDelete(emp: Employee) {
+    if (!window.confirm(`確定要刪除「${emp.name}」嗎？（軟刪除）`)) return
+    await deleteEmployee(emp.id)
+    queryClient.invalidateQueries({ queryKey: ['employees'] })
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">員工管理</h2>
+          <p className="text-sm text-gray-500">管理員工資料、角色與可用班次</p>
+        </div>
+        <Button onClick={openCreate}>
+          <UserPlus className="mr-2 h-4 w-4" />
+          新增員工
+        </Button>
+      </div>
+
+      {isLoading && (
+        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-500">
+          載入中…
+        </div>
+      )}
+      {isError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
+          載入失敗：{error instanceof Error ? error.message : '未知錯誤'}
+        </div>
+      )}
+      {!isLoading && !isError && (
+        <EmployeeList
+          employees={employees}
+          onEdit={openEdit}
+          onDelete={handleDelete}
+        />
+      )}
+
+      <EmployeeForm
+        open={formOpen}
+        employee={editing}
+        onClose={() => setFormOpen(false)}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  )
+}

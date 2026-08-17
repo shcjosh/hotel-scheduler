@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+frontend/dist/
+
+# 建置產物
+build/
+dist/
+*.spec
+
+# 資料庫（不追蹤，但要備份 — 後面說明）
+data/
+*.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 系統
+.DS_Store
+Thumbs.db
+
+# 環境設定
+.env
+config.ini
