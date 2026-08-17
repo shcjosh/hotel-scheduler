@@ -1,4 +1,4 @@
-from app.scheduler.constraints.hard import WORK_SHIFTS
+from app.scheduler.constraints.hard import COVERAGE_BACKUP_SHIFTS, WORK_SHIFTS
 
 
 def _prev_day1(data, emp_id):
@@ -135,6 +135,19 @@ def add_s7_d_backup_minimize(model, x, data, fixed):
     return terms, {"s7": stat_vars}
 
 
+def add_s8_manager_backup_minimize(model, x, data, fixed):
+    terms = []
+    stat_vars = []
+    for e, emp in enumerate(data.employees):
+        if emp.role != "manager":
+            continue
+        for d in range(data.num_days):
+            for s in COVERAGE_BACKUP_SHIFTS:
+                terms.append(x[e][d][s] * (-15))
+                stat_vars.append(x[e][d][s])
+    return terms, {"s8": stat_vars}
+
+
 SOFT_FUNCTIONS = [
     ("S1", add_s1_avoid_5_consecutive),
     ("S2", add_s2_avoid_b_to_a),
@@ -143,6 +156,7 @@ SOFT_FUNCTIONS = [
     ("S5", add_s5_preferred_shift),
     ("S6", add_s6_fairness),
     ("S7", add_s7_d_backup_minimize),
+    ("S8", add_s8_manager_backup_minimize),
 ]
 
 

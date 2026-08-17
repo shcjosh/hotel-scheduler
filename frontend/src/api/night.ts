@@ -85,3 +85,26 @@ export async function addBackupRequest(
 export async function removeBackupRequest(id: number): Promise<void> {
   await apiClient.delete(`/night/backup-request/${id}`)
 }
+
+export type RuleOverrides = Record<string, Record<string, boolean>>
+
+export async function getRuleOverrides(
+  year: number,
+  month: number,
+): Promise<RuleOverrides> {
+  const { data } = await apiClient.get<RuleOverrides>(
+    `/night/${year}/${month}/rule-overrides`,
+  )
+  return data
+}
+
+export async function updateRuleOverrides(
+  empId: number,
+  payload: { rules?: Record<string, boolean>; all?: boolean },
+): Promise<RuleOverrides> {
+  const { data } = await apiClient.put<RuleOverrides>(
+    `/night/rule-overrides/${empId}`,
+    payload,
+  )
+  return data
+}

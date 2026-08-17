@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.models import Employee, PreviousMonthLink, ScheduleEntry
 
-VALID_SHIFTS = {"A", "B", "C", "D", "OFF", "SPECIAL", None}
+VALID_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL", None}
 WORK_SHIFTS = {"A", "B", "C", "D"}
 
 
@@ -208,9 +208,12 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
             elif c1 == "C":
                 violations.append(_v(emp, "shift_transition", "H5",
                     f"{last_date_str} D → {month}/1 C 違規：D 班隔天不可接 C 班"))
+            elif c1 == "M":
+                violations.append(_v(emp, "shift_transition", "H5",
+                    f"{last_date_str} D → {month}/1 M 違規：D 班隔天不可接 M 班"))
             elif c1 is None:
                 violations.append(_v(emp, "shift_transition", "H5",
-                    f"{last_date_str} 為 D 班，{month}/1 不可排 A、C 班"))
+                    f"{last_date_str} 為 D 班，{month}/1 不可排 A、C、M 班"))
 
         consec = 0
         for s in reversed(prev_shifts):

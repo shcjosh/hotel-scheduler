@@ -15,6 +15,7 @@ const SOFT_LABELS: Record<string, string> = {
   s5_preferred_satisfied: 'S5 偏好滿足',
   s6_work_days_spread: 'S6 上班天數差',
   s7_non_backup_d_count: 'S7 非備援D',
+  s8_manager_backup_count: 'S8 管理職備援',
 }
 
 function empStats(row: string[]) {
@@ -140,14 +141,15 @@ export function SolvePage() {
       )}
 
       {result && !result.success && (
-        <SolveFailure result={result} onRetry={handleSolve} />
+        <SolveFailure result={result} onRetry={handleSolve} month={currentMonth} />
       )}
     </div>
   )
 }
 
-function SolveFailure({ result, onRetry }: { result: SolveResponse; onRetry: () => void }) {
+function SolveFailure({ result, onRetry, month }: { result: SolveResponse; onRetry: () => void; month: number }) {
   const diag = result.diagnostics as SolveDiagnostics | null
+  const supportReqs = result.support_requests ?? []
   return (
     <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
       <div className="flex items-center gap-2 font-semibold text-red-700">
@@ -167,6 +169,20 @@ function SolveFailure({ result, onRetry }: { result: SolveResponse; onRetry: () 
           <div className="mt-1 text-xs text-gray-500">建議：{c.suggestion}</div>
         </div>
       ))}
+      {supportReqs.length > 0 && (
+        <div className="rounded-md border border-orange-200 bg-orange-50 p-3">
+          <div className="mb-1 text-sm font-semibold text-orange-700">
+            已自動建立 {supportReqs.length} 件支援請求
+          </div>
+          <ul className="space-y-1 text-xs text-orange-700">
+            {supportReqs.map((r) => (
+              <li key={r.id}>
+                {r.day === 0 ? '全月' : `${month}/${r.day}`} {r.shift} 班缺人 — {r.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {diag?.constraint_analysis && (
         <div className="text-xs text-gray-500">
           員工數：{diag.constraint_analysis.employee_count}（非大夜 {diag.constraint_analysis.non_night_count}，A可上 {diag.constraint_analysis.a_capable}，C可上 {diag.constraint_analysis.c_capable}）

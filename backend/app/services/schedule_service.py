@@ -7,7 +7,7 @@ from app.schemas.schedule import ScheduleEntryCreate, ScheduleEntryUpdate
 import calendar
 import json
 
-VALID_CELL_SHIFTS = {"A", "B", "C", "D", "OFF", "SPECIAL"}
+VALID_CELL_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL"}
 WORK_SHIFTS_SET = {"A", "B", "C", "D"}
 
 
@@ -219,6 +219,8 @@ def validate_cell(
         v("H5", f"前日 D → {month}/{day} A 違規：D 班隔天不可接 A 班")
     if prev_shift == "D" and new_shift == "C":
         v("H5", f"前日 D → {month}/{day} C 違規：D 班隔天不可接 C 班")
+    if prev_shift == "D" and new_shift == "M":
+        v("H5", f"前日 D → {month}/{day} M 違規：D 班隔天不可接 M 班")
     if next_shift is not None:
         if new_shift == "C" and next_shift == "A":
             v("H5", f"{month}/{day} C → 次日 A 違規：C 班隔天不可接 A 班")
@@ -226,6 +228,8 @@ def validate_cell(
             v("H5", f"{month}/{day} D → 次日 A 違規：D 班隔天不可接 A 班")
         if new_shift == "D" and next_shift == "C":
             v("H5", f"{month}/{day} D → 次日 C 違規：D 班隔天不可接 C 班")
+        if new_shift == "D" and next_shift == "M":
+            v("H5", f"{month}/{day} D → 次日 M 違規：D 班隔天不可接 M 班")
 
     # S2/S3/S4
     def soft_trans(cur, nxt, label):
@@ -293,6 +297,29 @@ def get_validation_report(db: Session, year: int, month: int) -> dict:
     s5_count = validator.count_preferred_unsatisfied(data, schedule)
     s6_spread = validator.compute_fairness_spread(data, schedule)
 
+    # filter out violations for disabled night rules
+    night_rules = {"H2", "H3", "H4", "H12"}
+    disabled_night: dict[str, list[str]] = {}
+    hard_filtered = []
+    for v in hard:
+        if v["rule"] in night_rules and v["employee_id"] is not None:
+            emp = next((e for e in data.employees if e.id == v["employee_id"]), None)
+            if emp and emp.role == "night":
+                enabled = data.night_rule_overrides.get(emp.id)
+                if enabled is not None and v["rule"] not in enabled:
+                    continue
+        hard_filtered.append(v)
+    hard = hard_filtered
+
+    for emp in data.employees:
+        if emp.role != "night":
+            continue
+        enabled = data.night_rule_overrides.get(emp.id)
+        if enabled is not None:
+            disabled = [r for r in night_rules if r not in enabled]
+            if disabled:
+                disabled_night[str(emp.id)] = disabled
+
     hard_out = [{**h, "severity": "hard"} for h in hard]
     soft_out = [{**s, "severity": "soft"} for s in soft]
     if s6_spread > 2:
@@ -326,4 +353,5 @@ def get_validation_report(db: Session, year: int, month: int) -> dict:
         "violations": hard_out,
         "warnings": soft_out,
         "per_rule_summary": per_rule,
+        "disabled_night_rules": disabled_night,
     }

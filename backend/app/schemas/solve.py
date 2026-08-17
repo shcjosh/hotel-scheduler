@@ -17,3 +17,4 @@ class SolveResponse(BaseModel):
     objective_value: float | None = None
     soft_constraint_stats: dict | None = None
     diagnostics: dict | None = None
+    support_requests: list | None = None

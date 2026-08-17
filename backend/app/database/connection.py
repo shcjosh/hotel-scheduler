@@ -34,3 +34,10 @@ def init_db() -> None:
     from app.database import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    from app.services.settings_service import ensure_defaults
+    from app.database.connection import SessionLocal
+    s = SessionLocal()
+    try:
+        ensure_defaults(s)
+    finally:
+        s.close()

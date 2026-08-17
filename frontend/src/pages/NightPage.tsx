@@ -7,12 +7,15 @@ import {
   deleteNightEntry,
   addBackupRequest,
   removeBackupRequest,
+  getRuleOverrides,
+  updateRuleOverrides,
 } from '../api/night'
 import { getEmployees } from '../api/employees'
 import { useUIStore } from '../stores/uiStore'
 import { getMonthDays } from '../utils/date'
 import { NightInputTable } from '../components/night/NightInputTable'
 import { DBackupRequestPanel } from '../components/night/DBackupRequestPanel'
+import { RuleOverridePanel } from '../components/night/RuleOverridePanel'
 import { cn } from '../utils/cn'
 
 export function NightPage() {
@@ -28,12 +31,24 @@ export function NightPage() {
     queryKey: ['night-validation', year, month],
     queryFn: () => getNightValidation(year, month),
   })
+  const { data: ruleOverrides } = useQuery({
+    queryKey: ['night-rule-overrides', year, month],
+    queryFn: () => getRuleOverrides(year, month),
+  })
   useQuery({ queryKey: ['employees'], queryFn: () => getEmployees() })
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['night', year, month] })
     queryClient.invalidateQueries({ queryKey: ['night-validation', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['night-rule-overrides', year, month] })
   }
+
+  const ruleMut = useMutation({
+    mutationFn: async ({ empId, payload }: { empId: number; payload: { rules?: Record<string, boolean>; all?: boolean } }) =>
+      updateRuleOverrides(empId, payload),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['night-rule-overrides', year, month] }),
+  })
 
   const entryMut = useMutation({
     mutationFn: async ({ empId, day, value }: { empId: number; day: number; value: 'D' | 'OFF' | '' }) => {
@@ -89,6 +104,26 @@ export function NightPage() {
         requests={night?.d_backup_requests ?? []}
         onAdd={(d) => addBackupMut.mutateAsync(d)}
         onRemove={(id) => removeBackupMut.mutateAsync(id)}
+      />
+
+      <RuleOverridePanel
+        nightEmployees={night?.night_employees ?? []}
+        overrides={ruleOverrides}
+        onToggle={(empId, rule, value) =>
+          ruleMut.mutate({
+            empId,
+            payload: {
+              rules: {
+                H2: (ruleOverrides?.[String(empId)]?.H2 ?? true),
+                H3: (ruleOverrides?.[String(empId)]?.H3 ?? true),
+                H4: (ruleOverrides?.[String(empId)]?.H4 ?? true),
+                H12: (ruleOverrides?.[String(empId)]?.H12 ?? true),
+                [rule]: value,
+              },
+            },
+          })
+        }
+        onAll={(empId, value) => ruleMut.mutate({ empId, payload: { all: value } })}
       />
 
       <div>

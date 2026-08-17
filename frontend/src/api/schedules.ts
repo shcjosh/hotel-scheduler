@@ -27,6 +27,7 @@ export interface ValidationReport {
   violations: (CellViolation & { employee_id: number | null; employee_name: string | null; day: number | null })[]
   warnings: (CellViolation & { employee_id: number | null; employee_name: string | null; day: number | null })[]
   per_rule_summary: Record<string, RuleStat>
+  disabled_night_rules?: Record<string, string[]>
 }
 
 export async function getSchedule(

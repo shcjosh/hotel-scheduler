@@ -1,10 +1,22 @@
-ALL_SHIFTS = ["A", "B", "C", "D", "OFF", "SPECIAL"]
-WORK_SHIFTS = ["A", "B", "C", "D"]
+ALL_SHIFTS = ["A", "B", "C", "D", "M", "OFF", "SPECIAL"]
+WORK_SHIFTS = ["A", "B", "C", "D", "M"]
+COVERAGE_BACKUP_SHIFTS = ["A", "B", "C", "D"]
 REST_SHIFTS = ["OFF", "SPECIAL"]
+DEFAULT_NIGHT_RULES = {"H2", "H3", "H4", "H12"}
 
 
 def _emp_index(data):
     return {emp.id: i for i, emp in enumerate(data.employees)}
+
+
+def _rule_enabled(data, emp, rule):
+    """Night employees may have per-rule overrides; others always enabled."""
+    if emp.role != "night":
+        return True
+    enabled = getattr(data, "night_rule_overrides", {}).get(emp.id)
+    if enabled is None:
+        return rule in DEFAULT_NIGHT_RULES
+    return rule in enabled
 
 
 def add_h1_daily_coverage(model, x, data, fixed):
@@ -26,6 +38,8 @@ def add_h2_weekly_off_days(model, x, data, fixed):
     n = len(data.employees)
     for w in data.weeks[1:]:
         for i in range(n):
+            if not _rule_enabled(data, data.employees[i], "H2"):
+                continue
             off_sum = sum(x[i][d]["OFF"] for d in w)
             if len(w) >= 5:
                 model.Add(off_sum == 2)
@@ -36,6 +50,8 @@ def add_h2_weekly_off_days(model, x, data, fixed):
 def add_h3_weekend_limit(model, x, data, fixed):
     n = len(data.employees)
     for i in range(n):
+        if not _rule_enabled(data, data.employees[i], "H3"):
+            continue
         sat_off = sum(x[i][d]["OFF"] for d in data.saturdays)
         sun_off = sum(x[i][d]["OFF"] for d in data.sundays)
         model.Add(sat_off <= 1)
@@ -45,6 +61,8 @@ def add_h3_weekend_limit(model, x, data, fixed):
 def add_h4_max_consecutive_work(model, x, data, fixed):
     n = len(data.employees)
     for i in range(n):
+        if not _rule_enabled(data, data.employees[i], "H4"):
+            continue
         for d in range(data.num_days - 5):
             rest = sum(
                 x[i][d + k]["OFF"] + x[i][d + k]["SPECIAL"] for k in range(6)
@@ -59,6 +77,7 @@ def add_h5_shift_transition_hard(model, x, data, fixed):
             model.Add(x[i][d]["C"] + x[i][d + 1]["A"] <= 1)
             model.Add(x[i][d]["D"] + x[i][d + 1]["A"] <= 1)
             model.Add(x[i][d]["D"] + x[i][d + 1]["C"] <= 1)
+            model.Add(x[i][d]["D"] + x[i][d + 1]["M"] <= 1)
 
 
 def add_h6_designated_off(model, x, data, fixed):
@@ -106,6 +125,7 @@ def add_h8_cross_month_transition(model, x, data, fixed):
         elif prev_day1 == "D":
             model.Add(x[i][0]["A"] == 0)
             model.Add(x[i][0]["C"] == 0)
+            model.Add(x[i][0]["M"] == 0)
 
         if not prev:
             continue
@@ -138,6 +158,8 @@ def add_h9_cross_month_week(model, x, data, fixed):
     weekday_day1 = data.dates[0].weekday()
     for emp in data.employees:
         i = idx[emp.id]
+        if not _rule_enabled(data, emp, "H2"):
+            continue
         prev = data.previous_month.get(emp.id)
         off_sum = sum(x[i][d]["OFF"] for d in w0)
         if prev and weekday_day1 > 0:
@@ -187,6 +209,8 @@ def _add_and3(model, a, b, c_not, name):
 def add_h12_consecutive_off_limit(model, x, data, fixed):
     n = len(data.employees)
     for i in range(n):
+        if not _rule_enabled(data, data.employees[i], "H12"):
+            continue
         count_vars = []
         for d in range(data.num_days - 1):
             a = x[i][d]["OFF"]

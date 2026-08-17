@@ -49,7 +49,8 @@ def main():
     chang = _emp("張先生", "general", ["A", "B", "C"], pref="C")
     lin = _emp("林備援", "cd_backup", ["C", "D"], pref="C")
     chen = _emp("陳大夜", "night", ["D"], pref="D")
-    db.add_all([wang, lee, chang, lin, chen])
+    josh = _emp("Josh店長", "manager", ["M", "A", "B", "C", "D"], pref="M")
+    db.add_all([wang, lee, chang, lin, chen, josh])
     db.commit()
 
     db.add(DesignatedOffDay(employee_id=wang.id, year=2026, month=8, day=5))
@@ -61,6 +62,7 @@ def main():
         chang.id: ["C", "OFF", "A", "B", "C"],
         lin.id: ["C", "D", "OFF", "C", "OFF"],
         chen.id: ["D", "D", "D", "D", "OFF"],
+        josh.id: ["M", "M", "OFF", "M", "M"],
     }.items():
         db.add(PreviousMonthLink(
             employee_id=eid, year=2026, month=8,

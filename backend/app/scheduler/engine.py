@@ -107,6 +107,7 @@ def _extract_soft_stats(solver, trackers) -> dict:
         "s4_c_to_d_count": total("s4"),
         "s5_preferred_satisfied": total("s5"),
         "s7_non_backup_d_count": total("s7"),
+        "s8_manager_backup_count": total("s8"),
     }
     if trackers.get("s6_max") is not None:
         stats["s6_work_days_spread"] = int(

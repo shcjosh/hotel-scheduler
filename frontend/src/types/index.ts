@@ -1,5 +1,5 @@
-export type ShiftType = 'A' | 'B' | 'C' | 'D' | 'OFF' | 'SPECIAL'
-export type EmployeeRole = 'general' | 'night' | 'cd_backup'
+export type ShiftType = 'A' | 'B' | 'C' | 'D' | 'M' | 'OFF' | 'SPECIAL'
+export type EmployeeRole = 'general' | 'night' | 'cd_backup' | 'manager'
 export type SchedulingMode = 'auto' | 'manual'
 
 export interface Employee {
@@ -46,4 +46,8 @@ export interface SolveResponse {
     likely_causes: { type: string; severity: string; message: string; suggestion: string }[]
     constraint_analysis: Record<string, number>
   } | null
+  support_requests: {
+    id: number; year: number; month: number; day: number; shift: string
+    reason: string | null; status: string; source: string
+  }[] | null
 }

@@ -6,13 +6,13 @@ interface DailyCoverageProps {
   view: MonthScheduleView
 }
 
-const WORK_SHIFTS = ['A', 'B', 'C', 'D'] as const
+const WORK_SHIFTS = ['A', 'B', 'C', 'D', 'M'] as const
 
 export function DailyCoverage({ view }: DailyCoverageProps) {
   const { schedule, num_days: numDays, year, month } = view
 
   const dayCounts = Array.from({ length: numDays }, (_, d) => {
-    const counts: Record<string, number> = { A: 0, B: 0, C: 0, D: 0 }
+    const counts: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, M: 0 }
     for (const row of Object.values(schedule)) {
       const s = row[d]
       if (s in counts) counts[s] += 1

@@ -4,8 +4,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database.models import DBackupRequest, Employee, ScheduleEntry
+from app.database.models import DBackupRequest, Employee, NightRuleOverride, ScheduleEntry
 from app.scheduler import data_loader, validator
+
+NIGHT_RULES = ["H2", "H3", "H4", "H12"]
 
 
 def get_night_schedule(db: Session, year: int, month: int) -> dict:
@@ -156,10 +158,53 @@ def validate_night_schedule(db: Session, year: int, month: int) -> dict:
         ]
 
     viols = validator.validate(night_data, night_partial)
-    return {
-        "violations": [
-            {"rule": v["rule"], "message": v["message"]}
-            for v in viols
-            if v["rule"] in ("H2", "H3", "H4", "H12")
-        ]
-    }
+    out = []
+    for v in viols:
+        if v["rule"] not in ("H2", "H3", "H4", "H12"):
+            continue
+        eid = v["employee_id"]
+        enabled = night_data.night_rule_overrides.get(eid)
+        if enabled is not None and v["rule"] not in enabled:
+            continue
+        out.append({"rule": v["rule"], "message": v["message"], "employee_id": eid})
+    return {"violations": out}
+
+
+def get_rule_overrides(db: Session) -> dict:
+    night_ids = [
+        e.id for e in db.scalars(
+            select(Employee).where(Employee.is_active == 1, Employee.role == "night")
+        )
+    ]
+    rows = list(db.scalars(select(NightRuleOverride)))
+    by_emp: dict[int, dict[str, bool]] = {}
+    for r in rows:
+        by_emp.setdefault(r.employee_id, {})[r.rule_name] = bool(r.enabled)
+    result = {}
+    for nid in night_ids:
+        emp_rules = by_emp.get(nid, {})
+        result[str(nid)] = {rule: emp_rules.get(rule, True) for rule in NIGHT_RULES}
+    return result
+
+
+def update_rule_overrides(db: Session, emp_id: int, payload: dict) -> dict:
+    if "all" in payload:
+        val = bool(payload["all"])
+        rules = {rule: val for rule in NIGHT_RULES}
+    else:
+        rules = payload.get("rules", payload)
+
+    for rule in NIGHT_RULES:
+        enabled = 1 if rules.get(rule, True) else 0
+        existing = db.scalars(
+            select(NightRuleOverride).where(
+                NightRuleOverride.employee_id == emp_id,
+                NightRuleOverride.rule_name == rule,
+            )
+        ).first()
+        if existing is None:
+            db.add(NightRuleOverride(employee_id=emp_id, rule_name=rule, enabled=enabled))
+        else:
+            existing.enabled = enabled
+    db.commit()
+    return get_rule_overrides(db)

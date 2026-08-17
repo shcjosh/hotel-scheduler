@@ -5,10 +5,17 @@ import { CalendarX, Sparkles } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry } from '../api/schedules'
+import {
+  getSupportRequests,
+  createSupportRequest,
+  updateSupportRequest,
+  deleteSupportRequest,
+} from '../api/support'
 import { ScheduleTable } from '../components/schedule/ScheduleTable'
 import { ShiftLegend } from '../components/schedule/ShiftLegend'
 import { CellEditModal } from '../components/schedule/CellEditModal'
 import { ValidationReportPanel } from '../components/schedule/ValidationReport'
+import { SupportRequestPanel } from '../components/support/SupportRequestPanel'
 import { Button } from '../components/ui/button'
 
 function hasRealData(schedule: Record<string, string[]>): boolean {
@@ -31,6 +38,16 @@ export function SchedulePage() {
   const { data: report, isLoading: reportLoading } = useQuery({
     queryKey: ['validation', currentYear, currentMonth],
     queryFn: () => getValidationReport(currentYear, currentMonth),
+  })
+  const { data: supportReqs = [] } = useQuery({
+    queryKey: ['support-requests', currentYear, currentMonth],
+    queryFn: () => getSupportRequests(currentYear, currentMonth),
+  })
+
+  const supportMut = useMutation({
+    mutationFn: async (fn: () => Promise<unknown>) => fn(),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['support-requests', currentYear, currentMonth] }),
   })
 
   const updateMut = useMutation({
@@ -93,6 +110,14 @@ export function SchedulePage() {
             isLoading={reportLoading}
             onRefresh={() => invalidateAll()}
             onJumpTo={(empName, day) => setEditing({ empName, day })}
+          />
+          <SupportRequestPanel
+            requests={supportReqs}
+            numDays={data.num_days}
+            month={currentMonth}
+            onAdd={(d, s, r) => supportMut.mutateAsync(() => createSupportRequest(currentYear, currentMonth, d, s, r))}
+            onUpdate={(id, st, res) => supportMut.mutateAsync(() => updateSupportRequest(id, st, res))}
+            onRemove={(id) => supportMut.mutateAsync(() => deleteSupportRequest(id))}
           />
         </>
       )}

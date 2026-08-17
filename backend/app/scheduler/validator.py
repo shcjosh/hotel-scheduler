@@ -1,4 +1,9 @@
-from app.scheduler.constraints.hard import ALL_SHIFTS, REST_SHIFTS, WORK_SHIFTS
+from app.scheduler.constraints.hard import (
+    ALL_SHIFTS,
+    COVERAGE_BACKUP_SHIFTS,
+    REST_SHIFTS,
+    WORK_SHIFTS,
+)
 
 
 def _shift_at(schedule, emp_id, day_idx):
@@ -119,6 +124,8 @@ def validate(data, schedule):
                 violations.append(_v("H5", emp, d + 1, f"{d+1}→{d+2} D→A 禁止"))
             if cur == "D" and nxt == "C":
                 violations.append(_v("H5", emp, d + 1, f"{d+1}→{d+2} D→C 禁止"))
+            if cur == "D" and nxt == "M":
+                violations.append(_v("H5", emp, d + 1, f"{d+1}→{d+2} D→M 禁止"))
 
     for emp in data.employees:
         for day in data.designated_off_days.get(emp.id, []):
@@ -145,6 +152,8 @@ def validate(data, schedule):
             violations.append(_v("H8", emp, 1, "上月末 D→本月首 A"))
         if prev_day1 == "D" and cur0 == "C":
             violations.append(_v("H8", emp, 1, "上月末 D→本月首 C"))
+        if prev_day1 == "D" and cur0 == "M":
+            violations.append(_v("H8", emp, 1, "上月末 D→本月首 M"))
 
     for emp in data.employees:
         shifts = schedule.get(emp.id, [])
@@ -251,6 +260,15 @@ def validate_soft(data, schedule):
                 if s == "D":
                     warnings.append(_v("S7", emp, d + 1, "非備援日排 D"))
 
+    # S8: manager on A/B/C/D (backup) — warn per occurrence
+    for emp in data.employees:
+        if emp.role != "manager":
+            continue
+        for d in range(data.num_days):
+            s = _shift_at(schedule, emp.id, d)
+            if s in COVERAGE_BACKUP_SHIFTS:
+                warnings.append(_v("S8", emp, d + 1, f"管理職備援排 {s}（建議上 M 班）"))
+
     return warnings
 
 
@@ -286,5 +304,5 @@ RULE_DESCRIPTIONS = {
     "H13": "大夜專職手動",
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S4": "C→D 盡量減少", "S5": "偏好班次", "S6": "公平分配",
-    "S7": "D 班備援最小化",
+    "S7": "D 班備援最小化", "S8": "管理職備援最小化",
 }

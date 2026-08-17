@@ -135,3 +135,46 @@ class PreviousMonthLink(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
 
     employee: Mapped["Employee"] = relationship()
+
+
+class NightRuleOverride(Base):
+    __tablename__ = "night_rule_overrides"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "rule_name", name="uq_night_rule_override"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id", ondelete="CASCADE"), nullable=False
+    )
+    rule_name: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+
+
+class SupportRequest(Base):
+    __tablename__ = "support_requests"
+    __table_args__ = (
+        UniqueConstraint("year", "month", "day", "shift", name="uq_support_request"),
+        Index("idx_support_ym", "year", "month"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    day: Mapped[int] = mapped_column(Integer, nullable=False)
+    shift: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="open")
+    resolution: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="manual")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+    resolved_at: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Setting(Base):
+    __tablename__ = "settings"
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)

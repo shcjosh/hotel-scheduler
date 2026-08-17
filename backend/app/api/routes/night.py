@@ -60,6 +60,16 @@ def validate_night(year: int, month: int, db: Session = Depends(get_db)):
     return night_service.validate_night_schedule(db, year, month)
 
 
+@router.get("/night/{year}/{month}/rule-overrides")
+def get_rule_overrides(year: int, month: int, db: Session = Depends(get_db)):
+    return night_service.get_rule_overrides(db)
+
+
+@router.put("/night/rule-overrides/{employee_id}")
+def update_rule_overrides(employee_id: int, req: dict, db: Session = Depends(get_db)):
+    return night_service.update_rule_overrides(db, employee_id, req)
+
+
 @router.get("/night/{year}/{month}", response_model=NightScheduleResponse)
 def get_night_schedule(year: int, month: int, db: Session = Depends(get_db)):
     return night_service.get_night_schedule(db, year, month)

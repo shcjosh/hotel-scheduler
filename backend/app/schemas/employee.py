@@ -2,12 +2,12 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Role = Literal["general", "night", "cd_backup"]
-Shift = Literal["A", "B", "C", "D"]
+Role = Literal["general", "night", "cd_backup", "manager"]
+Shift = Literal["A", "B", "C", "D", "M"]
 SchedulingMode = Literal["auto", "manual"]
 
-ROLES = ("general", "night", "cd_backup")
-SHIFTS = ("A", "B", "C", "D")
+ROLES = ("general", "night", "cd_backup", "manager")
+SHIFTS = ("A", "B", "C", "D", "M")
 
 ROLE_DEFAULTS: dict[str, dict] = {
     "general": {
@@ -23,6 +23,11 @@ ROLE_DEFAULTS: dict[str, dict] = {
     "cd_backup": {
         "available_shifts": ["C", "D"],
         "preferred_shift": "C",
+        "scheduling_mode": "auto",
+    },
+    "manager": {
+        "available_shifts": ["M", "A", "B", "C", "D"],
+        "preferred_shift": "M",
         "scheduling_mode": "auto",
     },
 }

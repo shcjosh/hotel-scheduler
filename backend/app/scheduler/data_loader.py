@@ -10,6 +10,7 @@ from app.database.models import (
     DBackupRequest,
     DesignatedOffDay,
     Employee,
+    NightRuleOverride,
     PreviousMonthLink,
     ScheduleEntry,
     SpecialLeave,
@@ -42,6 +43,7 @@ class ShiftScheduleData:
     night_schedule: dict[int, dict[int, str]]
     d_backup_requests: list[int]
     d_backup_assignments: dict[int, int]
+    night_rule_overrides: dict[int, set[str]] = field(default_factory=dict)
 
     def emp_index(self) -> dict[int, int]:
         return {emp.id: i for i, emp in enumerate(self.employees)}
@@ -146,6 +148,11 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         if assigned is not None:
             d_backup_assignments[row.day] = assigned
 
+    night_rule_overrides: dict[int, set[str]] = {}
+    for row in db.scalars(select(NightRuleOverride)):
+        if row.enabled:
+            night_rule_overrides.setdefault(row.employee_id, set()).add(row.rule_name)
+
     return ShiftScheduleData(
         employees=employees,
         year=year,
@@ -161,4 +168,5 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         night_schedule=night_schedule,
         d_backup_requests=sorted(d_backup_requests),
         d_backup_assignments=d_backup_assignments,
+        night_rule_overrides=night_rule_overrides,
     )
