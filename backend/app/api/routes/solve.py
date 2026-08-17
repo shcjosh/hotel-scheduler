@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.schemas.solve import SolveRequest, SolveResponse
 from app.scheduler import data_loader, engine
-from app.services import schedule_service, support_service
+from app.services import schedule_service, stats_service, support_service
 
 router = APIRouter()
 
@@ -43,6 +43,11 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
                     }
                 )
         schedule_service.replace_month_schedule(db, req.year, req.month, entries)
+
+    stats_service.store_solve_meta(
+        db, req.year, req.month, result.success,
+        result.objective_value, result.solve_time, result.soft_constraint_stats,
+    )
 
     support_requests = None
     if not result.success and result.diagnostics:
