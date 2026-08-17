@@ -4,6 +4,15 @@
 """
 import os
 import sys
+# === PyInstaller --windowed 模式修復 ===
+# 無 console 時 sys.stdout / sys.stderr 為 None
+# uvicorn logging 會呼叫 .isatty() 而崩潰
+# 導到 devnull 避免 crash
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, 'w')
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, 'w')
+# ======================================
 import threading
 import time
 import webbrowser
