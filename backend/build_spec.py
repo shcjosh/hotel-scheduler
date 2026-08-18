@@ -18,6 +18,15 @@ import shutil
 import sys
 from pathlib import Path
 
+# Windows 主控台預設使用 cp1252 編碼，印中文會拋 UnicodeEncodeError，
+# 強制 stdout/stderr 改為 UTF-8（打包完成的提示訊息含中文）。
+for _stream in (sys.stdout, sys.stderr):
+    if _stream is not None:
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
 from app.version import __version__
 
 APP_NAME = "hotel-scheduler"
