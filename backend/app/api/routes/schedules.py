@@ -81,6 +81,12 @@ def get_month_schedule(year: int, month: int, db: Session = Depends(get_db)):
     )
 
 
+@router.delete("/schedules/{year}/{month}", status_code=status.HTTP_200_OK)
+def clear_month_schedule(year: int, month: int, db: Session = Depends(get_db)):
+    cleared = schedule_service.clear_month_schedule(db, year, month)
+    return {"cleared": cleared}
+
+
 @router.get("/schedule-entries", response_model=list[ScheduleEntryOut])
 def list_entries(
     employee_id: int | None = Query(None),

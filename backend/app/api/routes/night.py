@@ -88,6 +88,12 @@ def save_night_entry(
     return night_service.get_night_schedule(db, year, month)
 
 
+@router.delete("/night/{year}/{month}", status_code=status.HTTP_200_OK)
+def clear_night_schedule(year: int, month: int, db: Session = Depends(get_db)):
+    cleared = night_service.clear_night_schedule(db, year, month)
+    return {"cleared": cleared}
+
+
 @router.delete("/night/{year}/{month}/{day}", response_model=NightScheduleResponse)
 def delete_night_entry(
     year: int, month: int, day: int,

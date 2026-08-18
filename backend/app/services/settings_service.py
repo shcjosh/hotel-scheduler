@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database.models import Setting, now_iso
 
-DEFAULTS = {"hotel_name": "清翼居府中館"}
+DEFAULTS = {"hotel_name": "清翼居府中館", "user_name": "Josh Wang"}
 
 
 def get_setting(db: Session, key: str) -> str | None:

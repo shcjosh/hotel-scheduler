@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CalendarX, Sparkles } from 'lucide-react'
+import { CalendarX, Sparkles, Trash2 } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { getEmployees } from '../api/employees'
-import { getSchedule, getValidationReport, validateCell, updateScheduleEntry } from '../api/schedules'
+import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
 import {
   getSupportRequests,
   createSupportRequest,
@@ -59,6 +59,17 @@ export function SchedulePage() {
     },
   })
 
+  const clearMut = useMutation({
+    mutationFn: () => clearSchedule(currentYear, currentMonth),
+    onSuccess: () => invalidateAll(),
+  })
+
+  function handleClear() {
+    if (window.confirm(`確定要清空 ${currentYear} 年 ${currentMonth} 月的排班嗎？（保留大夜手動輸入）`)) {
+      clearMut.mutate()
+    }
+  }
+
   const empty = data ? !hasRealData(data.schedule) : false
   const editingEmp = editing ? employees.find((e) => e.name === editing.empName) : null
   const editingShift = editing && data ? data.schedule[editing.empName][editing.day - 1] : ''
@@ -77,7 +88,18 @@ export function SchedulePage() {
           </h2>
           <p className="text-sm text-gray-500">點擊格位可手動微調班次</p>
         </div>
-        <ShiftLegend />
+        <div className="flex items-center gap-3">
+          <Button
+            variant="outline"
+            onClick={handleClear}
+            disabled={clearMut.isPending}
+            className="text-red-600"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            清空當月排班
+          </Button>
+          <ShiftLegend />
+        </div>
       </div>
 
       {isLoading && (

@@ -1,7 +1,7 @@
 import { apiClient } from './client'
 
-export async function getSettings(): Promise<{ hotel_name: string }> {
-  const { data } = await apiClient.get<{ hotel_name: string }>('/settings')
+export async function getSettings(): Promise<{ hotel_name: string; user_name: string }> {
+  const { data } = await apiClient.get<{ hotel_name: string; user_name: string }>('/settings')
   return data
 }
 

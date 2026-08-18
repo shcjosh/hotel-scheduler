@@ -1,6 +1,6 @@
 import dataclasses
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -8,6 +8,7 @@ from app.database.models import DBackupRequest, Employee, NightRuleOverride, Sch
 from app.scheduler import data_loader, validator
 
 NIGHT_RULES = ["H2", "H3", "H4", "H12"]
+IGNORE_ALL_RULE = "ALL"
 
 
 def get_night_schedule(db: Session, year: int, month: int) -> dict:
@@ -113,6 +114,19 @@ def delete_night_entry(
     db.commit()
 
 
+def clear_night_schedule(db: Session, year: int, month: int) -> int:
+    """Delete all night_input entries for the month (night staff D/OFF)."""
+    result = db.execute(
+        delete(ScheduleEntry).where(
+            ScheduleEntry.year == year,
+            ScheduleEntry.month == month,
+            ScheduleEntry.source == "night_input",
+        )
+    )
+    db.commit()
+    return result.rowcount or 0
+
+
 def add_backup_request(db: Session, year: int, month: int, day: int) -> DBackupRequest:
     rec = DBackupRequest(year=year, month=month, day=day, status="pending")
     db.add(rec)
@@ -183,11 +197,33 @@ def get_rule_overrides(db: Session) -> dict:
     result = {}
     for nid in night_ids:
         emp_rules = by_emp.get(nid, {})
-        result[str(nid)] = {rule: emp_rules.get(rule, True) for rule in NIGHT_RULES}
+        entry = {rule: emp_rules.get(rule, True) for rule in NIGHT_RULES}
+        entry["ignore_all"] = emp_rules.get(IGNORE_ALL_RULE, False)
+        result[str(nid)] = entry
     return result
 
 
+def _set_ignore_all(db: Session, emp_id: int, enabled: bool) -> None:
+    existing = db.scalars(
+        select(NightRuleOverride).where(
+            NightRuleOverride.employee_id == emp_id,
+            NightRuleOverride.rule_name == IGNORE_ALL_RULE,
+        )
+    ).first()
+    if enabled:
+        if existing is None:
+            db.add(NightRuleOverride(employee_id=emp_id, rule_name=IGNORE_ALL_RULE, enabled=1))
+        else:
+            existing.enabled = 1
+    elif existing is not None:
+        db.delete(existing)
+    db.commit()
+
+
 def update_rule_overrides(db: Session, emp_id: int, payload: dict) -> dict:
+    if "ignore_all" in payload:
+        _set_ignore_all(db, emp_id, bool(payload["ignore_all"]))
+        return get_rule_overrides(db)
     if "all" in payload:
         val = bool(payload["all"])
         rules = {rule: val for rule in NIGHT_RULES}

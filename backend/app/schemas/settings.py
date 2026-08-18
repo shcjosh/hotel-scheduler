@@ -12,3 +12,4 @@ class SettingUpdateRequest(BaseModel):
 
 class AllSettingsResponse(BaseModel):
     hotel_name: str
+    user_name: str = "Josh Wang"

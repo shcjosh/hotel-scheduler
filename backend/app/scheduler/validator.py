@@ -21,6 +21,10 @@ def _is_work(s):
     return s in WORK_SHIFTS
 
 
+def _ignored_night(data, emp):
+    return emp.role == "night" and emp.id in getattr(data, "night_ignore_all", set())
+
+
 def _v(rule, emp, day, message):
     return {
         "rule": rule,
@@ -39,6 +43,8 @@ def validate(data, schedule):
     for d in range(data.num_days):
         counts = {s: 0 for s in ALL_SHIFTS}
         for emp in data.employees:
+            if _ignored_night(data, emp):
+                continue
             s = _shift_at(schedule, emp.id, d)
             if s in counts:
                 counts[s] += 1
@@ -61,6 +67,8 @@ def validate(data, schedule):
 
     for w_i, w in enumerate(data.weeks):
         for emp in data.employees:
+            if _ignored_night(data, emp):
+                continue
             curr_off = sum(1 for d in w if _shift_at(schedule, emp.id, d) == "OFF")
             if w_i == 0:
                 prev = prev_cache[emp.id]
@@ -85,6 +93,8 @@ def validate(data, schedule):
                     violations.append(_v("H2", emp, None, f"不完整週休 {curr_off} 天（應 <=2）"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         sat_off = sum(1 for d in data.saturdays if _shift_at(schedule, emp.id, d) == "OFF")
         sun_off = sum(1 for d in data.sundays if _shift_at(schedule, emp.id, d) == "OFF")
         if sat_off > 1:
@@ -93,6 +103,8 @@ def validate(data, schedule):
             violations.append(_v("H3", emp, None, f"週日休假 {sun_off} 天（應 <=1）"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         prev = prev_cache[emp.id]
         for start in range(-5, data.num_days - 5):
@@ -114,6 +126,8 @@ def validate(data, schedule):
                 violations.append(_v("H4", emp, real_start, "連續 6 天上班（含跨月）"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         for d in range(data.num_days - 1):
             cur = shifts[d] if d < len(shifts) else None
@@ -128,11 +142,15 @@ def validate(data, schedule):
                 violations.append(_v("H5", emp, d + 1, f"{d+1}→{d+2} D→M 禁止"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         for day in data.designated_off_days.get(emp.id, []):
             if _shift_at(schedule, emp.id, day - 1) != "OFF":
                 violations.append(_v("H6", emp, day, "應為指定休假"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         avail = set(emp.available_shifts)
         for d in range(data.num_days):
             s = _shift_at(schedule, emp.id, d)
@@ -142,6 +160,8 @@ def validate(data, schedule):
                 violations.append(_v("H7", emp, d + 1, f"排 {s} 不在可用班次"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         prev = prev_cache[emp.id]
         prev_day1 = prev[-1] if prev else None
@@ -156,6 +176,8 @@ def validate(data, schedule):
             violations.append(_v("H8", emp, 1, "上月末 D→本月首 M"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         for d in range(data.num_days):
             s = shifts[d] if d < len(shifts) else None
@@ -177,6 +199,8 @@ def validate(data, schedule):
             violations.append(_v("H11", None, day, f"{day} 號備援日無人遞補 C 班"))
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         runs = 0
         run_len = 0
@@ -199,6 +223,8 @@ def validate(data, schedule):
     for emp in data.employees:
         if emp.role != "night":
             continue
+        if _ignored_night(data, emp):
+            continue
         nights = data.night_schedule.get(emp.id, {})
         for d in range(data.num_days):
             expected = nights.get(d + 1, "OFF")
@@ -220,6 +246,8 @@ def validate_soft(data, schedule):
     backup_days = set(data.d_backup_requests)
 
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         prev_day1 = _prev_day1(data, emp.id)
 
