@@ -86,7 +86,25 @@ export async function removeBackupRequest(id: number): Promise<void> {
   await apiClient.delete(`/night/backup-request/${id}`)
 }
 
-export type RuleOverrides = Record<string, Record<string, boolean>>
+export async function clearNightSchedule(
+  year: number,
+  month: number,
+): Promise<{ cleared: number }> {
+  const { data } = await apiClient.delete<{ cleared: number }>(
+    `/night/${year}/${month}`,
+  )
+  return data
+}
+
+export interface NightRuleState {
+  H2: boolean
+  H3: boolean
+  H4: boolean
+  H12: boolean
+  ignore_all: boolean
+}
+
+export type RuleOverrides = Record<string, NightRuleState>
 
 export async function getRuleOverrides(
   year: number,
@@ -100,7 +118,7 @@ export async function getRuleOverrides(
 
 export async function updateRuleOverrides(
   empId: number,
-  payload: { rules?: Record<string, boolean>; all?: boolean },
+  payload: { rules?: Record<string, boolean>; all?: boolean; ignore_all?: boolean },
 ): Promise<RuleOverrides> {
   const { data } = await apiClient.put<RuleOverrides>(
     `/night/rule-overrides/${empId}`,

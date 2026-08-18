@@ -13,8 +13,12 @@ export function Header({ title }: { title: string }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState('')
+  const nameInputRef = useRef<HTMLInputElement>(null)
 
   const hotelName = data?.hotel_name ?? '清翼居府中館'
+  const userName = data?.user_name ?? 'Josh Wang'
 
   useEffect(() => {
     document.title = `${title} — 飯店排班`
@@ -22,9 +26,16 @@ export function Header({ title }: { title: string }) {
   useEffect(() => {
     if (editing) inputRef.current?.focus()
   }, [editing])
+  useEffect(() => {
+    if (editingName) nameInputRef.current?.focus()
+  }, [editingName])
 
   const saveMut = useMutation({
     mutationFn: (value: string) => updateSetting('hotel_name', value),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
+  })
+  const saveNameMut = useMutation({
+    mutationFn: (value: string) => updateSetting('user_name', value),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['settings'] }),
   })
 
@@ -39,6 +50,19 @@ export function Header({ title }: { title: string }) {
   }
   function cancel() {
     setEditing(false)
+  }
+
+  function startEditName() {
+    setNameDraft(userName)
+    setEditingName(true)
+  }
+  function commitName() {
+    const v = nameDraft.trim()
+    setEditingName(false)
+    if (v && v !== userName) saveNameMut.mutate(v)
+  }
+  function cancelName() {
+    setEditingName(false)
   }
 
   return (
@@ -89,8 +113,30 @@ export function Header({ title }: { title: string }) {
           </select>
         </div>
         <div className="flex items-center gap-2 text-sm text-gray-600">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-indigo-700">J</div>
-          Josh Wang
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 text-indigo-700">
+            {userName.charAt(0) || '?'}
+          </div>
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitName()
+                if (e.key === 'Escape') cancelName()
+              }}
+              className="w-28 rounded border border-indigo-300 px-2 py-0.5 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-indigo-300"
+            />
+          ) : (
+            <button
+              onClick={startEditName}
+              className="rounded px-1 hover:bg-gray-100"
+              title="點擊編輯使用者名稱"
+            >
+              {userName}
+            </button>
+          )}
         </div>
       </div>
     </header>

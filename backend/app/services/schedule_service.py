@@ -85,6 +85,23 @@ def replace_month_schedule(
     db.commit()
 
 
+def clear_month_schedule(db: Session, year: int, month: int) -> int:
+    """Delete all non-night manual/auto schedule entries for the month.
+
+    Night staff (source='night_input') entries are kept — those are cleared
+    separately via night_service.clear_night_schedule.
+    """
+    result = db.execute(
+        delete(ScheduleEntry).where(
+            ScheduleEntry.year == year,
+            ScheduleEntry.month == month,
+            ScheduleEntry.source != "night_input",
+        )
+    )
+    db.commit()
+    return result.rowcount or 0
+
+
 def get_entry(db: Session, entry_id: int) -> ScheduleEntry | None:
     return db.get(ScheduleEntry, entry_id)
 
@@ -313,6 +330,9 @@ def get_validation_report(db: Session, year: int, month: int) -> dict:
 
     for emp in data.employees:
         if emp.role != "night":
+            continue
+        if emp.id in data.night_ignore_all:
+            disabled_night[str(emp.id)] = ["ALL"]
             continue
         enabled = data.night_rule_overrides.get(emp.id)
         if enabled is not None:

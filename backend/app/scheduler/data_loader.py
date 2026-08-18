@@ -44,6 +44,7 @@ class ShiftScheduleData:
     d_backup_requests: list[int]
     d_backup_assignments: dict[int, int]
     night_rule_overrides: dict[int, set[str]] = field(default_factory=dict)
+    night_ignore_all: set[int] = field(default_factory=set)
 
     def emp_index(self) -> dict[int, int]:
         return {emp.id: i for i, emp in enumerate(self.employees)}
@@ -149,8 +150,12 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             d_backup_assignments[row.day] = assigned
 
     night_rule_overrides: dict[int, set[str]] = {}
+    night_ignore_all: set[int] = set()
     for row in db.scalars(select(NightRuleOverride)):
-        if row.enabled:
+        if row.rule_name == "ALL":
+            if row.enabled:
+                night_ignore_all.add(row.employee_id)
+        elif row.enabled:
             night_rule_overrides.setdefault(row.employee_id, set()).add(row.rule_name)
 
     return ShiftScheduleData(
@@ -169,4 +174,5 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         d_backup_requests=sorted(d_backup_requests),
         d_backup_assignments=d_backup_assignments,
         night_rule_overrides=night_rule_overrides,
+        night_ignore_all=night_ignore_all,
     )

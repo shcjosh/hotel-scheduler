@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle2, AlertTriangle } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, Trash2 } from 'lucide-react'
 import {
   getNightSchedule,
   getNightValidation,
@@ -9,6 +9,7 @@ import {
   removeBackupRequest,
   getRuleOverrides,
   updateRuleOverrides,
+  clearNightSchedule,
 } from '../api/night'
 import { getEmployees } from '../api/employees'
 import { useUIStore } from '../stores/uiStore'
@@ -16,6 +17,7 @@ import { getMonthDays } from '../utils/date'
 import { NightInputTable } from '../components/night/NightInputTable'
 import { DBackupRequestPanel } from '../components/night/DBackupRequestPanel'
 import { RuleOverridePanel } from '../components/night/RuleOverridePanel'
+import { Button } from '../components/ui/button'
 import { cn } from '../utils/cn'
 
 export function NightPage() {
@@ -44,7 +46,7 @@ export function NightPage() {
   }
 
   const ruleMut = useMutation({
-    mutationFn: async ({ empId, payload }: { empId: number; payload: { rules?: Record<string, boolean>; all?: boolean } }) =>
+    mutationFn: async ({ empId, payload }: { empId: number; payload: { rules?: Record<string, boolean>; all?: boolean; ignore_all?: boolean } }) =>
       updateRuleOverrides(empId, payload),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['night-rule-overrides', year, month] }),
@@ -69,17 +71,38 @@ export function NightPage() {
     mutationFn: (id: number) => removeBackupRequest(id),
     onSuccess: invalidate,
   })
+  const clearNightMut = useMutation({
+    mutationFn: () => clearNightSchedule(year, month),
+    onSuccess: invalidate,
+  })
+
+  function handleClearNight() {
+    if (window.confirm(`確定要清空 ${year} 年 ${month} 月的大夜排班嗎？`)) {
+      clearNightMut.mutate()
+    }
+  }
 
   const violations = validation?.violations ?? []
   const ok = violations.length === 0
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-xl font-semibold text-gray-800">大夜班表</h2>
-        <p className="text-sm text-gray-500">
-          {year}年{month}月 — 大夜專職人員 D 班手動輸入
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-800">大夜班表</h2>
+          <p className="text-sm text-gray-500">
+            {year}年{month}月 — 大夜專職人員 D 班手動輸入
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          onClick={handleClearNight}
+          disabled={clearNightMut.isPending}
+          className="text-red-600"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          清空大夜排班
+        </Button>
       </div>
 
       {isLoading ? (
@@ -124,6 +147,7 @@ export function NightPage() {
           })
         }
         onAll={(empId, value) => ruleMut.mutate({ empId, payload: { all: value } })}
+        onIgnoreAll={(empId, value) => ruleMut.mutate({ empId, payload: { ignore_all: value } })}
       />
 
       <div>

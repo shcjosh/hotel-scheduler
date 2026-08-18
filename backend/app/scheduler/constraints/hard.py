@@ -13,10 +13,17 @@ def _rule_enabled(data, emp, rule):
     """Night employees may have per-rule overrides; others always enabled."""
     if emp.role != "night":
         return True
+    if emp.id in getattr(data, "night_ignore_all", set()):
+        return False
     enabled = getattr(data, "night_rule_overrides", {}).get(emp.id)
     if enabled is None:
         return rule in DEFAULT_NIGHT_RULES
     return rule in enabled
+
+
+def _is_ignored_night(data, i):
+    emp = data.employees[i]
+    return emp.role == "night" and emp.id in getattr(data, "night_ignore_all", set())
 
 
 def add_h1_daily_coverage(model, x, data, fixed):
@@ -25,13 +32,14 @@ def add_h1_daily_coverage(model, x, data, fixed):
         a = [x[i][d]["A"] for i in range(n)]
         c = [x[i][d]["C"] for i in range(n)]
         b = [x[i][d]["B"] for i in range(n)]
-        dd = [x[i][d]["D"] for i in range(n)]
+        dd = [x[i][d]["D"] for i in range(n) if not _is_ignored_night(data, i)]
         model.Add(sum(a) >= 1)
         model.Add(sum(a) <= 2)
         model.Add(sum(c) >= 1)
         model.Add(sum(c) <= 2)
         model.Add(sum(b) <= 2)
-        model.Add(sum(dd) <= 1)
+        if dd:
+            model.Add(sum(dd) <= 1)
 
 
 def add_h2_weekly_off_days(model, x, data, fixed):

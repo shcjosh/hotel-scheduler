@@ -83,3 +83,13 @@ export async function getValidationReport(
   )
   return data
 }
+
+export async function clearSchedule(
+  year: number,
+  month: number,
+): Promise<{ cleared: number }> {
+  const { data } = await apiClient.delete<{ cleared: number }>(
+    `/schedules/${year}/${month}`,
+  )
+  return data
+}

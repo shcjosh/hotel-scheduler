@@ -11,7 +11,10 @@ router = APIRouter()
 @router.get("/settings", response_model=AllSettingsResponse)
 def get_all_settings(db: Session = Depends(get_db)):
     s = settings_service.get_all_settings(db)
-    return AllSettingsResponse(hotel_name=s.get("hotel_name", "清翼居府中館"))
+    return AllSettingsResponse(
+        hotel_name=s.get("hotel_name", "清翼居府中館"),
+        user_name=s.get("user_name", "Josh Wang"),
+    )
 
 
 @router.get("/settings/{key}", response_model=SettingResponse)
