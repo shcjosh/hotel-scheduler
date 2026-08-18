@@ -34,6 +34,7 @@ ensure_data_dir()
 
 # 直接 import app 讓 PyInstaller 能追蹤 fastapi/sqlalchemy/ortools 等依賴
 from app.api import app  # noqa: E402
+from app.lifecycle import lifecycle  # noqa: E402
 
 
 def open_browser() -> None:
@@ -45,7 +46,10 @@ def main() -> None:
     threading.Thread(target=open_browser, daemon=True).start()
     import uvicorn
 
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="warning")
+    config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="warning")
+    server = uvicorn.Server(config)
+    lifecycle.enable(server)
+    server.run()
 
 
 if __name__ == "__main__":

@@ -1,28 +1,64 @@
-"""PyInstaller 打包腳本。
+"""PyInstaller 打包腳本（跨平台）。
 
 使用方式：
     1. 先 build 前端：  cd ../frontend && npm run build
     2. 再執行打包：     cd backend && python build_spec.py
 
-產出在 dist/hotel-scheduler/（onedir 模式）。
-注意：PyInstaller 不支援跨平台打包，請在目標 Windows 機器上執行以產生 .exe。
+產出：
+    dist/hotel-scheduler/                              ← onedir，可直接執行
+    dist/hotel-scheduler-{version}-{platform}-{arch}.zip / .tar.gz
+
+注意：PyInstaller 不支援跨平台打包，需在目標平台執行：
+    Windows 機器 → 產出 hotel-scheduler.exe + .zip
+    Linux 機器   → 產出 hotel-scheduler（ELF）+ .tar.gz
 """
+import os
+import platform as platform_module
+import shutil
 import sys
 from pathlib import Path
 
-frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
-if not frontend_dist.exists():
+from app.version import __version__
+
+APP_NAME = "hotel-scheduler"
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+
+if not FRONTEND_DIST.exists():
     print("錯誤：請先執行  cd ../frontend && npm run build")
     sys.exit(1)
+
+
+def _platform_tag() -> str:
+    if sys.platform.startswith("win"):
+        return "windows"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    if sys.platform.startswith("darwin"):
+        return "macos"
+    return sys.platform
+
+
+def _arch_tag() -> str:
+    machine = platform_module.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "x64"
+    if machine in ("arm64", "aarch64"):
+        return "arm64"
+    return machine
+
+
+PLATFORM_TAG = _platform_tag()
+ARCH_TAG = _arch_tag()
 
 import PyInstaller.__main__
 
 PyInstaller.__main__.run([
     "run.py",
-    "--name=hotel-scheduler",
+    f"--name={APP_NAME}",
     "--onedir",
     "--windowed",
-    f"--add-data={frontend_dist}:frontend/dist",
+    # --add-data 分隔符依平台：Windows 用 ';'，Linux/macOS 用 ':'
+    f"--add-data={FRONTEND_DIST}{os.pathsep}frontend/dist",
     "--hidden-import=uvicorn",
     "--hidden-import=uvicorn.logging",
     "--hidden-import=uvicorn.loops",
@@ -42,5 +78,19 @@ PyInstaller.__main__.run([
     "--clean",
 ])
 
-print("打包完成！產出在 dist/hotel-scheduler/")
-print("部署：將 dist/hotel-scheduler/ 整個資料夾複製到目標機器，雙擊 hotel-scheduler.exe")
+dist_dir = Path(__file__).parent / "dist"
+build_dir = dist_dir / APP_NAME
+if not build_dir.exists():
+    print("錯誤：打包產物不存在")
+    sys.exit(1)
+
+artifact_base = str(dist_dir / f"{APP_NAME}-{__version__}-{PLATFORM_TAG}-{ARCH_TAG}")
+archive_format = "zip" if sys.platform.startswith("win") else "gztar"
+archive = shutil.make_archive(
+    artifact_base, archive_format, root_dir=dist_dir, base_dir=APP_NAME
+)
+
+print("打包完成！")
+print(f"  可執行資料夾：{build_dir}/")
+print(f"  壓縮檔：{archive}")
+print(f"  版本：{__version__} | 平台：{PLATFORM_TAG} | 架構：{ARCH_TAG}")

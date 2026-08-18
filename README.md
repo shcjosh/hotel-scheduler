@@ -8,7 +8,7 @@
 1. 解壓縮 hotel-scheduler.zip
 2. 雙擊 `hotel-scheduler.exe`
 3. 瀏覽器自動開啟 http://localhost:8000
-4. 關閉：關閉瀏覽器後，從工作管理員結束 hotel-scheduler 程序
+4. 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
 
 資料庫 `data/scheduler.db` 與 exe 同層，整個資料夾可複製到其他 Windows 機器直接使用。
 
@@ -23,6 +23,7 @@
 - 整月規則驗證報告（H1~H13 + S1~S8）
 - 統計報表 + CSV/JSON 匯出
 - 可修改抬頭（飯店名稱）
+- 瀏覽器關閉自動偵測（關分頁即結束程式）+ 一鍵關閉系統按鈕
 
 ## 開發環境
 - Backend: Python 3.11+ / FastAPI / OR-Tools / SQLite
@@ -50,6 +51,8 @@ cd backend && .venv/bin/python tests/seed_dev.py
 ```bash
 cd frontend && npm run build
 cd ../backend && .venv/bin/python build_spec.py
-# 產出：backend/dist/hotel-scheduler/
+# 產出：backend/dist/hotel-scheduler/（onedir）
+#       backend/dist/hotel-scheduler-{version}-{platform}-{arch}.zip / .tar.gz
 ```
-注意：PyInstaller 不支援跨平台，需在 Windows 上執行以產生 .exe。
+注意：PyInstaller 不支援跨平台，需在目標平台執行（Windows 產出 .exe + .zip，
+Linux 產出 ELF + .tar.gz）。版本號統一在 `backend/app/version.py`。

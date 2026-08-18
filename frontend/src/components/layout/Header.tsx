@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Power } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { getSettings, updateSetting } from '../../api/settings'
+import { shutdownServer } from '../../api/lifecycle'
 
 const YEARS = [2025, 2026, 2027]
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1)
@@ -63,6 +65,12 @@ export function Header({ title }: { title: string }) {
   }
   function cancelName() {
     setEditingName(false)
+  }
+
+  function handleShutdown() {
+    if (window.confirm('確定要關閉系統嗎？關閉後需重新開啟 hotel-scheduler.exe。')) {
+      shutdownServer()
+    }
   }
 
   return (
@@ -137,6 +145,13 @@ export function Header({ title }: { title: string }) {
               {userName}
             </button>
           )}
+          <button
+            onClick={handleShutdown}
+            className="flex items-center rounded-md border border-gray-300 px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+            title="關閉系統"
+          >
+            <Power className="h-4 w-4" />
+          </button>
         </div>
       </div>
     </header>

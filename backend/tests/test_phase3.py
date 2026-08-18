@@ -87,7 +87,7 @@ if not result.success:
 
 check(result.objective_value is not None, "1. objective_value 不為 None")
 stats = result.soft_constraint_stats
-check(stats is not None and len(stats) == 7, "2. 軟性約束統計全部回傳 (7 項)")
+check(stats is not None and len(stats) == 8, "2. 軟性約束統計全部回傳 (8 項)")
 check(stats["s1_5consecutive_count"] <= 1, f"3. S1 連續5天次數最少化 (={stats['s1_5consecutive_count']})")
 check(stats["s2_b_to_a_count"] == 0, f"4. S2 B→A = 0 (={stats['s2_b_to_a_count']})")
 check(stats["s3_c_to_b_count"] == 0, f"5. S3 C→B = 0 (={stats['s3_c_to_b_count']})")

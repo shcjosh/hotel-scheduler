@@ -8,6 +8,7 @@ from app.api.routes import (
     cross_month,
     employees,
     export,
+    lifecycle,
     night,
     off_days,
     schedules,
@@ -18,10 +19,11 @@ from app.api.routes import (
 )
 from app.config import STATIC_DIR
 from app.database.connection import init_db
+from app.version import __version__
 
 API_PREFIX = "/api/v1"
 
-app = FastAPI(title="Hotel Shift Scheduler", version="1.0")
+app = FastAPI(title="Hotel Shift Scheduler", version=__version__)
 
 init_db()
 
@@ -43,6 +45,7 @@ app.include_router(settings.router, prefix=API_PREFIX, tags=["settings"])
 app.include_router(stats.router, prefix=API_PREFIX, tags=["stats"])
 app.include_router(export.router, prefix=API_PREFIX, tags=["export"])
 app.include_router(solve.router, prefix=API_PREFIX, tags=["solve"])
+app.include_router(lifecycle.router, prefix=API_PREFIX, tags=["lifecycle"])
 
 
 @app.get(f"{API_PREFIX}/health")

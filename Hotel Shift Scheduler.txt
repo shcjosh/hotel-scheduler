@@ -1047,9 +1047,10 @@ Phase 8: 統計報表 + 打包部署
 #                                                                              #
 ################################################################################
 
-版本: 1.0-dev-complete
+版本: 1.0.2-beta
 最後更新: 2026-08-18
 Git 提交歷史:
+  (未提交) 1.0.2-beta：瀏覽器關閉偵測 + 關閉系統按鈕（K.1 實作）
   cfd7801 Phase 8 完成：統計報表 + CSV/JSON 匯出 + PyInstaller 打包部署
   ea6adc6 Phase 7.5 完成：管理職M班 + 大夜規則開關 + 請求支援 + 可編輯抬頭
   db337a8 Phase 7 完成：手動微調 + 規則驗證報告 + 診斷改善
@@ -1073,6 +1074,7 @@ A. 開發狀態總覽
   - 整月規則驗證報告（H1~H13 + S1~S8，20 條規則狀態表）
   - 統計報表 + CSV/JSON 匯出
   - 可修改抬頭（飯店名稱，存於 settings 表）
+  - 瀏覽器關閉偵測（關分頁自動結束後台）+ 一鍵關閉系統按鈕
   - PyInstaller 打包（onedir 模式，單一資料夾可攜）
 
 ================================================================================
@@ -1117,6 +1119,8 @@ Hotel_OpenCode/
 │   │   ├── main.py                  ← 舊啟動入口（uvicorn.run，含開瀏覽器）
 │   │   ├── run.py 顶部 import app   ← (run.py 在 backend/ 下，非 app/ 內)
 │   │   ├── config.py                ← DB/static 路徑（支援 frozen 模式）
+│   │   ├── version.py               ← 版本單一來源（__version__，v1.0.2）
+│   │   ├── lifecycle.py             ← 瀏覽器關閉偵測 LifecycleManager（v1.0.2）
 │   │   ├── api/
 │   │   │   ├── __init__.py          ← ★ FastAPI app 定義於此（非 api.py）
 │   │   │   ├── deps.py              ← get_db 依賴注入
@@ -1130,7 +1134,8 @@ Hotel_OpenCode/
 │   │   │       ├── stats.py         ← 統計報表
 │   │   │       ├── export.py        ← CSV/JSON 匯出
 │   │   │       ├── support.py       ← 支援請求 CRUD
-│   │   │       └── settings.py      ← 通用設定（hotel_name）
+│   │   │       ├── settings.py      ← 通用設定（hotel_name）
+│   │   │       └── lifecycle.py     ← 心跳/關閉訊號/關閉系統（v1.0.2）
 │   │   ├── database/
 │   │   │   ├── connection.py        ← SQLite engine + init_db（含 ensure_defaults）
 │   │   │   └── models.py            ← 9 張表（見 D 節）
@@ -1152,8 +1157,8 @@ Hotel_OpenCode/
 │   │       ├── support_service.py   ← 含 auto_generate_from_diagnostics
 │   │       ├── settings_service.py
 │   │       └── stats_service.py     ← 整合月度統計 + solve meta 持久化
-│   ├── run.py                       ← ★ 打包入口（import app + uvicorn.run(app)）
-│   ├── build_spec.py                ← PyInstaller 打包腳本
+│   ├── run.py                       ← ★ 打包入口（uvicorn.Server + lifecycle.enable）
+│   ├── build_spec.py                ← PyInstaller 打包腳本（跨平台 + 版本化 artifact）
 │   ├── requirements.txt             ← 含 pyinstaller
 │   ├── tests/
 │   │   ├── test_phase2.py           ← 硬性約束測試
@@ -1161,14 +1166,16 @@ Hotel_OpenCode/
 │   │   └── seed_dev.py              ← 產生測試資料（6 員工含管理職 + 8月排班）
 │   ├── data/scheduler.db            ← 開發用 DB（gitignore）
 │   └── dist/hotel-scheduler/        ← 打包產出（gitignore）
+│       └── hotel-scheduler-{ver}-{platform}-{arch}.{zip|tar.gz}
 │
 └── frontend/
     ├── src/
-    │   ├── main.tsx                 ← QueryClientProvider
+    │   ├── main.tsx                 ← QueryClientProvider + lifecycle 啟動（PROD）
     │   ├── App.tsx                  ← BrowserRouter + 7 條路由
-    │   ├── api/                     ← 10 個 API client（axios, baseURL /api/v1）
+    │   ├── lifecycle.ts             ← 心跳/beacon 關閉偵測（v1.0.2）
+    │   ├── api/                     ← 11 個 API client（axios, baseURL /api/v1）
     │   ├── components/
-    │   │   ├── layout/              ← Layout/Sidebar/Header（可編輯抬頭）
+    │   │   ├── layout/              ← Layout/Sidebar/Header（可編輯抬頭 + 關閉系統按鈕）
     │   │   ├── schedule/            ← ScheduleTable/ShiftCell/DailyCoverage/
     │   │   │                          ShiftLegend/CellEditModal/ValidationReport
     │   │   ├── employee/            ← EmployeeForm/EmployeeList
@@ -1331,6 +1338,8 @@ G. API 端點總覽（prefix /api/v1）
 統計：    GET /stats/{y}/{m}
 匯出：    GET /export/{y}/{m}/csv, GET /export/{y}/{m}/json
 健康：    GET /health
+生命週期：GET /lifecycle/heartbeat, POST /lifecycle/shutdown-signal,
+          POST /lifecycle/shutdown（v1.0.2 瀏覽器關閉偵測）
 
 靜態檔案：app.mount("/", StaticFiles(frontend/dist, html=True))
           → 單一後端服務前端（開發與打包後通用）
@@ -1387,10 +1396,13 @@ I. 啟動 / 開發 / 打包方式
   cd backend && .venv/bin/python tests/seed_dev.py
   （6 員工：3 一般 + 1 cd_backup + 1 大夜 + 1 管理職，8 月排班）
 
-打包（Windows .exe 需在 Windows 上執行）：
+打包（跨平台，需在目標平台上執行；PyInstaller 不支援跨編譯）：
   cd frontend && npm run build
   cd ../backend && .venv/bin/python build_spec.py
-  → dist/hotel-scheduler/（onedir，雙擊 exe 啟動 + 自動開瀏覽器）
+  → dist/hotel-scheduler/（onedir，雙擊啟動 + 自動開瀏覽器）
+  → dist/hotel-scheduler-{version}-{platform}-{arch}.zip / .tar.gz（版本化產物）
+    Windows → .exe + .zip；Linux → ELF + .tar.gz
+  版本號單一來源：backend/app/version.py（__version__），供 FastAPI 與 artifact 命名共用
 
 測試：
   cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束
@@ -1428,46 +1440,39 @@ J. 已知限制與注意事項
    H13 大夜固定等不受開關影響（始終強制）。
 
 ================================================================================
-K. 未來計劃方向（未實作，僅規劃）
-================================================================================
+K. 未來計劃方向
+===============================================================================
 
-K.1 瀏覽器關閉偵測 → 自動關閉後台（候選方案一，優先考慮）
-  動機:
-    目前為 browser-based 架構，使用者關閉瀏覽器分頁後，後端 process 仍在背景
-    執行，不熟電腦的使用者難以理解「如何完全關閉程式」。
-    目標：讓「關閉分頁」自動結束整個程式。
+K.1 瀏覽器關閉偵測 → 自動關閉後台（✅ 已實作於 v1.0.2-beta）
+   動機:
+     原本 browser-based 架構下，使用者關閉瀏覽器分頁後，後端 process 仍在背景
+     執行，不熟電腦的使用者難以理解「如何完全關閉程式」。
 
-  做法:
-    1. 前端 heartbeat（心跳）
-       - 定時（例如每 5 秒）fetch GET /api/v1/health 或專屬 /heartbeat 當心跳
-       - 注意：分頁切到背景時瀏覽器會節流 setInterval，需用 WebSocket 或
-         keepalive fetch 補強，避免誤判斷線
-    2. 關閉訊號（beacon）
-       - window 的 'pagehide' / 'beforeunload' 事件中呼叫 navigator.sendBeacon
-         （POST /api/v1/shutdown-signal），分頁關閉時立即通知後端
-    3. 後端
-       - 記憶體記錄 last_heartbeat 時間戳（不需持久化）
-       - 背景 thread 定期檢查：超過 N 秒（建議 20~30s）未收到心跳 →
-         優雅關閉（stop uvicorn）後 os._exit(0)
-       - 收到 shutdown-signal beacon → 延遲 1~2 秒（等 response 送出）後關閉
-    4. 容錯
-       - 重新整理（refresh）也會觸發 beacon，需「延遲關閉 + 期間恢復心跳則取消」
-         避免誤關
-       - WebSocket 斷線與心跳超時互為備援（當機/強制關閉時靠心跳超時兜底）
+   實作方式（候選方案一 + 選項四，雙訊號互補）:
+     1. 前端 heartbeat（心跳）
+        - 每 5 秒 fetch GET /api/v1/lifecycle/heartbeat 當心跳
+        - focus / visibilitychange(visible) 補送，降低背景節流誤判
+     2. 關閉訊號（beacon，主訊號）
+        - window 'pagehide' / 'beforeunload' 中 navigator.sendBeacon
+          POST /api/v1/lifecycle/shutdown-signal → 延遲 3 秒關閉
+     3. 後端 LifecycleManager（backend/app/lifecycle.py）
+        - 記憶體記錄 last_heartbeat（不持久化）
+        - 背景 thread 每 5 秒檢查：超過 90 秒無心跳 → 優雅停止 uvicorn
+        - beacon 觸發 → 3 秒延遲關閉；期間恢復心跳則取消（避開 refresh 誤關）
+        - UI 按鈕 POST /lifecycle/shutdown → 1 秒延遲關閉
+     4. 容錯
+        - refresh：pagehide 觸發 beacon → 新頁 heartbeat 於延遲內取消
+        - 當機/強制關閉瀏覽器：心跳超時 90 秒兜底
+        - 背景分頁節流：90 秒長超時避免誤關（正常關閉靠 beacon 即時）
 
-  優點:
-    - 零額外依賴、改動小、維持瀏覽器體驗、符合直覺
+   開發模式保護:
+     - lifecycle 僅由 run.py 呼叫 enable() 才生效
+     - uvicorn app.api:app（開發）未 enable → 所有訊號 no-op，不會誤關
 
-  風險 / 待確認:
-    - 瀏覽器背景節流可能誤判 → 需 WebSocket / keepalive 補強
-    - beforeunload / sendBeacon 非 100% 可靠（當機、強制結束）→ 心跳超時兜底
-    - 少數情境「想關分頁但保留後台」→ 可設較長延遲或另提供系統匣/按鈕備援
-
-  備選方案（本次討論，暫不實作）:
-    選項二 pywebview 原生視窗：關閉視窗即結束（最像桌面軟體，但需 WebView2
+   備選方案（未實作，供未來參考）:
+     選項二 pywebview 原生視窗：關閉視窗即結束（最像桌面軟體，但需 WebView2
             Runtime + 打包重測，工時較高）
-    選項三 系統匣圖示（Tray）：右鍵選單「開啟瀏覽器 / 離開」，需 pystray/Pillow
-    選項四 UI「關閉系統」按鈕：POST /api/v1/shutdown，最簡單但需使用者記得點
+     選項三 系統匣圖示（Tray）：右鍵選單「開啟瀏覽器 / 離開」，需 pystray/Pillow
 
 ================================================================================
 附錄結束
