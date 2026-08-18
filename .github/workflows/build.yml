@@ -1,17 +1,25 @@
-name: build-windows
+name: build
 
 on:
   push:
     branches:
       - main
       - "1.0.2-beta"
-    tags:
-      - "v*"
   workflow_dispatch:
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            tag: windows-x64
+            artifact_glob: "backend/dist/*.zip"
+          - os: ubuntu-latest
+            tag: linux-x64
+            artifact_glob: "backend/dist/*.tar.gz"
+    runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,18 +45,13 @@ jobs:
           npm ci
           npm run build
 
-      - name: Build Windows executable (PyInstaller)
+      - name: Build executable (PyInstaller)
         working-directory: backend
         run: python build_spec.py
-
-      - name: List build output
-        shell: pwsh
-        run: |
-          Get-ChildItem -Recurse backend/dist | Select-Object FullName, Length
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: hotel-scheduler-windows-x64
-          path: backend/dist/*.zip
+          name: hotel-scheduler-${{ matrix.tag }}
+          path: ${{ matrix.artifact_glob }}
           if-no-files-found: error
