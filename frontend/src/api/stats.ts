@@ -8,6 +8,8 @@ export interface EmployeeStats {
   total_work_days: number
   total_off_days: number
   total_special_days: number
+  leave_type_counts: Record<string, number>
+  total_leave_days: number
   weekend_work_count: number
   max_consecutive_work: number
   consecutive_off_count: number
@@ -56,6 +58,7 @@ export interface MonthStats {
     is_valid: boolean
   }
   soft_constraint_stats: Record<string, number> | null
+  leave_types: { code: string; name: string; color_bg: string; color_text: string }[]
 }
 
 export async function getMonthStats(year: number, month: number): Promise<MonthStats> {

@@ -48,7 +48,9 @@ def main() -> None:
 
     config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="warning")
     server = uvicorn.Server(config)
-    lifecycle.enable(server)
+    # 測試期間可設 SCHEDULER_DISABLE_LIFECYCLE=1 關閉「關分頁自動結束」偵測
+    if os.environ.get("SCHEDULER_DISABLE_LIFECYCLE") != "1":
+        lifecycle.enable(server)
     server.run()
 
 

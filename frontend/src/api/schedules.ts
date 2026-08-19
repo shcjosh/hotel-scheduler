@@ -46,10 +46,12 @@ export async function updateScheduleEntry(
   month: number,
   day: number,
   shift: string,
+  leaveType?: string,
+  reason?: string,
 ): Promise<MonthScheduleView> {
   const { data } = await apiClient.put<MonthScheduleView>(
     `/schedules/${employeeId}/${year}/${month}/${day}`,
-    { shift },
+    { shift, leave_type: leaveType, reason },
   )
   return data
 }

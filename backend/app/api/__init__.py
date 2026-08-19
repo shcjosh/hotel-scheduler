@@ -8,9 +8,11 @@ from app.api.routes import (
     cross_month,
     employees,
     export,
+    leave_types,
     lifecycle,
     night,
     off_days,
+    schedule_meta,
     schedules,
     settings,
     solve,
@@ -38,6 +40,8 @@ app.add_middleware(
 app.include_router(employees.router, prefix=API_PREFIX, tags=["employees"])
 app.include_router(schedules.router, prefix=API_PREFIX, tags=["schedules"])
 app.include_router(off_days.router, prefix=API_PREFIX, tags=["off-days"])
+app.include_router(leave_types.router, prefix=API_PREFIX, tags=["leave-types"])
+app.include_router(schedule_meta.router, prefix=API_PREFIX, tags=["schedule-meta"])
 app.include_router(cross_month.router, prefix=API_PREFIX, tags=["cross-month"])
 app.include_router(night.router, prefix=API_PREFIX, tags=["night"])
 app.include_router(support.router, prefix=API_PREFIX, tags=["support"])

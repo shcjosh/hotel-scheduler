@@ -4,6 +4,7 @@ from app.scheduler.constraints.hard import (
     REST_SHIFTS,
     WORK_SHIFTS,
 )
+from app.scheduler.off_count import count_off_blocks
 
 
 def _shift_at(schedule, emp_id, day_idx):
@@ -48,16 +49,16 @@ def validate(data, schedule):
             s = _shift_at(schedule, emp.id, d)
             if s in counts:
                 counts[s] += 1
-        if counts["A"] < 1:
+        if counts["A"] < 1 and not data.is_external(d + 1, "A"):
             violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} A 班無人"))
         if counts["A"] > 2:
             violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} A 班超過 2 人"))
-        if counts["C"] < 1:
+        if counts["C"] < 1 and not data.is_external(d + 1, "C"):
             violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} C 班無人"))
         if counts["C"] > 2:
             violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} C 班超過 2 人"))
-        if counts["B"] > 2:
-            violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} B 班超過 2 人"))
+        if counts["B"] > 1:
+            violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} B 班超過 1 人"))
         if counts["D"] > 1:
             violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} D 班超過 1 人"))
 
@@ -97,10 +98,8 @@ def validate(data, schedule):
             continue
         sat_off = sum(1 for d in data.saturdays if _shift_at(schedule, emp.id, d) == "OFF")
         sun_off = sum(1 for d in data.sundays if _shift_at(schedule, emp.id, d) == "OFF")
-        if sat_off > 1:
-            violations.append(_v("H3", emp, None, f"週六休假 {sat_off} 天（應 <=1）"))
-        if sun_off > 1:
-            violations.append(_v("H3", emp, None, f"週日休假 {sun_off} 天（應 <=1）"))
+        if sat_off + sun_off > 2:
+            violations.append(_v("H3", emp, None, f"週末休假 {sat_off + sun_off} 天（應 <=2）"))
 
     for emp in data.employees:
         if _ignored_night(data, emp):
@@ -202,23 +201,10 @@ def validate(data, schedule):
         if _ignored_night(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
-        runs = 0
-        run_len = 0
-        prev_off = False
-        for d in range(data.num_days):
-            s = shifts[d] if d < len(shifts) else None
-            if s == "OFF":
-                run_len = run_len + 1 if prev_off else 1
-                prev_off = True
-            else:
-                if prev_off and run_len >= 2:
-                    runs += 1
-                run_len = 0
-                prev_off = False
-        if prev_off and run_len >= 2:
-            runs += 1
-        if runs > 2:
-            violations.append(_v("H12", emp, None, f"連休 {runs} 次（應 <=2）"))
+        row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]
+        runs, _ = count_off_blocks(row)
+        if runs < 1 or runs > 2:
+            violations.append(_v("H12", emp, None, f"連休 {runs} 次（應為 1~2 次）"))
 
     for emp in data.employees:
         if emp.role != "night":
@@ -241,7 +227,7 @@ def _prev_day1(data, emp_id):
 
 
 def validate_soft(data, schedule):
-    """Returns soft warnings (S1-S4, S7). S5/S6 computed separately by caller."""
+    """Returns soft warnings (S1-S3, S7, S8). S5/S6 computed separately by caller."""
     warnings = []
     backup_days = set(data.d_backup_requests)
 
@@ -259,14 +245,12 @@ def validate_soft(data, schedule):
             if all(_is_work(s) for s in window):
                 warnings.append(_v("S1", emp, d + 1, "連續 5 天上班"))
 
-        # S2/S3/S4: transitions (curr) + cross-month
+        # S2/S3: transitions (curr) + cross-month
         def check_transition(cur, nxt, day):
             if cur == "B" and nxt == "A":
                 warnings.append(_v("S2", emp, day, "B→A 盡量避免"))
             if cur == "C" and nxt == "B":
                 warnings.append(_v("S3", emp, day, "C→B 盡量避免"))
-            if cur == "C" and nxt == "D":
-                warnings.append(_v("S4", emp, day, "C→D 盡量減少"))
 
         for d in range(data.num_days - 1):
             cur = shifts[d] if d < len(shifts) else None
@@ -325,12 +309,12 @@ def compute_fairness_spread(data, schedule) -> int:
 
 
 RULE_DESCRIPTIONS = {
-    "H1": "每日班次覆蓋", "H2": "每週休 2 天", "H3": "週末休假限制",
+    "H1": "每日班次覆蓋", "H2": "每週休 2 天", "H3": "週末休假限制（六+日<=2）",
     "H4": "連續上班上限", "H5": "班次銜接禁止", "H6": "指定休假",
     "H7": "可用班次限制", "H8": "跨月班次銜接", "H9": "跨月週連續性",
-    "H10": "一天一班", "H11": "D 班備援邏輯", "H12": "連休 2 日限制",
+    "H10": "一天一班", "H11": "D 班備援邏輯", "H12": "連休 1~2 次",
     "H13": "大夜專職手動",
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
-    "S4": "C→D 盡量減少", "S5": "偏好班次", "S6": "公平分配",
+    "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",
 }

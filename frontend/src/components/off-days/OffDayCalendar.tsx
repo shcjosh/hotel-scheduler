@@ -7,6 +7,7 @@ interface OffDayCalendarProps {
   numDays: number
   designatedDays: Set<number>
   specialDays: Set<number>
+  leaveInfoByDay?: Record<number, { label: string; bg: string; text: string }>
   runDays: Set<number>
   onToggleDay: (day: number) => void
 }
@@ -19,6 +20,7 @@ export function OffDayCalendar({
   numDays,
   designatedDays,
   specialDays,
+  leaveInfoByDay,
   runDays,
   onToggleDay,
 }: OffDayCalendarProps) {
@@ -71,12 +73,24 @@ export function OffDayCalendar({
               >
                 {day}
               </span>
-              <div className="mt-1 flex gap-0.5">
+              <div className="mt-0.5 flex flex-col items-center gap-0.5">
                 {designated && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  <span className="flex items-center gap-0.5 text-[9px] leading-none text-red-600">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                    指定
+                  </span>
                 )}
                 {special && (
-                  <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
+                  <span
+                    className="flex items-center gap-0.5 text-[9px] leading-none"
+                    style={{ color: leaveInfoByDay?.[day]?.text ?? '#7e22ce' }}
+                  >
+                    <span
+                      className="h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: leaveInfoByDay?.[day]?.bg ?? '#a855f7' }}
+                    />
+                    {leaveInfoByDay?.[day]?.label ?? '請假'}
+                  </span>
                 )}
               </div>
               {isRun && (

@@ -26,18 +26,21 @@ def _is_ignored_night(data, i):
     return emp.role == "night" and emp.id in getattr(data, "night_ignore_all", set())
 
 
-def add_h1_daily_coverage(model, x, data, fixed):
+def add_h1_daily_coverage(model, x, data, fixed, require_min=True):
     n = len(data.employees)
     for d in range(data.num_days):
+        day = d + 1
         a = [x[i][d]["A"] for i in range(n)]
         c = [x[i][d]["C"] for i in range(n)]
         b = [x[i][d]["B"] for i in range(n)]
         dd = [x[i][d]["D"] for i in range(n) if not _is_ignored_night(data, i)]
-        model.Add(sum(a) >= 1)
+        if require_min and not data.is_external(day, "A"):
+            model.Add(sum(a) >= 1)
         model.Add(sum(a) <= 2)
-        model.Add(sum(c) >= 1)
+        if require_min and not data.is_external(day, "C"):
+            model.Add(sum(c) >= 1)
         model.Add(sum(c) <= 2)
-        model.Add(sum(b) <= 2)
+        model.Add(sum(b) <= 1)
         if dd:
             model.Add(sum(dd) <= 1)
 
@@ -62,8 +65,7 @@ def add_h3_weekend_limit(model, x, data, fixed):
             continue
         sat_off = sum(x[i][d]["OFF"] for d in data.saturdays)
         sun_off = sum(x[i][d]["OFF"] for d in data.sundays)
-        model.Add(sat_off <= 1)
-        model.Add(sun_off <= 1)
+        model.Add(sat_off + sun_off <= 2)
 
 
 def add_h4_max_consecutive_work(model, x, data, fixed):
@@ -205,37 +207,49 @@ def add_h11_d_backup(model, x, data, fixed):
             model.Add(sum(x[k][d]["C"] for k in others) >= 1)
 
 
-def _add_and3(model, a, b, c_not, name):
-    z = model.NewBoolVar(name)
-    model.Add(z <= a)
-    model.Add(z <= b)
-    model.Add(z <= c_not)
-    model.Add(z >= a + b + c_not - 2)
-    return z
+def build_off_block_counters(model, x, i, num_days):
+    """Return the counted_end BoolVars for employee i.
+
+    A 連休 = a maximal run of non-work days (OFF + SPECIAL) with length >=2 that
+    contains at least one OFF. counted_end[d] == 1 iff such a block ends at day d.
+    """
+    nw = [x[i][d]["OFF"] + x[i][d]["SPECIAL"] for d in range(num_days)]
+
+    seen_off = []
+    for d in range(num_days):
+        so = model.NewBoolVar(f"h12_so_{i}_{d}")
+        model.Add(so <= nw[d])
+        model.Add(so >= x[i][d]["OFF"])
+        if d == 0:
+            model.Add(so <= x[i][d]["OFF"])
+        else:
+            model.Add(so >= seen_off[d - 1] + nw[d] - 1)
+            model.Add(so <= x[i][d]["OFF"] + seen_off[d - 1])
+        seen_off.append(so)
+
+    counted_end = []
+    for d in range(num_days):
+        ce = model.NewBoolVar(f"h12_ce_{i}_{d}")
+        is_end = 1 if d == num_days - 1 else (1 - nw[d + 1])
+        has_prev = 0 if d == 0 else nw[d - 1]
+        model.Add(ce <= nw[d])
+        model.Add(ce <= is_end)
+        model.Add(ce <= has_prev)
+        model.Add(ce <= seen_off[d])
+        model.Add(ce >= nw[d] + is_end + has_prev + seen_off[d] - 3)
+        counted_end.append(ce)
+    return counted_end
 
 
-def add_h12_consecutive_off_limit(model, x, data, fixed):
+def add_h12_consecutive_off(model, x, data, fixed):
+    """H12: 每人每月「1~2 次」連休。"""
     n = len(data.employees)
     for i in range(n):
         if not _rule_enabled(data, data.employees[i], "H12"):
             continue
-        count_vars = []
-        for d in range(data.num_days - 1):
-            a = x[i][d]["OFF"]
-            b = x[i][d + 1]["OFF"]
-            if d == 0:
-                z = model.NewBoolVar(f"h12_{i}_{d}")
-                model.Add(z <= a)
-                model.Add(z <= b)
-                model.Add(z >= a + b - 1)
-            else:
-                c = x[i][d - 1]["OFF"]
-                c_not = model.NewBoolVar(f"h12_not_{i}_{d}")
-                model.Add(c_not == 1 - c)
-                z = _add_and3(model, a, b, c_not, f"h12_{i}_{d}")
-            count_vars.append(z)
-        if count_vars:
-            model.Add(sum(count_vars) <= 2)
+        counted_end = build_off_block_counters(model, x, i, data.num_days)
+        model.Add(sum(counted_end) >= 1)
+        model.Add(sum(counted_end) <= 2)
 
 
 def add_h13_night_manual(model, x, data, fixed):
@@ -263,6 +277,6 @@ CONSTRAINT_FUNCTIONS = [
     ("H9", add_h9_cross_month_week),
     ("H10", add_h10_one_shift_per_day),
     ("H11", add_h11_d_backup),
-    ("H12", add_h12_consecutive_off_limit),
+    ("H12", add_h12_consecutive_off),
     ("H13", add_h13_night_manual),
 ]

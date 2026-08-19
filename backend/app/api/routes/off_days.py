@@ -65,7 +65,7 @@ def remove_designated_off(
 def add_special_leave(req: OffDayRequest, db: Session = Depends(get_db)):
     try:
         off_day_service.add_special_leave(
-            db, req.employee_id, req.year, req.month, req.day
+            db, req.employee_id, req.year, req.month, req.day, req.leave_type
         )
     except ValueError as exc:
         db.rollback()
@@ -75,6 +75,7 @@ def add_special_leave(req: OffDayRequest, db: Session = Depends(get_db)):
         "year": req.year,
         "month": req.month,
         "day": req.day,
+        "leave_type": req.leave_type,
     }
 
 

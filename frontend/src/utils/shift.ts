@@ -26,6 +26,28 @@ export function getShiftStyle(shift: string): ShiftStyle {
   )
 }
 
+export interface LeaveTypeStyle {
+  bg: string
+  text: string
+  label: string
+}
+
+export function getLeaveTypeStyle(
+  leaveType?: { name?: string; color_bg?: string; color_text?: string } | null,
+): LeaveTypeStyle | null {
+  if (!leaveType) return null
+  const name = leaveType.name || '假'
+  return {
+    bg: leaveType.color_bg ?? '#e1bee7',
+    text: leaveType.color_text ?? '#4a148c',
+    label: name.length > 2 ? name.slice(0, 2) : name,
+  }
+}
+
+export function getDesignatedOffStyle(): LeaveTypeStyle {
+  return { bg: '#E8C9C9', text: '#6D1A1A', label: '指定' }
+}
+
 export const SHIFT_ORDER: ShiftType[] = ['A', 'B', 'C', 'D', 'M', 'OFF', 'SPECIAL']
 
 export const SHIFT_DESCRIPTIONS: Record<string, string> = {

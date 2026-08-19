@@ -1,4 +1,9 @@
-from app.scheduler.constraints.hard import COVERAGE_BACKUP_SHIFTS, WORK_SHIFTS
+from app.scheduler.constraints.hard import (
+    COVERAGE_BACKUP_SHIFTS,
+    WORK_SHIFTS,
+    _rule_enabled,
+    build_off_block_counters,
+)
 
 
 def _prev_day1(data, emp_id):
@@ -71,25 +76,6 @@ def add_s3_avoid_c_to_b(model, x, data, fixed):
     return terms, {"s3": stat_vars}
 
 
-def add_s4_avoid_c_to_d(model, x, data, fixed):
-    terms = []
-    stat_vars = []
-    for e, emp in enumerate(data.employees):
-        avail = set(emp.available_shifts)
-        if not ({"C", "D"} <= avail):
-            continue
-        for d in range(data.num_days - 1):
-            term, var = _add_transition_penalty(
-                model, x, e, d, "C", "D", -8, "s4_cd"
-            )
-            terms.append(term)
-            stat_vars.append(var)
-        if _prev_day1(data, emp.id) == "C":
-            terms.append(x[e][0]["D"] * (-8))
-            stat_vars.append(x[e][0]["D"])
-    return terms, {"s4": stat_vars}
-
-
 def add_s5_preferred_shift(model, x, data, fixed):
     terms = []
     stat_vars = []
@@ -148,15 +134,28 @@ def add_s8_manager_backup_minimize(model, x, data, fixed):
     return terms, {"s8": stat_vars}
 
 
+def add_s9_prefer_off_blocks(model, x, data, fixed):
+    """S9: 連休 2 次優先（軟性）。獎勵每人連休次數，把大家往 2 次推。"""
+    terms = []
+    stat_vars = []
+    for e, emp in enumerate(data.employees):
+        if not _rule_enabled(data, emp, "H12"):
+            continue
+        counted_end = build_off_block_counters(model, x, e, data.num_days)
+        terms.append(sum(counted_end) * 8)
+        stat_vars.extend(counted_end)
+    return terms, {"s9": stat_vars}
+
+
 SOFT_FUNCTIONS = [
     ("S1", add_s1_avoid_5_consecutive),
     ("S2", add_s2_avoid_b_to_a),
     ("S3", add_s3_avoid_c_to_b),
-    ("S4", add_s4_avoid_c_to_d),
     ("S5", add_s5_preferred_shift),
     ("S6", add_s6_fairness),
     ("S7", add_s7_d_backup_minimize),
     ("S8", add_s8_manager_backup_minimize),
+    ("S9", add_s9_prefer_off_blocks),
 ]
 
 

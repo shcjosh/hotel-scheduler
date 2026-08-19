@@ -14,6 +14,7 @@ from app.database.models import (
     PreviousMonthLink,
     ScheduleEntry,
     SpecialLeave,
+    SupportRequest,
 )
 
 
@@ -45,9 +46,14 @@ class ShiftScheduleData:
     d_backup_assignments: dict[int, int]
     night_rule_overrides: dict[int, set[str]] = field(default_factory=dict)
     night_ignore_all: set[int] = field(default_factory=set)
+    external_support: dict[int, set[str]] = field(default_factory=dict)
+    external_support_all: set[str] = field(default_factory=set)
 
     def emp_index(self) -> dict[int, int]:
         return {emp.id: i for i, emp in enumerate(self.employees)}
+
+    def is_external(self, day: int, shift: str) -> bool:
+        return shift in self.external_support_all or shift in self.external_support.get(day, set())
 
 
 def _parse_shifts(raw: str | None) -> list[str]:
@@ -158,6 +164,20 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         elif row.enabled:
             night_rule_overrides.setdefault(row.employee_id, set()).add(row.rule_name)
 
+    external_support: dict[int, set[str]] = {}
+    external_support_all: set[str] = set()
+    for row in db.scalars(
+        select(SupportRequest).where(
+            SupportRequest.year == year, SupportRequest.month == month
+        )
+    ):
+        if row.status == "ignored":
+            continue
+        if row.day == 0:
+            external_support_all.add(row.shift)
+        else:
+            external_support.setdefault(row.day, set()).add(row.shift)
+
     return ShiftScheduleData(
         employees=employees,
         year=year,
@@ -175,4 +195,6 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         d_backup_assignments=d_backup_assignments,
         night_rule_overrides=night_rule_overrides,
         night_ignore_all=night_ignore_all,
+        external_support=external_support,
+        external_support_all=external_support_all,
     )

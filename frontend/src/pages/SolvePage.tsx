@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Sparkles, Loader2, CheckCircle2, AlertOctagon, ArrowRight } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { solveSchedule, type SolveDiagnostics } from '../api/solve'
+import { getScheduleStatus } from '../api/scheduleMeta'
+import { useQuery } from '@tanstack/react-query'
 import type { SolveResponse } from '../types'
 import { Button } from '../components/ui/button'
 import { cn } from '../utils/cn'
@@ -11,11 +13,11 @@ const SOFT_LABELS: Record<string, string> = {
   s1_5consecutive_count: 'S1 連續5天',
   s2_b_to_a_count: 'S2 B→A',
   s3_c_to_b_count: 'S3 C→B',
-  s4_c_to_d_count: 'S4 C→D',
   s5_preferred_satisfied: 'S5 偏好滿足',
   s6_work_days_spread: 'S6 上班天數差',
   s7_non_backup_d_count: 'S7 非備援D',
   s8_manager_backup_count: 'S8 管理職備援',
+  s9_off_block_count: 'S9 連休次數',
 }
 
 function empStats(row: string[]) {
@@ -33,7 +35,18 @@ export function SolvePage() {
   const [result, setResult] = useState<SolveResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const { data: statusData } = useQuery({
+    queryKey: ['schedule-status', currentYear, currentMonth],
+    queryFn: () => getScheduleStatus(currentYear, currentMonth),
+  })
+
   async function handleSolve() {
+    if (
+      statusData?.status === 'published' &&
+      !window.confirm('目前班表已發布，重新排班將覆蓋現有班表，確定要繼續嗎？')
+    ) {
+      return
+    }
     setSolving(true)
     setError(null)
     setResult(null)
@@ -95,6 +108,20 @@ export function SolvePage() {
             <span>求解時間：{result.solve_time} 秒</span>
             <span>目標函數值：{result.objective_value}</span>
           </div>
+          {result.support_requests && result.support_requests.length > 0 && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 p-3">
+              <div className="mb-1 text-sm font-semibold text-amber-700">
+                已自動請求外部支援 {result.support_requests.length} 筆（需安排人力）
+              </div>
+              <ul className="space-y-1 text-xs text-amber-700">
+                {result.support_requests.map((r) => (
+                  <li key={r.id}>
+                    {r.day === 0 ? '全月' : `${currentMonth}/${r.day}`} {r.shift} 班
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {result.soft_constraint_stats && (
             <div className="flex flex-wrap gap-3 text-xs">
               {Object.entries(result.soft_constraint_stats).map(([k, v]) => (
@@ -172,12 +199,12 @@ function SolveFailure({ result, onRetry, month }: { result: SolveResponse; onRet
       {supportReqs.length > 0 && (
         <div className="rounded-md border border-orange-200 bg-orange-50 p-3">
           <div className="mb-1 text-sm font-semibold text-orange-700">
-            已自動建立 {supportReqs.length} 件支援請求
+            需要支援的人力（{supportReqs.length} 筆）
           </div>
           <ul className="space-y-1 text-xs text-orange-700">
             {supportReqs.map((r) => (
               <li key={r.id}>
-                {r.day === 0 ? '全月' : `${month}/${r.day}`} {r.shift} 班缺人 — {r.reason}
+                {r.day === 0 ? '全月' : `${month}/${r.day}`} {r.shift} 班缺人{r.reason ? ` — ${r.reason}` : ''}
               </li>
             ))}
           </ul>

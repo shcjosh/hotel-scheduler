@@ -2,24 +2,25 @@ import { cn } from '../../utils/cn'
 
 interface ConsecutiveOffCounterProps {
   count: number
-  max?: number
+  target?: number
 }
 
-export function ConsecutiveOffCounter({ count, max = 2 }: ConsecutiveOffCounterProps) {
-  const reached = count >= max
-  const color =
-    count === 0
-      ? 'bg-gray-100 text-gray-600'
-      : reached
-        ? 'bg-orange-100 text-orange-700'
-        : 'bg-blue-100 text-blue-700'
+export function ConsecutiveOffCounter({ count, target = 2 }: ConsecutiveOffCounterProps) {
+  const ok = count === target
   return (
     <div className="inline-flex items-center gap-2 rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm">
-      <span className="text-gray-600">連休 2 日</span>
-      <span className={cn('rounded px-2 py-0.5 font-semibold', color)}>
-        {count} / {max}
+      <span className="text-gray-600">連休次數</span>
+      <span
+        className={cn(
+          'rounded px-2 py-0.5 font-semibold',
+          ok ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700',
+        )}
+      >
+        {count} / {target}
       </span>
-      {reached && <span className="text-xs text-orange-600">已達上限</span>}
+      <span className={cn('text-xs', ok ? 'text-green-600' : 'text-orange-600')}>
+        {ok ? '符合' : `應為 ${target} 次`}
+      </span>
     </div>
   )
 }

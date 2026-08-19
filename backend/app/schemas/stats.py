@@ -9,6 +9,8 @@ class EmployeeStats(BaseModel):
     total_work_days: int
     total_off_days: int
     total_special_days: int
+    leave_type_counts: dict[str, int] = {}
+    total_leave_days: int = 0
     weekend_work_count: int
     max_consecutive_work: int
     consecutive_off_count: int
@@ -51,3 +53,4 @@ class MonthStatsResponse(BaseModel):
     weekend_summary: dict
     violations_summary: dict
     soft_constraint_stats: dict | None
+    leave_types: list[dict] = []

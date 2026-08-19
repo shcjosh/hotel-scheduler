@@ -18,6 +18,7 @@ from app.database.models import (
     SpecialLeave,
 )
 from app.scheduler import data_loader, engine, validator
+from app.scheduler.off_count import count_off_blocks
 
 init_db()
 db = SessionLocal()
@@ -48,9 +49,9 @@ for eid, shifts in prev.items():
         day_2_shift=shifts[3], day_1_shift=shifts[4], source="manual",
     ))
 
-night = {1:"D",2:"OFF",3:"D",4:"OFF",5:"D",6:"D",7:"OFF",8:"D",9:"D",10:"D",
-         11:"OFF",12:"D",13:"D",14:"OFF",15:"D",16:"D",17:"D",18:"OFF",19:"D",
-         20:"D",21:"OFF",22:"D",23:"D",24:"D",25:"OFF",26:"D",27:"D",28:"OFF",
+night = {1:"D",2:"OFF",3:"OFF",4:"OFF",5:"D",6:"D",7:"D",8:"D",9:"D",10:"OFF",
+         11:"D",12:"D",13:"D",14:"OFF",15:"D",16:"D",17:"OFF",18:"OFF",19:"D",
+         20:"D",21:"D",22:"D",23:"D",24:"OFF",25:"D",26:"D",27:"D",28:"OFF",
          29:"D",30:"D",31:"D"}
 for day, sh in night.items():
     db.add(ScheduleEntry(employee_id=chen.id, year=2026, month=8, day=day, shift=sh, source="night_input"))
@@ -144,23 +145,10 @@ check(week_ok, "4. 每週休 2 天")
 
 consec_ok = True
 for nm, row in result.schedule.items():
-    runs = 0
-    run_len = 0
-    prev_off = False
-    for s in row:
-        if s == "OFF":
-            run_len = run_len + 1 if prev_off else 1
-            prev_off = True
-        else:
-            if prev_off and run_len >= 2:
-                runs += 1
-            run_len = 0
-            prev_off = False
-    if prev_off and run_len >= 2:
-        runs += 1
-    if runs > 2:
+    cnt, _ = count_off_blocks(row)
+    if cnt != 2:
         consec_ok = False
-check(consec_ok, "5. 連休 2 日 <=2 次")
+check(consec_ok, "5. 連休剛好 2 次")
 
 backup_ok = result.schedule["林備援"][13] == "D"
 c_on_backup = sum(1 for nm, row in result.schedule.items() if nm != "林備援" and row[13] == "C")
