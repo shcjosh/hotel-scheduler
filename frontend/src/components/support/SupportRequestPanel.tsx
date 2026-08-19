@@ -127,8 +127,11 @@ export function SupportRequestPanel({
                     <td className="px-2 py-1.5">
                       <span className={cn('rounded px-1.5 py-0.5 text-xs',
                         r.status === 'open' ? 'bg-orange-100 text-orange-700' :
+                        (r.status === 'resolved' && r.source === 'auto') ? 'bg-amber-100 text-amber-700' :
                         r.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}>
-                        {r.status === 'open' ? '待處理' : r.status === 'resolved' ? '已解決' : '已忽略'}
+                        {r.status === 'open' ? '待處理' :
+                          (r.status === 'resolved' && r.source === 'auto') ? '需要支援' :
+                          r.status === 'resolved' ? '已解決' : '已忽略'}
                       </span>
                       {r.resolution && <div className="text-xs text-gray-400">{r.resolution}</div>}
                     </td>

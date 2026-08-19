@@ -16,9 +16,23 @@ from app.schemas.schedule import (
     ValidateCellRequest,
     ValidateCellResponse,
 )
-from app.services import schedule_service
+from app.services import schedule_service, status_service
 
 router = APIRouter()
+
+
+def _month_view(db: Session, year: int, month: int) -> MonthScheduleView:
+    num_days = calendar.monthrange(year, month)[1]
+    view = schedule_service.get_month_view(db, year, month, num_days)
+    return MonthScheduleView(
+        year=year,
+        month=month,
+        num_days=num_days,
+        schedule=view["schedule"],
+        sources=view["sources"],
+        leave_details=view["leave_details"],
+        status=status_service.get_status(db, year, month),
+    )
 
 
 def _validate_employee(db: Session, employee_id: int) -> None:
@@ -58,27 +72,20 @@ def update_schedule_cell(
     req: CellUpdateRequest, db: Session = Depends(get_db),
 ):
     try:
-        schedule_service.upsert_cell(db, employee_id, year, month, day, req.shift)
+        schedule_service.upsert_cell(
+            db, employee_id, year, month, day, req.shift,
+            leave_type=req.leave_type, reason=req.reason,
+        )
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    num_days = calendar.monthrange(year, month)[1]
-    view = schedule_service.get_month_view(db, year, month, num_days)
-    return MonthScheduleView(
-        year=year, month=month, num_days=num_days,
-        schedule=view["schedule"], sources=view["sources"],
-    )
+    return _month_view(db, year, month)
 
 
 @router.get("/schedules/{year}/{month}", response_model=MonthScheduleView)
 def get_month_schedule(year: int, month: int, db: Session = Depends(get_db)):
-    num_days = calendar.monthrange(year, month)[1]
-    view = schedule_service.get_month_view(db, year, month, num_days)
-    return MonthScheduleView(
-        year=year, month=month, num_days=num_days,
-        schedule=view["schedule"], sources=view["sources"],
-    )
+    return _month_view(db, year, month)
 
 
 @router.delete("/schedules/{year}/{month}", status_code=status.HTTP_200_OK)

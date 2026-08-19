@@ -5,8 +5,8 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database.models import Employee, ScheduleEntry, Setting
-from app.services import off_day_service, schedule_service
+from app.database.models import Employee, ScheduleEntry, Setting, SpecialLeave
+from app.services import leave_type_service, off_day_service, schedule_service
 
 WORK_SHIFTS = ("A", "B", "C", "D", "M")
 ALL_COUNT_SHIFTS = ("A", "B", "C", "D", "M", "OFF", "SPECIAL")
@@ -77,6 +77,19 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     sundays = [d for d in range(1, num_days + 1) if date(year, month, d).weekday() == 6]
     weekend_set = set(saturdays + sundays)
 
+    leave_counts_by_emp: dict[int, dict[str, int]] = {}
+    for lv in db.scalars(
+        select(SpecialLeave).where(
+            SpecialLeave.year == year, SpecialLeave.month == month
+        )
+    ):
+        leave_counts_by_emp.setdefault(lv.employee_id, {}).setdefault(lv.leave_type, 0)
+        leave_counts_by_emp[lv.employee_id][lv.leave_type] += 1
+    active_leave_types = [
+        {"code": lt.code, "name": lt.name, "color_bg": lt.color_bg, "color_text": lt.color_text}
+        for lt in leave_type_service.list_leave_types(db)
+    ]
+
     # per_employee
     per_employee = []
     for emp in employees:
@@ -88,6 +101,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
         work_days = sum(counts[s] for s in WORK_SHIFTS)
         weekend_work = sum(1 for i, s in enumerate(row) if (i + 1) in weekend_set and s in WORK_SHIFTS)
         consec_off = off_day_service.count_consecutive_off(db, emp.id, year, month)[0]
+        leave_counts = leave_counts_by_emp.get(emp.id, {})
         per_employee.append({
             "employee_id": emp.id,
             "employee_name": emp.name,
@@ -96,6 +110,8 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
             "total_work_days": work_days,
             "total_off_days": counts["OFF"],
             "total_special_days": counts["SPECIAL"],
+            "leave_type_counts": leave_counts,
+            "total_leave_days": sum(leave_counts.values()),
             "weekend_work_count": weekend_work,
             "max_consecutive_work": _max_consecutive_work(row),
             "consecutive_off_count": consec_off,
@@ -152,7 +168,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     if soft_stats is None:
         soft_stats = {
             f"s{i}": report["per_rule_summary"].get(f"S{i}", {}).get("violations", 0)
-            for i in range(1, 9)
+            for i in range(1, 10)
         }
 
     has_data = any(
@@ -179,4 +195,5 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
         "weekend_summary": weekend_summary,
         "violations_summary": report["summary"],
         "soft_constraint_stats": soft_stats,
+        "leave_types": active_leave_types,
     }

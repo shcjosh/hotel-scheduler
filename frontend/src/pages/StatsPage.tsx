@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useUIStore } from '../stores/uiStore'
 import { getMonthStats } from '../api/stats'
+import { getChangeLogs } from '../api/scheduleMeta'
 import { ExportButtons } from '../components/stats/ExportButtons'
 import { MonthSummaryCard } from '../components/stats/MonthSummaryCard'
 import { EmployeeStatsTable } from '../components/stats/EmployeeStatsTable'
@@ -8,6 +9,7 @@ import { ShiftDistributionTable } from '../components/stats/ShiftDistributionTab
 import { DailyCoverageTable } from '../components/stats/DailyCoverageTable'
 import { WeekendSummaryTable } from '../components/stats/WeekendSummaryTable'
 import { SoftConstraintTable } from '../components/stats/SoftConstraintTable'
+import { ChangeLogPanel } from '../components/stats/ChangeLogPanel'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -24,6 +26,10 @@ export function StatsPage() {
     queryKey: ['stats', currentYear, currentMonth],
     queryFn: () => getMonthStats(currentYear, currentMonth),
   })
+  const { data: changeLogs = [] } = useQuery({
+    queryKey: ['change-logs', currentYear, currentMonth],
+    queryFn: () => getChangeLogs(currentYear, currentMonth),
+  })
 
   return (
     <div className="space-y-5">
@@ -32,7 +38,10 @@ export function StatsPage() {
           <h2 className="text-xl font-semibold text-gray-800">統計報表</h2>
           <p className="text-sm text-gray-500">{currentYear}年{currentMonth}月 排班統計</p>
         </div>
-        <ExportButtons year={currentYear} month={currentMonth} />
+        <div className="flex items-center gap-2">
+          <ChangeLogPanel logs={changeLogs} />
+          <ExportButtons year={currentYear} month={currentMonth} />
+        </div>
       </div>
 
       {isLoading && (
@@ -49,7 +58,7 @@ export function StatsPage() {
           <MonthSummaryCard stats={data} />
 
           <Section title="每人統計">
-            <EmployeeStatsTable rows={data.per_employee} />
+            <EmployeeStatsTable rows={data.per_employee} leaveTypes={data.leave_types ?? []} />
           </Section>
 
           <Section title="班次分佈">

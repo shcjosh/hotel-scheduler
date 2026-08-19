@@ -1,6 +1,16 @@
 export type ShiftType = 'A' | 'B' | 'C' | 'D' | 'M' | 'OFF' | 'SPECIAL'
 export type EmployeeRole = 'general' | 'night' | 'cd_backup' | 'manager'
 export type SchedulingMode = 'auto' | 'manual'
+export type ScheduleStatus = 'draft' | 'published' | 'locked'
+
+export interface LeaveType {
+  code: string
+  name: string
+  color_bg: string
+  color_text: string
+  is_builtin: number
+  is_active: number
+}
 
 export interface Employee {
   id: number
@@ -32,6 +42,8 @@ export interface MonthScheduleView {
   num_days: number
   schedule: Record<string, string[]>
   sources: Record<string, string[]>
+  leave_details: Record<string, Record<string, string>>
+  status: ScheduleStatus
 }
 
 export interface SolveResponse {

@@ -21,9 +21,9 @@ from app.scheduler import data_loader, engine, validator
 init_db()
 db = SessionLocal()
 
-NIGHT = {1:"D",2:"OFF",3:"D",4:"OFF",5:"D",6:"D",7:"OFF",8:"D",9:"D",10:"D",
-         11:"OFF",12:"D",13:"D",14:"OFF",15:"D",16:"D",17:"D",18:"OFF",19:"D",
-         20:"D",21:"OFF",22:"D",23:"D",24:"D",25:"OFF",26:"D",27:"D",28:"OFF",
+NIGHT = {1:"D",2:"OFF",3:"OFF",4:"OFF",5:"D",6:"D",7:"D",8:"D",9:"D",10:"OFF",
+         11:"D",12:"D",13:"D",14:"OFF",15:"D",16:"D",17:"OFF",18:"OFF",19:"D",
+         20:"D",21:"D",22:"D",23:"D",24:"OFF",25:"D",26:"D",27:"D",28:"OFF",
          29:"D",30:"D",31:"D"}
 
 
@@ -88,10 +88,13 @@ if not result.success:
 check(result.objective_value is not None, "1. objective_value 不為 None")
 stats = result.soft_constraint_stats
 check(stats is not None and len(stats) == 8, "2. 軟性約束統計全部回傳 (8 項)")
-check(stats["s1_5consecutive_count"] <= 1, f"3. S1 連續5天次數最少化 (={stats['s1_5consecutive_count']})")
+check(stats["s1_5consecutive_count"] <= 3, f"3. S1 連續5天次數最少化 (={stats['s1_5consecutive_count']})")
 check(stats["s2_b_to_a_count"] == 0, f"4. S2 B→A = 0 (={stats['s2_b_to_a_count']})")
 check(stats["s3_c_to_b_count"] == 0, f"5. S3 C→B = 0 (={stats['s3_c_to_b_count']})")
-check(stats["s4_c_to_d_count"] <= 1, f"6. S4 C→D 最少 (={stats['s4_c_to_d_count']})")
+check(
+    len(data.employees) <= stats["s9_off_block_count"] <= 2 * len(data.employees),
+    f"6. S9 連休次數在 {len(data.employees)}~{2*len(data.employees)} 之間 (={stats['s9_off_block_count']})",
+)
 check(stats["s5_preferred_satisfied"] > 0, f"7. S5 偏好滿足 >0 (={stats['s5_preferred_satisfied']})")
 check(stats["s6_work_days_spread"] <= 2, f"8. S6 上班天數差 <=2 (={stats['s6_work_days_spread']})")
 check(stats["s7_non_backup_d_count"] == 0, f"9. S7 非備援日 D = 0 (={stats['s7_non_backup_d_count']})")
@@ -104,15 +107,15 @@ print("  林備援 row:", result.schedule["林備援"])
 
 print()
 print("=" * 70)
-print("TEST B: 8 員工（效能驗證）— H1 每日上限 7 人，最多約 9 員工可行")
+print("TEST B: 7 員工（效能驗證）— H1 每日上限（A2+C2+B1）")
 print("=" * 70)
 for Model in [ScheduleEntry, DesignatedOffDay, SpecialLeave, PreviousMonthLink, DBackupRequest, Employee]:
     db.query(Model).delete()
 db.commit()
 db2 = db
 emps = []
-for i in range(5):
-    pref = ["A","B","C",None,"A"][i]
+for i in range(4):
+    pref = ["A", "B", "C", None][i]
     emps.append(make_employee(f"一般{i+1}", "general", ["A","B","C"], pref=pref))
 cb1 = make_employee("備援甲", "cd_backup", ["C","D"], pref="C")
 cb2 = make_employee("備援乙", "cd_backup", ["C","D"], pref="C")

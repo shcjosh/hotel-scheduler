@@ -21,9 +21,9 @@ from app.database.models import (
 from app.scheduler import data_loader, engine
 from app.services import schedule_service
 
-NIGHT = {1:"D",2:"OFF",3:"D",4:"OFF",5:"D",6:"D",7:"OFF",8:"D",9:"D",10:"D",
-         11:"OFF",12:"D",13:"D",14:"OFF",15:"D",16:"D",17:"D",18:"OFF",19:"D",
-         20:"D",21:"OFF",22:"D",23:"D",24:"D",25:"OFF",26:"D",27:"D",28:"OFF",
+NIGHT = {1:"D",2:"OFF",3:"OFF",4:"OFF",5:"D",6:"D",7:"D",8:"D",9:"D",10:"OFF",
+         11:"D",12:"D",13:"D",14:"OFF",15:"D",16:"D",17:"OFF",18:"OFF",19:"D",
+         20:"D",21:"D",22:"D",23:"D",24:"OFF",25:"D",26:"D",27:"D",28:"OFF",
          29:"D",30:"D",31:"D"}
 
 

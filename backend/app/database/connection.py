@@ -29,15 +29,29 @@ SessionLocal = sessionmaker(
 )
 
 
+def _run_migrations() -> None:
+    """新增欄位給既有 DB（create_all 只建新表，不會改舊表結構）。"""
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(special_leaves)")}
+        if cols and "leave_type" not in cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE special_leaves ADD COLUMN leave_type TEXT NOT NULL DEFAULT 'SPECIAL'"
+            )
+
+
 def init_db() -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     from app.database import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _run_migrations()
+
+    from app.services.leave_type_service import ensure_defaults as ensure_leave_types
     from app.services.settings_service import ensure_defaults
     from app.database.connection import SessionLocal
     s = SessionLocal()
     try:
         ensure_defaults(s)
+        ensure_leave_types(s)
     finally:
         s.close()

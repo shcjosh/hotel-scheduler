@@ -43,10 +43,14 @@ class MonthScheduleView(BaseModel):
     num_days: int
     schedule: dict[str, list[str]]
     sources: dict[str, list[str]] = {}
+    leave_details: dict[str, dict[int, str]] = {}
+    status: str = "draft"
 
 
 class CellUpdateRequest(BaseModel):
     shift: str
+    leave_type: str | None = None
+    reason: str | None = None
 
 
 class ValidateCellRequest(BaseModel):

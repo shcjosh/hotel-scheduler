@@ -1,4 +1,4 @@
-import type { Employee, MonthScheduleView } from '../../types'
+import type { Employee, LeaveType, MonthScheduleView } from '../../types'
 import { getWeekday, getWeekdayLabel, isWeekend } from '../../utils/date'
 import { ShiftCell } from './ShiftCell'
 import { DailyCoverage } from './DailyCoverage'
@@ -7,13 +7,15 @@ import { cn } from '../../utils/cn'
 interface ScheduleTableProps {
   view: MonthScheduleView
   employees: Employee[]
+  leaveTypes?: LeaveType[]
   onCellClick?: (empName: string, day: number) => void
 }
 
-export function ScheduleTable({ view, employees, onCellClick }: ScheduleTableProps) {
-  const { schedule, sources, num_days: numDays, year, month } = view
+export function ScheduleTable({ view, employees, leaveTypes = [], onCellClick }: ScheduleTableProps) {
+  const { schedule, sources, leave_details: leaveDetails, num_days: numDays, year, month } = view
   const names = Object.keys(schedule)
   const empByName = new Map(employees.map((e) => [e.name, e]))
+  const leaveTypeByCode = new Map(leaveTypes.map((lt) => [lt.code, lt]))
 
   return (
     <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -57,6 +59,8 @@ export function ScheduleTable({ view, employees, onCellClick }: ScheduleTablePro
                   const day = d + 1
                   const weekend = isWeekend(year, month, day)
                   const source = sources?.[name]?.[d]
+                  const leaveCode = leaveDetails?.[name]?.[String(day)]
+                  const leaveType = leaveCode ? leaveTypeByCode.get(leaveCode) : undefined
                   return (
                     <td
                       key={day}
@@ -70,6 +74,7 @@ export function ScheduleTable({ view, employees, onCellClick }: ScheduleTablePro
                         source={source}
                         locked={locked}
                         compact
+                        leaveType={leaveType}
                         onClick={() => onCellClick?.(name, day)}
                       />
                     </td>

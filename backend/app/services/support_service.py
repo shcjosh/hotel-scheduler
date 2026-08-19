@@ -89,6 +89,52 @@ def auto_generate_from_diagnostics(
     return created
 
 
+def generate_from_gaps(
+    db: Session, gaps: list[dict], year: int, month: int
+) -> list[dict]:
+    """Create day-specific auto support requests from coverage gaps.
+
+    These are marked resolved (the slot is treated as covered) but carry a
+    "需要支援的人力" resolution so the UI flags them as needing external staff.
+    """
+    created = []
+    for g in gaps:
+        try:
+            rec = create_auto_support(
+                db, year, month, g["day"], g["shift"], reason=g.get("reason")
+            )
+            created.append(_to_dict(rec))
+        except ValueError:
+            pass
+    return created
+
+
+def create_auto_support(
+    db: Session, year: int, month: int, day: int, shift: str, reason: str | None = None
+) -> SupportRequest:
+    if shift not in ("A", "C"):
+        raise ValueError("支援請求班次只能為 A 或 C")
+    rec = SupportRequest(
+        year=year,
+        month=month,
+        day=day,
+        shift=shift,
+        reason=reason,
+        source="auto",
+        status="resolved",
+        resolution="需要支援的人力",
+        resolved_at=now_iso(),
+    )
+    db.add(rec)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ValueError("該日該班次已有支援請求")
+    db.refresh(rec)
+    return rec
+
+
 def _to_dict(rec: SupportRequest) -> dict:
     return {
         "id": rec.id,

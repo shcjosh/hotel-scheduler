@@ -90,6 +90,60 @@ class SpecialLeave(Base):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     day: Mapped[int] = mapped_column(Integer, nullable=False)
+    leave_type: Mapped[str] = mapped_column(Text, nullable=False, default="SPECIAL")
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+
+    employee: Mapped["Employee"] = relationship()
+
+
+class LeaveType(Base):
+    __tablename__ = "leave_types"
+
+    code: Mapped[str] = mapped_column(Text, primary_key=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    color_bg: Mapped[str] = mapped_column(Text, nullable=False)
+    color_text: Mapped[str] = mapped_column(Text, nullable=False)
+    is_builtin: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_active: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+
+
+class ScheduleStatus(Base):
+    __tablename__ = "schedule_statuses"
+
+    year: Mapped[int] = mapped_column(Integer, primary_key=True)
+    month: Mapped[int] = mapped_column(Integer, primary_key=True)
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="draft")
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+
+
+class ScheduleSnapshot(Base):
+    __tablename__ = "schedule_snapshots"
+    __table_args__ = (Index("idx_snapshot_ym", "year", "month"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    version_number: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    schedule_data: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+
+
+class ScheduleChangeLog(Base):
+    __tablename__ = "schedule_change_logs"
+    __table_args__ = (Index("idx_changelog_ym", "year", "month"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id", ondelete="CASCADE"), nullable=False
+    )
+    day: Mapped[int] = mapped_column(Integer, nullable=False)
+    old_shift: Mapped[str] = mapped_column(Text, nullable=False)
+    new_shift: Mapped[str] = mapped_column(Text, nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
 
     employee: Mapped["Employee"] = relationship()

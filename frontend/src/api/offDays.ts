@@ -3,6 +3,7 @@ import { apiClient } from './client'
 export interface OffDayData {
   designated_off_days: Record<string, number[]>
   special_leaves: Record<string, number[]>
+  leave_details: Record<string, Record<string, string>>
 }
 
 export interface EmployeeOffSummary {
@@ -10,6 +11,8 @@ export interface EmployeeOffSummary {
   consecutive_off_days: number[]
   designated_count: number
   special_count: number
+  leave_type_counts: Record<string, number>
+  total_leave_days: number
 }
 
 export type OffDaySummary = Record<string, EmployeeOffSummary>
@@ -59,12 +62,14 @@ export async function addSpecialLeave(
   year: number,
   month: number,
   day: number,
+  leaveType: string = 'SPECIAL',
 ): Promise<void> {
   await apiClient.post('/off-days/special', {
     employee_id: empId,
     year,
     month,
     day,
+    leave_type: leaveType,
   })
 }
 

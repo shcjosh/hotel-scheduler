@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../ui/modal'
 import { Button } from '../ui/button'
-import { getShiftStyle } from '../../utils/shift'
+import { getShiftStyle, getLeaveTypeStyle } from '../../utils/shift'
 import { cn } from '../../utils/cn'
 import type { CellViolation } from '../../api/schedules'
+import type { LeaveType } from '../../types'
 
 interface CellEditModalProps {
   open: boolean
@@ -11,38 +12,67 @@ interface CellEditModalProps {
   day: number
   month: number
   currentShift: string
+  currentLeaveTypeCode?: string | null
   availableShifts: string[]
+  leaveTypes: LeaveType[]
+  isPublished?: boolean
   onClose: () => void
   onValidate: (newShift: string) => Promise<{ violations: CellViolation[]; warnings: CellViolation[] }>
-  onConfirm: (newShift: string) => Promise<void>
+  onConfirm: (newShift: string, leaveType?: string, reason?: string) => Promise<void>
 }
 
-const EXTRA = ['OFF', 'SPECIAL']
+const LT_PREFIX = 'LT:'
 
 export function CellEditModal({
-  open, employeeName, day, month, currentShift, availableShifts, onClose, onValidate, onConfirm,
+  open, employeeName, day, month, currentShift, currentLeaveTypeCode, availableShifts,
+  leaveTypes, isPublished, onClose, onValidate, onConfirm,
 }: CellEditModalProps) {
-  const [newShift, setNewShift] = useState(currentShift)
+  const [selected, setSelected] = useState('')
+  const [reason, setReason] = useState('')
   const [result, setResult] = useState<{ violations: CellViolation[]; warnings: CellViolation[] } | null>(null)
   const [checking, setChecking] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    setNewShift(currentShift)
-    setResult(null)
-  }, [currentShift, open])
+  const currentLeaveType = leaveTypes.find((lt) => lt.code === currentLeaveTypeCode)
 
-  const options = [...availableShifts, ...EXTRA.filter((s) => !availableShifts.includes(s))]
+  useEffect(() => {
+    setReason('')
+    setResult(null)
+    setSelected(
+      currentShift === 'SPECIAL' && currentLeaveTypeCode
+        ? `${LT_PREFIX}${currentLeaveTypeCode}`
+        : currentShift,
+    )
+  }, [currentShift, currentLeaveTypeCode, open])
+
+  const options = [
+    ...availableShifts.filter((s) => s !== 'SPECIAL').map((s) => ({ value: s, label: s })),
+    { value: 'OFF', label: '休' },
+    ...leaveTypes.map((lt) => ({ value: `${LT_PREFIX}${lt.code}`, label: lt.name })),
+  ]
+
+  function effectiveShift() {
+    return selected.startsWith(LT_PREFIX) ? 'SPECIAL' : selected
+  }
+  function effectiveLeaveType() {
+    return selected.startsWith(LT_PREFIX) ? selected.slice(LT_PREFIX.length) : undefined
+  }
+  function changed() {
+    const cur = currentShift === 'SPECIAL' && currentLeaveTypeCode
+      ? `${LT_PREFIX}${currentLeaveTypeCode}`
+      : currentShift
+    return selected !== cur
+  }
 
   async function handleCheck() {
-    if (newShift === currentShift) {
+    if (!changed()) {
       setResult({ violations: [], warnings: [] })
       return
     }
     setChecking(true)
     setResult(null)
     try {
-      const r = await onValidate(newShift)
+      const r = await onValidate(effectiveShift())
       setResult(r)
     } catch (e) {
       setResult({ violations: [{ rule: 'ERR', severity: 'hard', message: e instanceof Error ? e.message : '檢查失敗' }], warnings: [] })
@@ -54,7 +84,7 @@ export function CellEditModal({
   async function handleSave() {
     setSaving(true)
     try {
-      await onConfirm(newShift)
+      await onConfirm(effectiveShift(), effectiveLeaveType(), reason.trim() || undefined)
       onClose()
     } finally {
       setSaving(false)
@@ -63,29 +93,45 @@ export function CellEditModal({
 
   const hasHard = (result?.violations.length ?? 0) > 0
   const hasSoft = (result?.warnings.length ?? 0) > 0
-  const canSave = result !== null && newShift !== currentShift
+  const canSave = result !== null && changed()
 
   return (
     <Modal open={open} title={`編輯班次 — ${employeeName} ${month}/${day}`} onClose={onClose}>
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-600">目前：</span>
-          <ShiftBadge shift={currentShift} />
+          <ShiftBadge shift={currentShift} leaveType={currentLeaveType} />
           <span className="text-gray-400">→</span>
           <select
-            value={newShift}
-            onChange={(e) => { setNewShift(e.target.value); setResult(null) }}
+            value={selected}
+            onChange={(e) => { setSelected(e.target.value); setResult(null) }}
             className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
           >
-            {options.map((s) => (
-              <option key={s} value={s}>{s === 'OFF' ? '休' : s === 'SPECIAL' ? '特休' : s}</option>
+            {options.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
-          <ShiftBadge shift={newShift} />
+          <ShiftBadge
+            shift={effectiveShift()}
+            leaveType={leaveTypes.find((lt) => lt.code === effectiveLeaveType())}
+          />
         </div>
 
+        {isPublished && changed() && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">調班原因（選填）</label>
+            <input
+              type="text"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="如：與同仁換班、臨時請病假"
+              className="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+            />
+          </div>
+        )}
+
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleCheck} disabled={checking || newShift === currentShift}>
+          <Button variant="outline" onClick={handleCheck} disabled={checking || !changed()}>
             {checking ? '檢查中…' : '檢查合規'}
           </Button>
         </div>
@@ -138,8 +184,19 @@ export function CellEditModal({
   )
 }
 
-function ShiftBadge({ shift }: { shift: string }) {
-  const style = getShiftStyle(shift)
+function ShiftBadge({ shift, leaveType }: { shift: string; leaveType?: LeaveType | null }) {
+  const leaveStyle = shift === 'SPECIAL' ? getLeaveTypeStyle(leaveType) : null
+  const style = leaveStyle ?? getShiftStyle(shift)
+  if (leaveStyle) {
+    return (
+      <span
+        className="inline-flex h-7 w-10 items-center justify-center rounded text-xs font-semibold"
+        style={{ backgroundColor: leaveStyle.bg, color: leaveStyle.text }}
+      >
+        {leaveStyle.label}
+      </span>
+    )
+  }
   return (
     <span className={cn('inline-flex h-7 w-10 items-center justify-center rounded text-xs font-semibold', style.bg, style.text)}>
       {style.label}

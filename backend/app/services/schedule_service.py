@@ -1,8 +1,16 @@
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.database.models import Employee, PreviousMonthLink, ScheduleEntry, now_iso
+from app.database.models import (
+    DesignatedOffDay,
+    Employee,
+    PreviousMonthLink,
+    ScheduleEntry,
+    SpecialLeave,
+    now_iso,
+)
 from app.schemas.schedule import ScheduleEntryCreate, ScheduleEntryUpdate
+from app.scheduler.off_count import count_off_blocks
 
 import calendar
 import json
@@ -51,12 +59,22 @@ def get_month_view(
             by_emp[entry.employee_id][entry.day] = entry.shift
             src_by_emp[entry.employee_id][entry.day] = entry.source
 
+    leave_by_emp: dict[int, dict[int, str]] = {}
+    for lv in db.scalars(
+        select(SpecialLeave).where(
+            SpecialLeave.year == year, SpecialLeave.month == month
+        )
+    ):
+        leave_by_emp.setdefault(lv.employee_id, {})[lv.day] = lv.leave_type
+
     schedule: dict[str, list[str]] = {}
     sources: dict[str, list[str]] = {}
+    leave_details: dict[str, dict[int, str]] = {}
     for emp in employees:
         schedule[emp.name] = [by_emp[emp.id].get(d, "OFF") for d in range(1, num_days + 1)]
         sources[emp.name] = [src_by_emp[emp.id].get(d, "auto") for d in range(1, num_days + 1)]
-    return {"schedule": schedule, "sources": sources}
+        leave_details[emp.name] = leave_by_emp.get(emp.id, {})
+    return {"schedule": schedule, "sources": sources, "leave_details": leave_details}
 
 
 def replace_month_schedule(
@@ -141,13 +159,26 @@ def delete_entry(db: Session, entry: ScheduleEntry) -> None:
 
 
 def upsert_cell(
-    db: Session, emp_id: int, year: int, month: int, day: int, shift: str
+    db: Session,
+    emp_id: int,
+    year: int,
+    month: int,
+    day: int,
+    shift: str,
+    leave_type: str | None = None,
+    reason: str | None = None,
 ) -> ScheduleEntry:
     emp = db.get(Employee, emp_id)
     if emp is None or not emp.is_active:
         raise ValueError("員工不存在或已離職")
     if shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{shift}")
+
+    from app.services import status_service
+
+    status = status_service.get_status(db, year, month)
+    if status == "locked":
+        raise PermissionError("班表已鎖定，無法修改")
 
     existing = db.scalars(
         select(ScheduleEntry).where(
@@ -160,21 +191,72 @@ def upsert_cell(
     if existing is not None and existing.source == "night_input":
         raise PermissionError("大夜專職班次請至大夜班表頁面修改")
 
+    old_shift = existing.shift if existing is not None else "OFF"
+
+    # Sync leave/designated records with the new cell value.
+    if shift == "SPECIAL":
+        lt = leave_type or "SPECIAL"
+        sl = db.scalars(
+            select(SpecialLeave).where(
+                SpecialLeave.employee_id == emp_id,
+                SpecialLeave.year == year,
+                SpecialLeave.month == month,
+                SpecialLeave.day == day,
+            )
+        ).first()
+        if sl is None:
+            db.add(
+                SpecialLeave(
+                    employee_id=emp_id, year=year, month=month, day=day, leave_type=lt
+                )
+            )
+        else:
+            sl.leave_type = lt
+        drec = db.scalars(
+            select(DesignatedOffDay).where(
+                DesignatedOffDay.employee_id == emp_id,
+                DesignatedOffDay.year == year,
+                DesignatedOffDay.month == month,
+                DesignatedOffDay.day == day,
+            )
+        ).first()
+        if drec is not None:
+            db.delete(drec)
+    else:
+        sl = db.scalars(
+            select(SpecialLeave).where(
+                SpecialLeave.employee_id == emp_id,
+                SpecialLeave.year == year,
+                SpecialLeave.month == month,
+                SpecialLeave.day == day,
+            )
+        ).first()
+        if sl is not None:
+            db.delete(sl)
+
     if existing is not None:
         existing.shift = shift
         existing.source = "manual"
         existing.updated_at = now_iso()
-        db.commit()
-        db.refresh(existing)
-        return existing
-    entry = ScheduleEntry(
-        employee_id=emp_id, year=year, month=month, day=day,
-        shift=shift, source="manual",
-    )
-    db.add(entry)
+    else:
+        existing = ScheduleEntry(
+            employee_id=emp_id, year=year, month=month, day=day,
+            shift=shift, source="manual",
+        )
+        db.add(existing)
+
+    db.flush()
+
+    if status == "published":
+        from app.services import change_log_service
+
+        change_log_service.record_change(
+            db, year, month, emp_id, day, old_shift, shift, reason
+        )
+
     db.commit()
-    db.refresh(entry)
-    return entry
+    db.refresh(existing)
+    return existing
 
 
 def validate_cell(
@@ -248,14 +330,12 @@ def validate_cell(
         if new_shift == "D" and next_shift == "M":
             v("H5", f"{month}/{day} D → 次日 M 違規：D 班隔天不可接 M 班")
 
-    # S2/S3/S4
+    # S2/S3
     def soft_trans(cur, nxt, label):
         if cur == "B" and nxt == "A":
             w("S2", f"{label} B→A 盡量避免")
         if cur == "C" and nxt == "B":
             w("S3", f"{label} C→B 盡量避免")
-        if cur == "C" and nxt == "D":
-            w("S4", f"{label} C→D 盡量減少")
 
     if prev_shift is not None:
         soft_trans(prev_shift, new_shift, f"前日→{month}/{day}")
@@ -273,23 +353,10 @@ def validate_cell(
             v("H4", f"連續 6 天上班（含跨月）含 {month}/{day}")
             break
 
-    # H12: recompute OFF runs
-    runs = 0
-    run_len = 0
-    prev_off = False
-    for s in shifts:
-        if s == "OFF":
-            run_len = run_len + 1 if prev_off else 1
-            prev_off = True
-        else:
-            if prev_off and run_len >= 2:
-                runs += 1
-            run_len = 0
-            prev_off = False
-    if prev_off and run_len >= 2:
-        runs += 1
-    if runs > 2:
-        v("H12", f"連休 {runs} 次（應 <=2）")
+    # H12: recompute 連休 blocks
+    runs, _ = count_off_blocks(shifts)
+    if runs != 2:
+        v("H12", f"連休 {runs} 次（應為 2）")
 
     return {"violations": violations, "warnings": warnings}
 
