@@ -1,6 +1,6 @@
 # 飯店排班系統 — Release Notes
 
-## v1.0.2-beta
+## v1.0.2
 
 ### 本版更新
 - 新增「瀏覽器關閉偵測」：關閉瀏覽器分頁後，系統自動結束後台程式，不需再從工作管理員手動結束
@@ -8,17 +8,18 @@
   - 意外當機／強制關閉瀏覽器：心跳超時（約 90 秒）後自動關閉
   - 重新整理分頁不會誤關（延遲關閉期間收到新心跳即取消）
 - 新增右上角「關閉系統」按鈕：一鍵結束整個程式（含確認提示）
+- 新增跨平台打包：Windows + Linux 雙平台 Release（GitHub Actions 自動打包）
 - 系統版本號升為 1.0.2
 
 ### 下載方式
-1. 下載 hotel-scheduler.zip
-2. 解壓縮到任意資料夾
-3. 雙擊 hotel-scheduler.exe
-4. 瀏覽器會自動開啟 http://localhost:8000
-5. 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
+- Windows：下載 `hotel-scheduler-*-windows-x64.zip`，解壓縮後雙擊 `hotel-scheduler.exe`
+- Linux：下載 `hotel-scheduler-*-linux-x64.tar.gz`，解壓縮後執行 `./hotel-scheduler`
+- 啟動後瀏覽器會自動開啟 http://localhost:8000
+- 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
 
 ### 系統需求
 - Windows 10/11（64 位元）
+- Linux（64 位元）
 - 不需安裝任何其他軟體
 
 ### 功能

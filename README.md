@@ -1,16 +1,19 @@
 # 清翼居府中館 飯店排班系統
 
+目前版本：1.0.2
+
 ## 系統需求
 - Windows 10/11（64 位元）
+- Linux（64 位元）
 - 不需安裝任何其他軟體（打包版）
 
 ## 使用方式（打包版）
-1. 解壓縮 hotel-scheduler.zip
-2. 雙擊 `hotel-scheduler.exe`
-3. 瀏覽器自動開啟 http://localhost:8000
-4. 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
+- Windows：解壓縮 `hotel-scheduler-*-windows-x64.zip`，雙擊 `hotel-scheduler.exe`
+- Linux：解壓縮 `hotel-scheduler-*-linux-x64.tar.gz`，執行 `./hotel-scheduler`
+- 啟動後瀏覽器自動開啟 http://localhost:8000
+- 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
 
-資料庫 `data/scheduler.db` 與 exe 同層，整個資料夾可複製到其他 Windows 機器直接使用。
+資料庫 `data/scheduler.db` 與執行檔同層，整個資料夾可複製到其他機器直接使用。
 
 ## 功能
 - A/B/C/D/M 班排班（CP-SAT 求解引擎，13 條硬性 + 8 條軟性約束）
