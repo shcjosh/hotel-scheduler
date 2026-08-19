@@ -18,9 +18,11 @@ opencode 每次開啟本專案時會自動載入本文件，作為開發與協�
 ## 標準開發流程
 1. 開 branch `X.Y.Z-beta`（從 main 分出），`version.py = X.Y.Z-beta`
 2. 討論 → 實作 → 本地驗證（跑 `backend/tests/`）
+   - 同時更新 `README.md`（使用/功能說明）與 `RELEASE-NOTES.md`（新增 `vX.Y.Z-beta` 章節），
+     記錄本次 beta 的新功能與規則調整
 3. push branch → `build` workflow 自動產雙平台 artifact（windows-x64 + linux-x64），**不建立 Release**
 4. 下載 artifact 到實機測試（Windows + Linux）
-5. 測試通過 → merge 進 main，`version.py` 改為正式 `X.Y.Z`
+5. 測試通過 → merge 進 main，`version.py` 改為正式 `X.Y.Z`，`RELEASE-NOTES.md` 標題同步由 `vX.Y.Z-beta` 改為 `vX.Y.Z`
 6. 在 main 打 annotated tag `vX.Y.Z` → `release` workflow 觸發正式 Release（雙平台）
 7. 提交前檢查：`git status` / `git diff` / `git log --oneline -10`，只 stage 該 stage 的檔案
 
