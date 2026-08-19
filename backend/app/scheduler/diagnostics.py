@@ -214,7 +214,7 @@ def diagnose_detailed(data):
         mandatory = _mandatory_weekend_off(data, emp.id)
         if mandatory > 2:
             causes.append(_cause("leave_weekend_conflict", "critical",
-                f"{emp.name} 平日請假過多，被迫週末休假 {mandatory} 天（H3 每月最多 1 個週六 + 1 個週日）",
+                f"{emp.name} 平日請假過多，被迫週末休假 {mandatory} 天（H3 週六+週日加總最多 2 天）",
                 "減少平日請假，或將部分請假改到週末/特休"))
 
     # H2 weekly-off shortage: special leave covering a whole week leaves no OFF
