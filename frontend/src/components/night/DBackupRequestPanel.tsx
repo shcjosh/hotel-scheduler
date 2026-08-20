@@ -37,7 +37,7 @@ export function DBackupRequestPanel({
       <div className="flex items-start gap-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
         <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
         <span>
-          標記為 D 班備援日時，C+D 備援人員當天將改排 D 班，系統會自動找人遞補 C 班。
+          標記為 D 班備援日時，依序由 C+D 備援人員、管理職當天改排 D 班，系統會自動找人遞補 C 班。
         </span>
       </div>
 
@@ -82,12 +82,21 @@ export function DBackupRequestPanel({
                     {getWeekdayLabel(getWeekday(year, month, r.day))}
                   </td>
                   <td className="px-2 py-1.5">
-                    <span className={cn(
-                      'rounded px-2 py-0.5 text-xs',
-                      r.status === 'assigned' ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700',
-                    )}>
-                      {r.status === 'assigned' ? '已指派' : '待指派'}
-                    </span>
+                    {r.unfillable ? (
+                      <div>
+                        <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">無法指派</span>
+                        <div className="mt-0.5 text-[10px] text-red-500">{r.reason}</div>
+                      </div>
+                    ) : r.assignee_name ? (
+                      <span className={cn(
+                        'rounded px-2 py-0.5 text-xs',
+                        r.assignee_role === 'manager' ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700',
+                      )}>
+                        {r.assignee_role === 'manager' ? '管理職 ' : 'CD備援 '}{r.assignee_name}
+                      </span>
+                    ) : (
+                      <span className="rounded bg-orange-100 px-2 py-0.5 text-xs text-orange-700">待指派</span>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-right">
                     <button

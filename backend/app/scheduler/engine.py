@@ -41,11 +41,22 @@ def build_fixed(data: ShiftScheduleData) -> dict[tuple[int, int], str]:
     return fixed
 
 
+def _build_failure(data: ShiftScheduleData, solve_time: float) -> SolveResult:
+    detailed = diagnose_detailed(data)
+    msgs = [c["message"] for c in detailed["likely_causes"]]
+    error = "排班失敗（無合法解）"
+    if msgs:
+        error += "：" + "; ".join(msgs)
+    return SolveResult(False, None, error, solve_time, msgs, None, None, detailed)
+
+
 def solve(data: ShiftScheduleData, max_time: float = 30.0) -> SolveResult:
     model = cp_model.CpModel()
     n = len(data.employees)
     if n == 0:
         return SolveResult(False, None, "無員工資料", 0.0)
+    if data.d_backup_unfillable:
+        return _build_failure(data, 0.0)
 
     x: dict[int, dict[int, dict[str, cp_model.BoolVar]]] = {}
     for i in range(n):
@@ -88,12 +99,7 @@ def solve(data: ShiftScheduleData, max_time: float = 30.0) -> SolveResult:
             stats,
         )
 
-    detailed = diagnose_detailed(data)
-    msgs = [c["message"] for c in detailed["likely_causes"]]
-    error = "排班失敗（無合法解）"
-    if msgs:
-        error += "：" + "; ".join(msgs)
-    return SolveResult(False, None, error, solve_time, msgs, None, None, detailed)
+    return _build_failure(data, solve_time)
 
 
 def _extract_soft_stats(solver, trackers) -> dict:

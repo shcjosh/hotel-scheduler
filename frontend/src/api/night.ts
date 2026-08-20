@@ -12,6 +12,10 @@ export interface BackupRequestData {
   day: number
   status: string
   assigned_employee_id: number | null
+  assignee_name: string | null
+  assignee_role: string | null
+  unfillable: boolean
+  reason: string | null
 }
 
 export interface NightScheduleData {
@@ -84,6 +88,14 @@ export async function addBackupRequest(
 
 export async function removeBackupRequest(id: number): Promise<void> {
   await apiClient.delete(`/night/backup-request/${id}`)
+}
+
+export async function removeBackupRequestByDay(
+  year: number,
+  month: number,
+  day: number,
+): Promise<void> {
+  await apiClient.delete(`/night/backup-request/${year}/${month}/${day}`)
 }
 
 export async function clearNightSchedule(

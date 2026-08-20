@@ -34,6 +34,7 @@ export function EmployeeStatsTable({
             <th className="px-2 py-2 text-right">週末上班</th>
             <th className="px-2 py-2 text-right">最長連班</th>
             <th className="px-2 py-2 text-right">連休次數</th>
+            <th className="px-2 py-2 text-right">上月連休</th>
             <th className="px-2 py-2 text-right">偏好滿足</th>
           </tr>
         </thead>
@@ -60,6 +61,16 @@ export function EmployeeStatsTable({
               </td>
               <td className={cn('px-2 py-1.5 text-right', e.consecutive_off_count === 2 ? 'text-green-600' : 'font-bold text-orange-600')}>
                 {e.consecutive_off_count}/2
+              </td>
+              <td className="px-2 py-1.5 text-right">
+                {e.last_month_consecutive_off == null ? (
+                  <span className="text-gray-400">-</span>
+                ) : (
+                  <span className={e.prefer_two_off ? 'font-semibold text-blue-700' : 'text-gray-600'}>
+                    {e.last_month_consecutive_off}/2
+                    {e.prefer_two_off && <span className="ml-1 rounded bg-blue-100 px-1 py-0.5 text-[10px]">優先2次</span>}
+                  </span>
+                )}
               </td>
               <td className="px-2 py-1.5 text-right text-gray-600">{e.preferred_satisfied}</td>
             </tr>

@@ -55,6 +55,14 @@ def remove_backup_request(req_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
+@router.delete("/night/backup-request/{year}/{month}/{day}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_backup_request_by_day(year: int, month: int, day: int, db: Session = Depends(get_db)):
+    try:
+        night_service.remove_backup_request_by_day(db, year, month, day)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
 @router.get("/night/{year}/{month}/validation", response_model=NightValidationResponse)
 def validate_night(year: int, month: int, db: Session = Depends(get_db)):
     return night_service.validate_night_schedule(db, year, month)

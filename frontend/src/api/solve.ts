@@ -6,6 +6,7 @@ export interface SolveCause {
   severity: string
   message: string
   suggestion: string
+  day?: number
 }
 
 export interface SolveDiagnostics {

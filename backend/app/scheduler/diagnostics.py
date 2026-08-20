@@ -129,6 +129,14 @@ def diagnose_detailed(data):
                 f"{day} 號備援日無其他員工可遞補 C 班（可上 C 者：{[e.name for e in candidates]}，當天固定休：{fixed}）",
                 "調整該日其他人的休假，或增加可上 C 班的員工"))
 
+    for day, reason in data.d_backup_unfillable.items():
+        causes.append({
+            **_cause("d_backup_unfillable", "critical",
+                f"{data.month}/{day} D 班備援無法指派：{reason}",
+                "指派其他 CD 備援/管理職，或略過此備援日"),
+            "day": day,
+        })
+
     for emp in data.employees:
         prev = data.previous_month.get(emp.id)
         if not prev:

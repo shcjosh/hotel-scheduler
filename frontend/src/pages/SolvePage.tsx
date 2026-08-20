@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Sparkles, Loader2, CheckCircle2, AlertOctagon, ArrowRight } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { solveSchedule, type SolveDiagnostics } from '../api/solve'
+import { removeBackupRequestByDay } from '../api/night'
 import { getScheduleStatus } from '../api/scheduleMeta'
 import { useQuery } from '@tanstack/react-query'
 import type { SolveResponse } from '../types'
@@ -168,15 +169,31 @@ export function SolvePage() {
       )}
 
       {result && !result.success && (
-        <SolveFailure result={result} onRetry={handleSolve} month={currentMonth} />
+        <SolveFailure result={result} onRetry={handleSolve} year={currentYear} month={currentMonth} />
       )}
     </div>
   )
 }
 
-function SolveFailure({ result, onRetry, month }: { result: SolveResponse; onRetry: () => void; month: number }) {
+function SolveFailure({ result, onRetry, year, month }: { result: SolveResponse; onRetry: () => void; year: number; month: number }) {
   const diag = result.diagnostics as SolveDiagnostics | null
   const supportReqs = result.support_requests ?? []
+  const [skipping, setSkipping] = useState(false)
+  const unfillableDays = (diag?.likely_causes ?? [])
+    .filter((c) => c.type === 'd_backup_unfillable' && c.day != null)
+    .map((c) => c.day as number)
+
+  async function handleSkip() {
+    setSkipping(true)
+    try {
+      for (const day of unfillableDays) {
+        await removeBackupRequestByDay(year, month, day)
+      }
+      onRetry()
+    } finally {
+      setSkipping(false)
+    }
+  }
   return (
     <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
       <div className="flex items-center gap-2 font-semibold text-red-700">
@@ -215,7 +232,14 @@ function SolveFailure({ result, onRetry, month }: { result: SolveResponse; onRet
           員工數：{diag.constraint_analysis.employee_count}（非大夜 {diag.constraint_analysis.non_night_count}，A可上 {diag.constraint_analysis.a_capable}，C可上 {diag.constraint_analysis.c_capable}）
         </div>
       )}
-      <Button variant="outline" onClick={onRetry}>重新排班</Button>
+      <div className="flex gap-2">
+        {unfillableDays.length > 0 && (
+          <Button variant="outline" onClick={handleSkip} disabled={skipping}>
+            {skipping ? '略過中…' : '略過無法指派的備援日並重排'}
+          </Button>
+        )}
+        <Button variant="outline" onClick={onRetry}>重新排班</Button>
+      </div>
     </div>
   )
 }

@@ -16,7 +16,7 @@ def _source_for(emp, day, shift, data) -> str:
         return "designated"
     if day in data.special_leaves.get(emp.id, []):
         return "special"
-    if emp.role == "cd_backup" and data.d_backup_assignments.get(day) == emp.id:
+    if data.d_backup_assignments.get(day) == emp.id:
         return "backup"
     return "auto"
 
@@ -57,7 +57,7 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
     result = engine.solve(data, max_time=req.max_solve_time)
     support_requests = None
 
-    if not result.success:
+    if not result.success and not data.d_backup_unfillable:
         gaps = _coverage_gaps(data)
         support_requests = support_service.generate_from_gaps(db, gaps, req.year, req.month)
         if support_requests:

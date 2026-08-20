@@ -22,6 +22,10 @@ class BackupRequestData(BaseModel):
     day: int
     status: str
     assigned_employee_id: int | None
+    assignee_name: str | None = None
+    assignee_role: str | None = None
+    unfillable: bool = False
+    reason: str | None = None
 
 
 class NightScheduleResponse(BaseModel):
@@ -43,6 +47,10 @@ class BackupRequestResponse(BaseModel):
     day: int
     status: str
     assigned_employee_id: int | None
+    assignee_name: str | None = None
+    assignee_role: str | None = None
+    unfillable: bool = False
+    reason: str | None = None
 
 
 class NightValidationResponse(BaseModel):

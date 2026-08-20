@@ -62,6 +62,12 @@ def _preferred_satisfied(emp: Employee, shifts: list[str | None]) -> int:
     return sum(1 for s in shifts if s == emp.preferred_shift)
 
 
+def _prev_month(year: int, month: int) -> tuple[int, int]:
+    if month == 1:
+        return year - 1, 12
+    return year, month - 1
+
+
 def get_month_stats(db: Session, year: int, month: int) -> dict:
     num_days = calendar.monthrange(year, month)[1]
     view = schedule_service.get_month_view(db, year, month, num_days)
@@ -76,6 +82,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     saturdays = [d for d in range(1, num_days + 1) if date(year, month, d).weekday() == 5]
     sundays = [d for d in range(1, num_days + 1) if date(year, month, d).weekday() == 6]
     weekend_set = set(saturdays + sundays)
+    ly, lm = _prev_month(year, month)
 
     leave_counts_by_emp: dict[int, dict[str, int]] = {}
     for lv in db.scalars(
@@ -101,6 +108,17 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
         work_days = sum(counts[s] for s in WORK_SHIFTS)
         weekend_work = sum(1 for i, s in enumerate(row) if (i + 1) in weekend_set and s in WORK_SHIFTS)
         consec_off = off_day_service.count_consecutive_off(db, emp.id, year, month)[0]
+        has_prev = db.scalars(
+            select(ScheduleEntry.id).where(
+                ScheduleEntry.employee_id == emp.id,
+                ScheduleEntry.year == ly,
+                ScheduleEntry.month == lm,
+            ).limit(1)
+        ).first() is not None
+        last_off = (
+            off_day_service.count_consecutive_off(db, emp.id, ly, lm)[0]
+            if has_prev else None
+        )
         leave_counts = leave_counts_by_emp.get(emp.id, {})
         per_employee.append({
             "employee_id": emp.id,
@@ -115,6 +133,8 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
             "weekend_work_count": weekend_work,
             "max_consecutive_work": _max_consecutive_work(row),
             "consecutive_off_count": consec_off,
+            "last_month_consecutive_off": last_off,
+            "prefer_two_off": last_off is not None and last_off < 2,
             "preferred_satisfied": _preferred_satisfied(emp, row),
         })
 

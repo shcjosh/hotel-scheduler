@@ -43,20 +43,29 @@ def get_night_schedule(db: Session, year: int, month: int) -> dict:
             ).order_by(DBackupRequest.day)
         )
     )
+    data = data_loader.load(db, year, month)
+    emp_by_id = {e.id: e for e in data.employees}
+
+    def _req(b: DBackupRequest) -> dict:
+        eid = data.d_backup_assignments.get(b.day)
+        emp = emp_by_id.get(eid) if eid is not None else None
+        return {
+            "id": b.id,
+            "year": b.year,
+            "month": b.month,
+            "day": b.day,
+            "status": b.status,
+            "assigned_employee_id": eid,
+            "assignee_name": emp.name if emp else None,
+            "assignee_role": emp.role if emp else None,
+            "unfillable": b.day in data.d_backup_unfillable,
+            "reason": data.d_backup_unfillable.get(b.day),
+        }
+
     return {
         "night_schedule": schedule,
         "night_employees": [{"id": e.id, "name": e.name} for e in night_emps],
-        "d_backup_requests": [
-            {
-                "id": b.id,
-                "year": b.year,
-                "month": b.month,
-                "day": b.day,
-                "status": b.status,
-                "assigned_employee_id": b.assigned_employee_id,
-            }
-            for b in backups
-        ],
+        "d_backup_requests": [_req(b) for b in backups],
     }
 
 
@@ -143,6 +152,20 @@ def remove_backup_request(db: Session, req_id: int) -> None:
     rec = db.get(DBackupRequest, req_id)
     if rec is None:
         raise ValueError("備援指示不存在")
+    db.delete(rec)
+    db.commit()
+
+
+def remove_backup_request_by_day(db: Session, year: int, month: int, day: int) -> None:
+    rec = db.scalars(
+        select(DBackupRequest).where(
+            DBackupRequest.year == year,
+            DBackupRequest.month == month,
+            DBackupRequest.day == day,
+        )
+    ).first()
+    if rec is None:
+        raise ValueError("該日無 D 班備援指示")
     db.delete(rec)
     db.commit()
 

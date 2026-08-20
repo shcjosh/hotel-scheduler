@@ -13,6 +13,8 @@ export interface EmployeeStats {
   weekend_work_count: number
   max_consecutive_work: number
   consecutive_off_count: number
+  last_month_consecutive_off: number | null
+  prefer_two_off: boolean
   preferred_satisfied: number
 }
 
