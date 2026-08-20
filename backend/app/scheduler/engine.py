@@ -5,7 +5,7 @@ from ortools.sat.python import cp_model
 
 from app.scheduler.constraints import hard, soft
 from app.scheduler.data_loader import ShiftScheduleData
-from app.scheduler.diagnostics import diagnose
+from app.scheduler.diagnostics import diagnose_detailed
 
 ALL_SHIFTS = hard.ALL_SHIFTS
 
@@ -88,12 +88,12 @@ def solve(data: ShiftScheduleData, max_time: float = 30.0) -> SolveResult:
             stats,
         )
 
-    issues = diagnose(data)
+    detailed = diagnose_detailed(data)
+    msgs = [c["message"] for c in detailed["likely_causes"]]
     error = "排班失敗（無合法解）"
-    if issues:
-        error += "：" + "; ".join(issues)
-    from app.scheduler.diagnostics import diagnose_detailed
-    return SolveResult(False, None, error, solve_time, issues, None, None, diagnose_detailed(data))
+    if msgs:
+        error += "：" + "; ".join(msgs)
+    return SolveResult(False, None, error, solve_time, msgs, None, None, detailed)
 
 
 def _extract_soft_stats(solver, trackers) -> dict:

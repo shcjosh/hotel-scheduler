@@ -33,6 +33,16 @@ ROLE_DEFAULTS: dict[str, dict] = {
 }
 
 
+def _validate_available_shifts(v: list[str] | None) -> list[str] | None:
+    if v is None:
+        return v
+    if len(v) == 0:
+        raise ValueError("available_shifts must not be empty")
+    if len(set(v)) != len(v):
+        raise ValueError("available_shifts must not contain duplicates")
+    return v
+
+
 class EmployeeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     role: Role
@@ -40,21 +50,9 @@ class EmployeeCreate(BaseModel):
     preferred_shift: Shift | None = None
     scheduling_mode: SchedulingMode | None = None
 
-    @field_validator("available_shifts")
-    @classmethod
-    def _validate_shifts(cls, v: list[str] | None) -> list[str] | None:
-        if v is None:
-            return v
-        if len(v) == 0:
-            raise ValueError("available_shifts must not be empty")
-        if len(set(v)) != len(v):
-            raise ValueError("available_shifts must not contain duplicates")
-        return v
-
-    @field_validator("preferred_shift")
-    @classmethod
-    def _validate_preferred(cls, v: str | None) -> str | None:
-        return v
+    _validate_available_shifts = field_validator("available_shifts")(
+        _validate_available_shifts
+    )
 
 
 class EmployeeUpdate(BaseModel):
@@ -65,16 +63,9 @@ class EmployeeUpdate(BaseModel):
     scheduling_mode: SchedulingMode | None = None
     is_active: int | None = Field(default=None, ge=0, le=1)
 
-    @field_validator("available_shifts")
-    @classmethod
-    def _validate_shifts(cls, v: list[str] | None) -> list[str] | None:
-        if v is None:
-            return v
-        if len(v) == 0:
-            raise ValueError("available_shifts must not be empty")
-        if len(set(v)) != len(v):
-            raise ValueError("available_shifts must not contain duplicates")
-        return v
+    _validate_available_shifts = field_validator("available_shifts")(
+        _validate_available_shifts
+    )
 
 
 class EmployeeOut(BaseModel):

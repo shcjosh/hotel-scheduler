@@ -1,12 +1,9 @@
 import type { EmployeeStats } from '../../api/stats'
 import { ROLE_LABELS } from '../../utils/roles'
 import { cn } from '../../utils/cn'
+import { getShiftStyle } from '../../utils/shift'
 
 const SHIFT_COLS = ['A', 'B', 'C', 'D', 'M', 'OFF'] as const
-const SHIFT_COLORS: Record<string, string> = {
-  A: 'text-blue-700', B: 'text-orange-700', C: 'text-purple-700',
-  D: 'text-indigo-700', M: 'text-teal-700', OFF: 'text-red-700',
-}
 
 interface LeaveTypeInfo {
   code: string
@@ -46,7 +43,7 @@ export function EmployeeStatsTable({
               <td className="sticky left-0 bg-white px-3 py-1.5 font-medium text-gray-800">{e.employee_name}</td>
               <td className="px-2 py-1.5 text-gray-600">{ROLE_LABELS[e.role as keyof typeof ROLE_LABELS] ?? e.role}</td>
               {SHIFT_COLS.map((s) => (
-                <td key={s} className={cn('px-2 py-1.5 text-right font-medium', SHIFT_COLORS[s])}>
+                <td key={s} className={cn('px-2 py-1.5 text-right font-medium', getShiftStyle(s).text)}>
                   {e.shift_counts[s] ?? 0}
                 </td>
               ))}

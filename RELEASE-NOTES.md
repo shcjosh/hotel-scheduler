@@ -1,5 +1,16 @@
 # 飯店排班系統 — Release Notes
 
+## v1.0.5-beta
+
+### 本版更新
+- 程式碼精簡（無功能變更）：
+  - 移除已棄用的啟動入口 `backend/app/main.py`（實際入口為 `run.py`）
+  - 刪除重複的排班失敗診斷邏輯，統一由 `diagnose_detailed` 產出
+  - 移除未使用的前端依賴 `date-fns`、`class-variance-authority`
+  - 移除 `requirements.txt` 中重複的 `ortools` 行
+  - 整併重複的輔助函式（`_emp_index`、`_parse_shifts`、`_prev_day1`、班次色盤等）
+- 系統版本號升為 1.0.5-beta
+
 ## v1.0.4
 
 ### 本版更新

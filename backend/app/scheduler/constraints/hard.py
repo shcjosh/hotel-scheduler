@@ -5,10 +5,6 @@ REST_SHIFTS = ["OFF", "SPECIAL"]
 DEFAULT_NIGHT_RULES = {"H2", "H3", "H4", "H12"}
 
 
-def _emp_index(data):
-    return {emp.id: i for i, emp in enumerate(data.employees)}
-
-
 def _rule_enabled(data, emp, rule):
     """Night employees may have per-rule overrides; others always enabled."""
     if emp.role != "night":
@@ -91,7 +87,7 @@ def add_h5_shift_transition_hard(model, x, data, fixed):
 
 
 def add_h6_designated_off(model, x, data, fixed):
-    idx = _emp_index(data)
+    idx = data.emp_index()
     for emp_id, days in data.designated_off_days.items():
         i = idx.get(emp_id)
         if i is None:
@@ -124,7 +120,7 @@ def _prev_is_rest(prev_list, j):
 
 
 def add_h8_cross_month_transition(model, x, data, fixed):
-    idx = _emp_index(data)
+    idx = data.emp_index()
     for emp in data.employees:
         i = idx[emp.id]
         prev = data.previous_month.get(emp.id)
@@ -163,7 +159,7 @@ def add_h8_cross_month_transition(model, x, data, fixed):
 def add_h9_cross_month_week(model, x, data, fixed):
     if not data.weeks:
         return
-    idx = _emp_index(data)
+    idx = data.emp_index()
     w0 = data.weeks[0]
     weekday_day1 = data.dates[0].weekday()
     for emp in data.employees:
@@ -194,7 +190,7 @@ def add_h10_one_shift_per_day(model, x, data, fixed):
 
 
 def add_h11_d_backup(model, x, data, fixed):
-    idx = _emp_index(data)
+    idx = data.emp_index()
     n = len(data.employees)
     for day, emp_id in data.d_backup_assignments.items():
         i = idx.get(emp_id)
@@ -253,7 +249,7 @@ def add_h12_consecutive_off(model, x, data, fixed):
 
 
 def add_h13_night_manual(model, x, data, fixed):
-    idx = _emp_index(data)
+    idx = data.emp_index()
     for emp in data.employees:
         if emp.role != "night":
             continue

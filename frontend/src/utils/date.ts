@@ -12,14 +12,6 @@ export function getWeekdayLabel(weekday: number): string {
   return labels[weekday] ?? ''
 }
 
-export function isSaturday(year: number, month: number, day: number): boolean {
-  return getWeekday(year, month, day) === 6
-}
-
-export function isSunday(year: number, month: number, day: number): boolean {
-  return getWeekday(year, month, day) === 0
-}
-
 export function isWeekend(year: number, month: number, day: number): boolean {
   const w = getWeekday(year, month, day)
   return w === 0 || w === 6

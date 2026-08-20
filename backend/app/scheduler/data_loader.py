@@ -16,6 +16,7 @@ from app.database.models import (
     SpecialLeave,
     SupportRequest,
 )
+from app.services.employee_service import _from_json
 
 
 @dataclass
@@ -56,18 +57,6 @@ class ShiftScheduleData:
         return shift in self.external_support_all or shift in self.external_support.get(day, set())
 
 
-def _parse_shifts(raw: str | None) -> list[str]:
-    import json
-
-    if not raw:
-        return []
-    try:
-        value = json.loads(raw)
-    except (TypeError, ValueError):
-        return []
-    return value if isinstance(value, list) else []
-
-
 def load(db: Session, year: int, month: int) -> ShiftScheduleData:
     num_days = calendar.monthrange(year, month)[1]
     dates = [date(year, month, d) for d in range(1, num_days + 1)]
@@ -86,7 +75,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             id=e.id,
             name=e.name,
             role=e.role,
-            available_shifts=_parse_shifts(e.available_shifts),
+            available_shifts=_from_json(e.available_shifts),
             preferred_shift=e.preferred_shift,
             scheduling_mode=e.scheduling_mode,
         )

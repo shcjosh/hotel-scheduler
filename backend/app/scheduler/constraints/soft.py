@@ -4,13 +4,7 @@ from app.scheduler.constraints.hard import (
     _rule_enabled,
     build_off_block_counters,
 )
-
-
-def _prev_day1(data, emp_id):
-    prev = data.previous_month.get(emp_id)
-    if not prev:
-        return None
-    return prev[-1]
+from app.scheduler.validator import _prev_day1
 
 
 def add_s1_avoid_5_consecutive(model, x, data, fixed):
