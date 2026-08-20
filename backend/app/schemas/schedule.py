@@ -89,3 +89,36 @@ class ScheduleValidationResponse(BaseModel):
     violations: list[dict]
     warnings: list[dict]
     per_rule_summary: dict[str, RuleStat]
+
+
+class AdjustPreviewRequest(BaseModel):
+    year: int = Field(ge=2000, le=2100)
+    month: int = Field(ge=1, le=12)
+    employee_id: int
+    days: list[int]
+    leave_type: str = "SPECIAL"
+
+
+class AdjustChange(BaseModel):
+    employee_id: int
+    day: int
+    new_shift: str
+    leave_type: str | None = None
+
+
+class AdjustApplyRequest(BaseModel):
+    year: int = Field(ge=2000, le=2100)
+    month: int = Field(ge=1, le=12)
+    changes: list[AdjustChange]
+    reason: str | None = None
+
+
+class AdjustPreviewResponse(BaseModel):
+    success: bool
+    error: str | None = None
+    diagnostics: dict | None = None
+    schedule: dict[str, list[str]] | None = None
+    changes: list[dict] = []
+    affected_employee_ids: list[int] = []
+    affected_count: int = 0
+    solve_time: float = 0.0

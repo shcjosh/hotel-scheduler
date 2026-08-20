@@ -1630,5 +1630,28 @@ K.6 D 班備援指派鏈（D Backup Assignment Chain，v1.0.6-beta 實作）
     - 管理職補 D 時，班表 source 標記為 "backup"。
     - 求解前引擎偵測 d_backup_unfillable 即回傳失敗，不進入求解。
 
+K.7 當月臨時異動（Temporary Adjustment，v1.0.7-beta 實作）
+================================================================================
+
+  動機:
+    月份已排班（甚至已發布）後，員工可能突發請假（如 8/20 得知 8/21-8/23 需請假），
+    需要以「影響最小」的方式局部重排，而不是整月重算。
+
+  目標（最少受影響人數 > 最少變動格數）:
+    1. 凍結過去日期（今天以前）不動。
+    2. 請假日固定為 SPECIAL（寫入 SpecialLeave，統計照算）。
+    3. 以現有班表為底重排：優先減少受影響人數，其次減少變動格數；
+       不使用原本 S1-S9 偏好（避免為了優化多改）。
+
+  流程:
+    選員工＋日期範圍＋假別 → 預覽 diff（dry-run）→ 確認套用。
+    套用時逐格寫入並記錄 change log（已發布月份）。
+
+  實作細節:
+    - engine.solve_adjust：凍結過去 + 新請假，Minimize(sum(受影響人)*BIG + sum(變動格))。
+    - adjust_service：preview（in-memory 注入請假、不解 DB）與 apply（逐格 upsert_cell）。
+    - API：POST /schedules/adjust/preview、POST /schedules/adjust/apply。
+    - 排班畫面預設顯示「下一個月」（當月通常已排班發布）。
+
 附錄結束
 ================================================================================

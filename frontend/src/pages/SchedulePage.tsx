@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CalendarX, History, Lock, Sparkles, Trash2, Unlock, Send } from 'lucide-react'
+import { CalendarX, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
@@ -21,6 +21,7 @@ import {
 import { ScheduleTable } from '../components/schedule/ScheduleTable'
 import { ShiftLegend } from '../components/schedule/ShiftLegend'
 import { CellEditModal } from '../components/schedule/CellEditModal'
+import { AdjustScheduleModal } from '../components/schedule/AdjustScheduleModal'
 import { ValidationReportPanel } from '../components/schedule/ValidationReport'
 import { SupportRequestPanel } from '../components/support/SupportRequestPanel'
 import { VersionHistoryDrawer } from '../components/schedule/VersionHistoryDrawer'
@@ -42,6 +43,7 @@ export function SchedulePage() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<{ empName: string; day: number } | null>(null)
   const [versionOpen, setVersionOpen] = useState(false)
+  const [adjustOpen, setAdjustOpen] = useState(false)
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -157,6 +159,11 @@ export function SchedulePage() {
               <Unlock className="mr-2 h-4 w-4" /> 解鎖
             </Button>
           )}
+          {!empty && data && status !== 'locked' && (
+            <Button variant="outline" onClick={() => setAdjustOpen(true)} className="text-gray-700">
+              <RefreshCw className="mr-2 h-4 w-4" /> 臨時異動
+            </Button>
+          )}
           <Button
             variant="outline"
             onClick={handleClear}
@@ -243,6 +250,18 @@ export function SchedulePage() {
         }}
         onDiff={diffSnapshots}
       />
+
+      {adjustOpen && data && (
+        <AdjustScheduleModal
+          year={currentYear}
+          month={currentMonth}
+          employees={employees}
+          leaveTypes={leaveTypes}
+          numDays={data.num_days}
+          onClose={() => setAdjustOpen(false)}
+          onApplied={() => invalidateAll()}
+        />
+      )}
     </div>
   )
 }

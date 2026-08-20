@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db
 from app.database.models import Employee
 from app.schemas.schedule import (
+    AdjustApplyRequest,
+    AdjustPreviewRequest,
+    AdjustPreviewResponse,
     CellUpdateRequest,
     MonthScheduleView,
     ScheduleEntryCreate,
@@ -16,7 +19,7 @@ from app.schemas.schedule import (
     ValidateCellRequest,
     ValidateCellResponse,
 )
-from app.services import schedule_service, status_service
+from app.services import adjust_service, schedule_service, status_service
 
 router = APIRouter()
 
@@ -47,6 +50,30 @@ def _validate_employee(db: Session, employee_id: int) -> None:
 @router.get("/schedules/{year}/{month}/validation", response_model=ScheduleValidationResponse)
 def get_schedule_validation(year: int, month: int, db: Session = Depends(get_db)):
     return schedule_service.get_validation_report(db, year, month)
+
+
+@router.post("/schedules/adjust/preview", response_model=AdjustPreviewResponse)
+def adjust_preview(req: AdjustPreviewRequest, db: Session = Depends(get_db)):
+    try:
+        return adjust_service.preview(
+            db, req.year, req.month, req.employee_id, req.days, req.leave_type
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+
+@router.post("/schedules/adjust/apply")
+def adjust_apply(req: AdjustApplyRequest, db: Session = Depends(get_db)):
+    try:
+        return adjust_service.apply(
+            db, req.year, req.month, [c.model_dump() for c in req.changes], req.reason
+        )
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
 
 @router.post("/schedules/validate-cell", response_model=ValidateCellResponse)

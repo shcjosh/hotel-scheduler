@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from datetime import date
 import os
 
 from ortools.sat.python import cp_model
@@ -98,6 +99,109 @@ def solve(data: ShiftScheduleData, max_time: float = 30.0) -> SolveResult:
             float(solver.ObjectiveValue()),
             stats,
         )
+
+    return _build_failure(data, solve_time)
+
+
+def _first_free_day(data: ShiftScheduleData, today: date | None) -> int:
+    """0-based index of the first day not frozen (days before it are in the past)."""
+    if today is None:
+        return 0
+    if (today.year, today.month) > (data.year, data.month):
+        return data.num_days
+    if (today.year, today.month) < (data.year, data.month):
+        return 0
+    return min(max(today.day - 1, 0), data.num_days)
+
+
+def solve_adjust(
+    data: ShiftScheduleData,
+    current: dict[str, list[str]],
+    leave_emp_id: int,
+    today: date | None,
+    max_time: float = 30.0,
+) -> SolveResult:
+    """Re-solve keeping the current schedule as stable as possible.
+
+    Freezes days before `today`, fixes the new leave (already injected into
+    data.special_leaves), and minimizes the number of affected employees
+    (primary) then changed cells (secondary). `current` maps employee name to a
+    list of shifts indexed by 0-based day.
+    """
+    model = cp_model.CpModel()
+    n = len(data.employees)
+    if n == 0:
+        return SolveResult(False, None, "無員工資料", 0.0)
+    if data.d_backup_unfillable:
+        return _build_failure(data, 0.0)
+
+    emp_by_name = {e.name: i for i, e in enumerate(data.employees)}
+    idx_by_id = {e.id: i for i, e in enumerate(data.employees)}
+    leave_idx = idx_by_id.get(leave_emp_id)
+
+    current_idx: dict[int, list[str]] = {}
+    for name, row in current.items():
+        i = emp_by_name.get(name)
+        if i is not None:
+            current_idx[i] = row
+
+    x: dict[int, dict[int, dict[str, cp_model.BoolVar]]] = {}
+    for i in range(n):
+        x[i] = {}
+        for d in range(data.num_days):
+            x[i][d] = {
+                s: model.NewBoolVar(f"ax_{i}_{d}_{s}") for s in ALL_SHIFTS
+            }
+
+    fixed = build_fixed(data)
+    for (i, d), shift in fixed.items():
+        if shift == "SPECIAL":
+            model.Add(x[i][d]["SPECIAL"] == 1)
+
+    first_free = _first_free_day(data, today)
+    for i in range(n):
+        row = current_idx.get(i)
+        if row is None:
+            continue
+        for d in range(first_free):
+            if (i, d) in fixed:
+                continue
+            cur = row[d] if d < len(row) else None
+            if cur in ALL_SHIFTS:
+                model.Add(x[i][d][cur] == 1)
+
+    for code, fn in hard.CONSTRAINT_FUNCTIONS:
+        fn(model, x, data, fixed)
+
+    BIG = 1000
+    obj = []
+    for i in range(n):
+        row = current_idx.get(i)
+        changed = model.NewBoolVar(f"achanged_{i}")
+        cell_pen = 0
+        if row is not None:
+            for d in range(first_free, data.num_days):
+                if (i, d) in fixed:
+                    continue
+                cur = row[d] if d < len(row) else None
+                if cur not in ALL_SHIFTS:
+                    continue
+                diff = 1 - x[i][d][cur]
+                cell_pen += diff
+                model.Add(changed >= diff)
+        obj.append(cell_pen)
+        if i != leave_idx:
+            obj.append(changed * BIG)
+    model.Minimize(sum(obj))
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = max_time
+    solver.parameters.num_search_workers = 8
+    status = solver.Solve(model)
+    solve_time = float(solver.WallTime())
+
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return SolveResult(True, _extract(solver, x, data), None, solve_time, None, None, None)
 
     return _build_failure(data, solve_time)
 

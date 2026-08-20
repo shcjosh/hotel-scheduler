@@ -95,3 +95,55 @@ export async function clearSchedule(
   )
   return data
 }
+
+export interface AdjustChange {
+  employee_id: number
+  day: number
+  new_shift: string
+  leave_type?: string | null
+}
+
+export interface AdjustChangeDetail extends AdjustChange {
+  employee_name: string
+  old_shift: string
+}
+
+export interface AdjustPreviewResult {
+  success: boolean
+  error?: string | null
+  diagnostics?: {
+    likely_causes: { type: string; severity: string; message: string; suggestion: string }[]
+  } | null
+  schedule?: Record<string, string[]> | null
+  changes: AdjustChangeDetail[]
+  affected_employee_ids: number[]
+  affected_count: number
+  solve_time?: number
+}
+
+export async function adjustPreview(
+  year: number,
+  month: number,
+  employeeId: number,
+  days: number[],
+  leaveType: string,
+): Promise<AdjustPreviewResult> {
+  const { data } = await apiClient.post<AdjustPreviewResult>(
+    '/schedules/adjust/preview',
+    { year, month, employee_id: employeeId, days, leave_type: leaveType },
+  )
+  return data
+}
+
+export async function adjustApply(
+  year: number,
+  month: number,
+  changes: AdjustChange[],
+  reason?: string,
+): Promise<{ applied: number }> {
+  const { data } = await apiClient.post<{ applied: number }>(
+    '/schedules/adjust/apply',
+    { year, month, changes, reason },
+  )
+  return data
+}
