@@ -21,7 +21,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function StatsPage() {
-  const { currentYear, currentMonth } = useUIStore()
+  const { currentYear, currentMonth, solveMaxTime, setSolveMaxTime } = useUIStore()
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['stats', currentYear, currentMonth],
     queryFn: () => getMonthStats(currentYear, currentMonth),
@@ -39,6 +39,18 @@ export function StatsPage() {
           <p className="text-sm text-gray-500">{currentYear}年{currentMonth}月 排班統計</p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            求解時間上限
+            <input
+              type="number"
+              value={solveMaxTime}
+              onChange={(e) => setSolveMaxTime(Number(e.target.value))}
+              min={1}
+              max={600}
+              className="w-20 rounded-md border border-gray-300 px-2 py-1.5 text-sm"
+            />
+            <span className="text-gray-400">秒</span>
+          </label>
           <ChangeLogPanel logs={changeLogs} />
           <ExportButtons year={currentYear} month={currentMonth} />
         </div>

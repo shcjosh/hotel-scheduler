@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Settings2 } from 'lucide-react'
+import { Settings2, Sparkles, Loader2 } from 'lucide-react'
 import { getEmployees } from '../api/employees'
 import {
   getOffDays,
@@ -16,24 +16,34 @@ import {
   updateLeaveType,
   deleteLeaveType,
 } from '../api/leaveTypes'
+import { solveSchedule } from '../api/solve'
+import { getScheduleStatus } from '../api/scheduleMeta'
 import { useUIStore } from '../stores/uiStore'
 import { getMonthDays } from '../utils/date'
 import { ROLE_LABELS } from '../utils/roles'
+import { displayName, avatarText, avatarColor } from '../utils/employee'
 import { OffDayCalendar } from '../components/off-days/OffDayCalendar'
 import { ConsecutiveOffCounter } from '../components/off-days/ConsecutiveOffCounter'
 import { LeaveTypeManager } from '../components/off-days/LeaveTypeManager'
+import { SolveResult } from '../components/off-days/SolveResult'
 import { cn } from '../utils/cn'
+import type { LeaveType, SolveResponse } from '../types'
 
 type Mode = 'designated' | 'leave'
 
+const BUILTIN_CODES = ['SPECIAL', 'PERSONAL', 'SICK']
+
 export function OffDaysPage() {
-  const { currentYear: year, currentMonth: month } = useUIStore()
+  const { currentYear: year, currentMonth: month, solveMaxTime, solveEnableDBackup } = useUIStore()
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [mode, setMode] = useState<Mode>('designated')
   const [leaveType, setLeaveType] = useState('SPECIAL')
   const [managerOpen, setManagerOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [solving, setSolving] = useState(false)
+  const [result, setResult] = useState<SolveResponse | null>(null)
+  const [solveError, setSolveError] = useState<string | null>(null)
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -51,6 +61,10 @@ export function OffDaysPage() {
     queryKey: ['leave-types'],
     queryFn: () => getLeaveTypes(),
   })
+  const { data: statusData } = useQuery({
+    queryKey: ['schedule-status', year, month],
+    queryFn: () => getScheduleStatus(year, month),
+  })
 
   const empId = selectedId ?? employees[0]?.id ?? null
   const empKey = empId !== null ? String(empId) : null
@@ -66,6 +80,14 @@ export function OffDaysPage() {
   )
   const leaveTypeByCode = useMemo(
     () => new Map(leaveTypes.map((lt) => [lt.code, lt])),
+    [leaveTypes],
+  )
+  const builtinTypes = useMemo(
+    () => BUILTIN_CODES.map((c) => leaveTypeByCode.get(c)).filter((lt): lt is LeaveType => Boolean(lt)),
+    [leaveTypeByCode],
+  )
+  const customTypes = useMemo(
+    () => leaveTypes.filter((lt) => !lt.is_builtin),
     [leaveTypes],
   )
   const leaveInfoByDay = useMemo(() => {
@@ -127,6 +149,26 @@ export function OffDaysPage() {
     }
   }
 
+  async function handleSolve() {
+    if (
+      statusData?.status === 'published' &&
+      !window.confirm('目前班表已發布，重新排班將覆蓋現有班表，確定要繼續嗎？')
+    ) {
+      return
+    }
+    setSolving(true)
+    setSolveError(null)
+    setResult(null)
+    try {
+      const r = await solveSchedule(year, month, solveMaxTime, solveEnableDBackup)
+      setResult(r)
+    } catch (e) {
+      setSolveError(e instanceof Error ? e.message : '求解失敗')
+    } finally {
+      setSolving(false)
+    }
+  }
+
   async function handleCreateLeaveType(name: string, color_bg: string, color_text: string) {
     await createLeaveType(name, color_bg, color_text)
     await queryClient.invalidateQueries({ queryKey: ['leave-types'] })
@@ -150,50 +192,100 @@ export function OffDaysPage() {
             {year} 年 {month} 月 — 指定休假與各類請假
           </p>
         </div>
-        {empSummary && (
-          <ConsecutiveOffCounter count={empSummary.consecutive_off_count} />
-        )}
+        <div className="flex items-center gap-3">
+          {empSummary && (
+            <ConsecutiveOffCounter count={empSummary.consecutive_off_count} />
+          )}
+          <button
+            onClick={handleSolve}
+            disabled={solving}
+            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-6 py-2.5 text-base font-semibold text-white shadow hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {solving ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
+            {solving ? '排班中…' : '開始排班'}
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <select
-          value={empId ?? ''}
-          onChange={(e) => setSelectedId(Number(e.target.value))}
-          className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-        >
-          {employees.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.name}（{ROLE_LABELS[e.role]}）
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={() => { setMode('designated'); setError(null) }}
-          className={cn(
-            'rounded-md px-4 py-1.5 text-sm font-medium transition',
-            mode === 'designated'
-              ? 'bg-red-500 text-white'
-              : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50',
-          )}
-        >
-          指定休假
-        </button>
-        <div className="flex items-center gap-1.5">
-          <select
-            value={leaveType}
-            onFocus={() => { setMode('leave'); setError(null) }}
-            onChange={(e) => { setLeaveType(e.target.value); setMode('leave'); setError(null) }}
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
+        <div className="flex items-end gap-1.5">
+          {employees.map((e) => {
+            const selected = selectedId === e.id || (selectedId === null && e.id === employees[0]?.id)
+            return (
+              <button
+                key={e.id}
+                onClick={() => { setSelectedId(e.id); setError(null) }}
+                className="flex flex-col items-center gap-0.5"
+                title={displayName(e)}
+              >
+                <span
+                  className={cn(
+                    'flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white transition',
+                    avatarColor(e.id),
+                    selected ? 'ring-2 ring-indigo-500 ring-offset-2' : 'opacity-70 hover:opacity-100',
+                  )}
+                >
+                  {avatarText(e)}
+                </span>
+                <span className={cn('text-xs', selected ? 'font-medium text-indigo-700' : 'text-gray-500')}>
+                  {e.nickname || e.name}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => { setMode('designated'); setError(null) }}
             className={cn(
-              'rounded-md border px-3 py-1.5 text-sm',
-              mode === 'leave'
-                ? 'border-purple-400 bg-purple-50 text-purple-700'
-                : 'border-gray-300 bg-white text-gray-600',
+              'rounded-md px-4 py-1.5 text-sm font-medium transition',
+              mode === 'designated'
+                ? 'bg-red-500 text-white'
+                : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50',
             )}
           >
-            {leaveTypes.map((lt) => (
-              <option key={lt.code} value={lt.code}>{lt.name}</option>
-            ))}
-          </select>
+            指定休假
+          </button>
+          {builtinTypes.map((lt) => {
+            const active = mode === 'leave' && leaveType === lt.code
+            return (
+              <button
+                key={lt.code}
+                onClick={() => { setMode('leave'); setLeaveType(lt.code); setError(null) }}
+                style={active ? { backgroundColor: lt.color_bg, color: lt.color_text } : undefined}
+                className={cn(
+                  'rounded-md px-4 py-1.5 text-sm font-medium transition',
+                  active ? 'font-semibold' : 'border border-gray-300 bg-white text-gray-600 hover:bg-gray-50',
+                )}
+              >
+                {lt.name}
+              </button>
+            )
+          })}
+          {customTypes.length > 0 && (
+            <select
+              value={mode === 'leave' && !BUILTIN_CODES.includes(leaveType) ? leaveType : ''}
+              onChange={(e) => {
+                setMode('leave')
+                setLeaveType(e.target.value)
+                setError(null)
+              }}
+              className={cn(
+                'rounded-md border px-3 py-1.5 text-sm',
+                mode === 'leave' && !BUILTIN_CODES.includes(leaveType)
+                  ? 'border-purple-400 bg-purple-50 text-purple-700'
+                  : 'border-gray-300 bg-white text-gray-600',
+              )}
+            >
+              <option value="" disabled>
+                自訂假別…
+              </option>
+              {customTypes.map((lt) => (
+                <option key={lt.code} value={lt.code}>{lt.name}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={() => setManagerOpen(true)}
             className="rounded-md border border-gray-300 p-1.5 text-gray-500 hover:bg-gray-50"
@@ -203,6 +295,13 @@ export function OffDaysPage() {
           </button>
         </div>
       </div>
+
+      {solveError && (
+        <div className="rounded-md bg-red-50 px-4 py-2 text-sm text-red-600">{solveError}</div>
+      )}
+      {result && (
+        <SolveResult result={result} year={year} month={month} employees={employees} onRetry={handleSolve} />
+      )}
 
       {error && (
         <div className="rounded-md bg-orange-50 px-4 py-2 text-sm text-orange-700">
@@ -250,7 +349,7 @@ export function OffDaysPage() {
                     key={e.id}
                     className="border-t border-gray-100 hover:bg-indigo-50/40"
                   >
-                    <td className="px-4 py-2 font-medium text-gray-800">{e.name}</td>
+                    <td className="px-4 py-2 font-medium text-gray-800">{displayName(e)}</td>
                     <td className="px-4 py-2 text-gray-600">
                       {ROLE_LABELS[e.role]}
                     </td>

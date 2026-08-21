@@ -26,6 +26,7 @@ import { ValidationReportPanel } from '../components/schedule/ValidationReport'
 import { SupportRequestPanel } from '../components/support/SupportRequestPanel'
 import { VersionHistoryDrawer } from '../components/schedule/VersionHistoryDrawer'
 import { Button } from '../components/ui/button'
+import { displayName } from '../utils/employee'
 import type { ScheduleStatus } from '../types'
 
 function hasRealData(schedule: Record<string, string[]>): boolean {
@@ -191,7 +192,7 @@ export function SchedulePage() {
           <CalendarX className="mb-3 h-12 w-12 text-gray-300" />
           <p className="mb-1 text-lg font-medium text-gray-700">尚無排班資料</p>
           <p className="mb-4 text-sm text-gray-500">請先執行排班引擎產生 {currentMonth} 月班表</p>
-          <Link to="/solve"><Button><Sparkles className="mr-2 h-4 w-4" />前往排班</Button></Link>
+          <Link to="/off-days"><Button><Sparkles className="mr-2 h-4 w-4" />前往排班</Button></Link>
         </div>
       )}
 
@@ -208,6 +209,7 @@ export function SchedulePage() {
             isLoading={reportLoading}
             onRefresh={() => invalidateAll()}
             onJumpTo={(empName, day) => setEditing({ empName, day })}
+            employees={employees}
           />
           <SupportRequestPanel
             requests={supportReqs}
@@ -223,7 +225,7 @@ export function SchedulePage() {
       {editing && editingEmp && (
         <CellEditModal
           open={true}
-          employeeName={editing.empName}
+          employeeName={displayName(editingEmp)}
           day={editing.day}
           month={currentMonth}
           currentShift={editingShift}
@@ -244,6 +246,7 @@ export function SchedulePage() {
       <VersionHistoryDrawer
         open={versionOpen}
         snapshots={snapshots}
+        employees={employees}
         onClose={() => setVersionOpen(false)}
         onRestore={async (id) => {
           await restoreMut.mutateAsync(id)

@@ -58,7 +58,9 @@ export function RuleOverridePanel({
           return (
             <div key={emp.id} className="rounded-md border border-gray-100 p-2">
               <div className="mb-1 flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700">{emp.name}</span>
+                <span className="text-sm font-medium text-gray-700">
+                  {emp.nickname ? `${emp.nickname} ${emp.name}` : emp.name}
+                </span>
                 <div className="flex gap-1">
                   <button
                     onClick={() => onAll(emp.id, true)}

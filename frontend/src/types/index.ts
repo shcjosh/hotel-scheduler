@@ -15,6 +15,7 @@ export interface LeaveType {
 export interface Employee {
   id: number
   name: string
+  nickname: string | null
   role: EmployeeRole
   available_shifts: string[]
   preferred_shift: string | null

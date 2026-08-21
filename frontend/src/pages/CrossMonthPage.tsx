@@ -106,7 +106,7 @@ export function CrossMonthPage() {
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-gray-700">銜接預覽</h3>
-        <CrossMonthPreview preview={preview} />
+        <CrossMonthPreview preview={preview} employees={employees} />
       </div>
     </div>
   )

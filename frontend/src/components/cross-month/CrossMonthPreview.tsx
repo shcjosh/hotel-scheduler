@@ -1,13 +1,17 @@
 import { CheckCircle2, AlertTriangle } from 'lucide-react'
 import type { CrossMonthPreview } from '../../api/crossMonth'
+import type { Employee } from '../../types'
+import { nameMap } from '../../utils/employee'
 import { cn } from '../../utils/cn'
 
 interface CrossMonthPreviewProps {
   preview: CrossMonthPreview | undefined
+  employees: Employee[]
 }
 
-export function CrossMonthPreview({ preview }: CrossMonthPreviewProps) {
+export function CrossMonthPreview({ preview, employees }: CrossMonthPreviewProps) {
   if (!preview) return null
+  const names = nameMap(employees)
   const violations = preview.violations
   const ok = violations.length === 0
 
@@ -34,7 +38,7 @@ export function CrossMonthPreview({ preview }: CrossMonthPreviewProps) {
               {violations.map((v, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="font-semibold">[{v.rule}]</span>
-                  <span>{v.employee_name}：</span>
+                  <span>{names.get(v.employee_name) ?? v.employee_name}：</span>
                   <span>{v.message}</span>
                 </li>
               ))}
@@ -64,7 +68,7 @@ export function CrossMonthPreview({ preview }: CrossMonthPreviewProps) {
                   )}
                 >
                   <td className="px-4 py-2 font-medium text-gray-800">
-                    {s.employee_name}
+                    {names.get(s.employee_name) ?? s.employee_name}
                   </td>
                   <td className="px-4 py-2 text-right">{s.prev_week_off_count}</td>
                   <td className="px-4 py-2 text-right">{s.remaining_off}</td>

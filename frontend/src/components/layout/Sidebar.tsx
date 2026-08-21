@@ -5,18 +5,16 @@ import {
   CalendarOff,
   CalendarRange,
   Moon,
-  Sparkles,
   BarChart3,
 } from 'lucide-react'
 import { cn } from '../../utils/cn'
 
 const navItems = [
   { to: '/', label: '排班表', icon: CalendarDays },
-  { to: '/employees', label: '員工管理', icon: Users },
   { to: '/off-days', label: '休假管理', icon: CalendarOff },
   { to: '/cross-month', label: '跨月設定', icon: CalendarRange },
   { to: '/night', label: '大夜班表', icon: Moon },
-  { to: '/solve', label: '一鍵排班', icon: Sparkles },
+  { to: '/employees', label: '員工管理', icon: Users },
   { to: '/stats', label: '統計報表', icon: BarChart3 },
 ]
 

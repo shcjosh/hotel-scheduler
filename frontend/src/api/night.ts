@@ -3,6 +3,7 @@ import { apiClient } from './client'
 export interface NightEmployee {
   id: number
   name: string
+  nickname: string | null
 }
 
 export interface BackupRequestData {

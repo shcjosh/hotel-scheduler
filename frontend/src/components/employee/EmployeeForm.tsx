@@ -16,6 +16,7 @@ interface EmployeeFormProps {
 
 export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeFormProps) {
   const [name, setName] = useState('')
+  const [nickname, setNickname] = useState('')
   const [role, setRole] = useState<EmployeeRole>('general')
   const [shifts, setShifts] = useState<string[]>(['A', 'B', 'C'])
   const [preferred, setPreferred] = useState<string | null>(null)
@@ -26,12 +27,14 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
   useEffect(() => {
     if (employee) {
       setName(employee.name)
+      setNickname(employee.nickname ?? '')
       setRole(employee.role)
       setShifts(employee.available_shifts)
       setPreferred(employee.preferred_shift)
       setMode(employee.scheduling_mode)
     } else {
       setName('')
+      setNickname('')
       setRole('general')
       setShifts(['A', 'B', 'C'])
       setPreferred(null)
@@ -73,6 +76,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
     try {
       await onSubmit({
         name: name.trim(),
+        nickname: nickname.trim() || null,
         role,
         available_shifts: shifts,
         preferred_shift: preferred,
@@ -99,6 +103,15 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
             onChange={(e) => setName(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             placeholder="請輸入姓名"
+          />
+        </Field>
+
+        <Field label="暱稱（選填）">
+          <input
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            placeholder="如：John"
           />
         </Field>
 

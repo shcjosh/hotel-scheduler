@@ -64,7 +64,7 @@ def get_night_schedule(db: Session, year: int, month: int) -> dict:
 
     return {
         "night_schedule": schedule,
-        "night_employees": [{"id": e.id, "name": e.name} for e in night_emps],
+        "night_employees": [{"id": e.id, "name": e.name, "nickname": e.nickname} for e in night_emps],
         "d_backup_requests": [_req(b) for b in backups],
     }
 

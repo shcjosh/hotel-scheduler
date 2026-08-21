@@ -9,6 +9,7 @@ import {
 import { Button } from '../ui/button'
 import { Modal } from '../ui/modal'
 import { ROLE_LABELS } from '../../utils/roles'
+import { displayName, nameMap } from '../../utils/employee'
 import { getShiftStyle } from '../../utils/shift'
 
 interface AdjustScheduleModalProps {
@@ -25,6 +26,7 @@ export function AdjustScheduleModal({
   year, month, employees, leaveTypes, numDays, onClose, onApplied,
 }: AdjustScheduleModalProps) {
   const nonNight = employees.filter((e) => e.role !== 'night')
+  const names = nameMap(employees)
   const [empId, setEmpId] = useState<number>(nonNight[0]?.id ?? 0)
   const [startDay, setStartDay] = useState(1)
   const [endDay, setEndDay] = useState(1)
@@ -81,7 +83,7 @@ export function AdjustScheduleModal({
                 >
                   {nonNight.map((e) => (
                     <option key={e.id} value={e.id}>
-                      {e.name}（{ROLE_LABELS[e.role] ?? e.role}）
+                      {displayName(e)}（{ROLE_LABELS[e.role] ?? e.role}）
                     </option>
                   ))}
                 </select>
@@ -153,7 +155,7 @@ export function AdjustScheduleModal({
                     <tbody>
                       {preview.changes.map((c, i) => (
                         <tr key={i} className="border-t border-gray-100">
-                          <td className="px-2 py-1">{c.employee_name}</td>
+                          <td className="px-2 py-1">{names.get(c.employee_name) ?? c.employee_name}</td>
                           <td className="px-2 py-1 text-gray-600">{month}/{c.day}</td>
                           <td className="px-2 py-1">
                             <span className={getShiftStyle(c.old_shift).text}>{c.old_shift}</span>

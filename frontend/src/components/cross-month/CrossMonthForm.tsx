@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Button } from '../ui/button'
 import { ROLE_LABELS } from '../../utils/roles'
 import { getShiftStyle } from '../../utils/shift'
+import { displayName } from '../../utils/employee'
 import { cn } from '../../utils/cn'
 import type { Employee } from '../../types'
 import type { CrossMonthLink } from '../../api/crossMonth'
@@ -73,7 +74,7 @@ export function CrossMonthForm({ employees, links, dates, onSave }: CrossMonthFo
               return (
                 <tr key={emp.id} className="border-t border-gray-100">
                   <th className="sticky left-0 z-10 bg-white px-3 py-1.5 text-left font-medium text-gray-700">
-                    {emp.name}
+                    {displayName(emp)}
                     <span className="ml-1 text-xs text-gray-400">
                       {ROLE_LABELS[emp.role]}
                     </span>

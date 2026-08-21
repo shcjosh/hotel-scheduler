@@ -6,6 +6,7 @@ import type { EmployeePayload } from '../api/employees'
 import { EmployeeList } from '../components/employee/EmployeeList'
 import { EmployeeForm } from '../components/employee/EmployeeForm'
 import { Button } from '../components/ui/button'
+import { displayName } from '../utils/employee'
 import type { Employee } from '../types'
 
 export function EmployeesPage() {
@@ -44,7 +45,7 @@ export function EmployeesPage() {
     }
   }
   async function handleDelete(emp: Employee) {
-    if (!window.confirm(`確定要刪除「${emp.name}」嗎？（軟刪除）`)) return
+    if (!window.confirm(`確定要刪除「${displayName(emp)}」嗎？（軟刪除）`)) return
     await deleteEmployee(emp.id)
     queryClient.invalidateQueries({ queryKey: ['employees'] })
   }

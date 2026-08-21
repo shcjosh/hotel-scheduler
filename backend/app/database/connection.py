@@ -37,6 +37,11 @@ def _run_migrations() -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE special_leaves ADD COLUMN leave_type TEXT NOT NULL DEFAULT 'SPECIAL'"
             )
+        emp_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(employees)")}
+        if emp_cols and "nickname" not in emp_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE employees ADD COLUMN nickname TEXT"
+            )
 
 
 def init_db() -> None:

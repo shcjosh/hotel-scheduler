@@ -41,7 +41,9 @@ export function EmployeeStatsTable({
         <tbody>
           {rows.map((e) => (
             <tr key={e.employee_id} className="border-t border-gray-100 hover:bg-indigo-50/40">
-              <td className="sticky left-0 bg-white px-3 py-1.5 font-medium text-gray-800">{e.employee_name}</td>
+              <td className="sticky left-0 bg-white px-3 py-1.5 font-medium text-gray-800">
+                {e.nickname ? `${e.nickname} ${e.employee_name}` : e.employee_name}
+              </td>
               <td className="px-2 py-1.5 text-gray-600">{ROLE_LABELS[e.role as keyof typeof ROLE_LABELS] ?? e.role}</td>
               {SHIFT_COLS.map((s) => (
                 <td key={s} className={cn('px-2 py-1.5 text-right font-medium', getShiftStyle(s).text)}>

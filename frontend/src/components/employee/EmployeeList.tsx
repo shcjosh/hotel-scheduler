@@ -1,6 +1,7 @@
 import { Pencil, Trash2 } from 'lucide-react'
 import { getShiftStyle } from '../../utils/shift'
 import { ROLE_LABELS } from '../../utils/roles'
+import { displayName } from '../../utils/employee'
 import type { Employee } from '../../types'
 
 interface EmployeeListProps {
@@ -34,7 +35,7 @@ export function EmployeeList({ employees, onEdit, onDelete }: EmployeeListProps)
         <tbody>
           {employees.map((emp) => (
             <tr key={emp.id} className="border-t border-gray-100 hover:bg-indigo-50/40">
-              <td className="px-4 py-2 font-medium text-gray-800">{emp.name}</td>
+              <td className="px-4 py-2 font-medium text-gray-800">{displayName(emp)}</td>
               <td className="px-4 py-2 text-gray-600">
                 {ROLE_LABELS[emp.role]}
               </td>

@@ -3,6 +3,7 @@ import type { Employee, EmployeeRole, SchedulingMode } from '../types'
 
 export interface EmployeePayload {
   name: string
+  nickname?: string | null
   role: EmployeeRole
   available_shifts: string[]
   preferred_shift: string | null

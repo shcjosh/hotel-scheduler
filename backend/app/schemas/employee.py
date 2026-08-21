@@ -45,6 +45,7 @@ def _validate_available_shifts(v: list[str] | None) -> list[str] | None:
 
 class EmployeeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
+    nickname: str | None = Field(default=None, max_length=255)
     role: Role
     available_shifts: list[Shift] | None = None
     preferred_shift: Shift | None = None
@@ -57,6 +58,7 @@ class EmployeeCreate(BaseModel):
 
 class EmployeeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    nickname: str | None = Field(default=None, max_length=255)
     role: Role | None = None
     available_shifts: list[Shift] | None = None
     preferred_shift: Shift | None = None
@@ -73,6 +75,7 @@ class EmployeeOut(BaseModel):
 
     id: int
     name: str
+    nickname: str | None
     role: str
     available_shifts: list[str]
     preferred_shift: str | None

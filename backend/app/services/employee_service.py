@@ -61,6 +61,7 @@ def create_employee(db: Session, data: EmployeeCreate) -> Employee:
     )
     employee = Employee(
         name=data.name,
+        nickname=data.nickname or None,
         role=data.role,
         available_shifts=_to_json(shifts),
         preferred_shift=pref,
@@ -106,6 +107,8 @@ def update_employee(db: Session, employee: Employee, data: EmployeeUpdate) -> Em
 
     if "name" in payload:
         employee.name = payload["name"]
+    if "nickname" in payload:
+        employee.nickname = payload["nickname"] or None
     if "is_active" in payload:
         employee.is_active = payload["is_active"]
 
@@ -130,6 +133,7 @@ def to_out(employee: Employee) -> dict:
     return {
         "id": employee.id,
         "name": employee.name,
+        "nickname": employee.nickname,
         "role": employee.role,
         "available_shifts": _from_json(employee.available_shifts),
         "preferred_shift": employee.preferred_shift,

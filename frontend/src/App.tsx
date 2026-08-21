@@ -6,7 +6,6 @@ import {
   OffDaysPage,
   CrossMonthPage,
   NightPage,
-  SolvePage,
   StatsPage,
 } from './pages'
 
@@ -16,7 +15,6 @@ const TITLES: Record<string, string> = {
   '/off-days': '休假管理',
   '/cross-month': '跨月設定',
   '/night': '大夜班表',
-  '/solve': '一鍵排班',
   '/stats': '統計報表',
 }
 
@@ -35,7 +33,6 @@ export default function App() {
           <Route path="/off-days" element={<OffDaysPage />} />
           <Route path="/cross-month" element={<CrossMonthPage />} />
           <Route path="/night" element={<NightPage />} />
-          <Route path="/solve" element={<SolvePage />} />
           <Route path="/stats" element={<StatsPage />} />
         </Route>
       </Routes>

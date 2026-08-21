@@ -1,5 +1,6 @@
 import type { Employee, LeaveType, MonthScheduleView } from '../../types'
 import { getWeekday, getWeekdayLabel, isWeekend } from '../../utils/date'
+import { displayName } from '../../utils/employee'
 import { ShiftCell } from './ShiftCell'
 import { DailyCoverage } from './DailyCoverage'
 import { cn } from '../../utils/cn'
@@ -22,7 +23,7 @@ export function ScheduleTable({ view, employees, leaveTypes = [], onCellClick }:
       <table className="border-collapse">
         <thead>
           <tr className="bg-gray-100">
-            <th className="sticky left-0 z-20 w-28 border-b border-r border-gray-200 bg-gray-100 px-3 py-2 text-left text-xs font-semibold text-gray-600">
+            <th className="sticky left-0 z-20 w-32 border-b border-r border-gray-200 bg-gray-100 px-3 py-2 text-left text-xs font-semibold text-gray-600">
               員工 \ 日期
             </th>
             {Array.from({ length: numDays }, (_, d) => {
@@ -52,8 +53,8 @@ export function ScheduleTable({ view, employees, leaveTypes = [], onCellClick }:
             const locked = emp?.role === 'night'
             return (
               <tr key={name} className="hover:bg-indigo-50/40">
-                <th className="sticky left-0 z-10 w-28 border-b border-r border-gray-200 bg-white px-3 py-1.5 text-left text-sm font-medium text-gray-700">
-                  {name}
+                <th className="sticky left-0 z-10 w-32 border-b border-r border-gray-200 bg-white px-3 py-1.5 text-left text-sm font-medium text-gray-700">
+                  {emp ? displayName(emp) : name}
                 </th>
                 {schedule[name].map((shift, d) => {
                   const day = d + 1

@@ -3,6 +3,7 @@ import { apiClient } from './client'
 export interface EmployeeStats {
   employee_id: number
   employee_name: string
+  nickname: string | null
   role: string
   shift_counts: Record<string, number>
   total_work_days: number

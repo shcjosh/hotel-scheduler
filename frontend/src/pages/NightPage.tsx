@@ -21,7 +21,7 @@ import { Button } from '../components/ui/button'
 import { cn } from '../utils/cn'
 
 export function NightPage() {
-  const { currentYear: year, currentMonth: month } = useUIStore()
+  const { currentYear: year, currentMonth: month, solveEnableDBackup, setSolveEnableDBackup } = useUIStore()
   const queryClient = useQueryClient()
   const numDays = getMonthDays(year, month)
 
@@ -94,15 +94,26 @@ export function NightPage() {
             {year}年{month}月 — 大夜專職人員 D 班手動輸入
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleClearNight}
-          disabled={clearNightMut.isPending}
-          className="text-red-600"
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          清空大夜排班
-        </Button>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={solveEnableDBackup}
+              onChange={(e) => setSolveEnableDBackup(e.target.checked)}
+              className="h-4 w-4"
+            />
+            啟用 D 班備援邏輯
+          </label>
+          <Button
+            variant="outline"
+            onClick={handleClearNight}
+            disabled={clearNightMut.isPending}
+            className="text-red-600"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            清空大夜排班
+          </Button>
+        </div>
       </div>
 
       {isLoading ? (

@@ -3,23 +3,28 @@ import { Modal } from '../ui/modal'
 import { Button } from '../ui/button'
 import { RotateCcw, GitCompareArrows } from 'lucide-react'
 import type { ScheduleSnapshot, SnapshotDiffChange } from '../../api/scheduleMeta'
+import type { Employee } from '../../types'
+import { nameMap } from '../../utils/employee'
 
 interface VersionHistoryDrawerProps {
   open: boolean
   snapshots: ScheduleSnapshot[]
+  employees: Employee[]
   onClose: () => void
   onRestore: (id: number) => Promise<void>
   onDiff: (aId: number, bId: number) => Promise<{ changes: SnapshotDiffChange[] }>
 }
 
 export function VersionHistoryDrawer({
-  open, snapshots, onClose, onRestore, onDiff,
+  open, snapshots, employees, onClose, onRestore, onDiff,
 }: VersionHistoryDrawerProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aId, setAId] = useState<string>('')
   const [bId, setBId] = useState<string>('')
   const [diff, setDiff] = useState<SnapshotDiffChange[] | null>(null)
+
+  const names = nameMap(employees)
 
   async function handleRestore(id: number) {
     setBusy(true)
@@ -114,7 +119,7 @@ export function VersionHistoryDrawer({
                   <ul className="space-y-1 text-xs">
                     {diff.map((c, i) => (
                       <li key={i} className="rounded bg-yellow-50 px-2 py-1">
-                        {c.employee_name ?? `員工#${c.employee_id}`} {c.day} 日：{c.old_shift ?? '—'} → {c.new_shift ?? '—'}
+                        {c.employee_name ? (names.get(c.employee_name) ?? c.employee_name) : `員工#${c.employee_id}`} {c.day} 日：{c.old_shift ?? '—'} → {c.new_shift ?? '—'}
                       </li>
                     ))}
                   </ul>

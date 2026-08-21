@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronRight, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react'
 import type { ValidationReport } from '../../api/schedules'
+import type { Employee } from '../../types'
+import { nameMap } from '../../utils/employee'
 import { cn } from '../../utils/cn'
 
 interface ValidationReportPanelProps {
@@ -8,11 +10,14 @@ interface ValidationReportPanelProps {
   isLoading: boolean
   onRefresh: () => void
   onJumpTo?: (empName: string, day: number) => void
+  employees: Employee[]
 }
 
-export function ValidationReportPanel({ report, isLoading, onRefresh, onJumpTo }: ValidationReportPanelProps) {
-  const [open, setOpen] = useState(true)
+export function ValidationReportPanel({ report, isLoading, onRefresh, onJumpTo, employees }: ValidationReportPanelProps) {
+  const [open, setOpen] = useState(false)
   const [detailOpen, setDetailOpen] = useState(false)
+
+  const names = nameMap(employees)
 
   const hard = report?.violations ?? []
   const soft = report?.warnings ?? []
@@ -99,7 +104,7 @@ export function ValidationReportPanel({ report, isLoading, onRefresh, onJumpTo }
                       onClick={() => v.employee_name && v.day && onJumpTo?.(v.employee_name, v.day)}
                     >
                       <span className="font-semibold">[{v.rule}]</span>
-                      <span>{v.employee_name ?? '全體'} {v.day ? `${v.day}日` : ''}：</span>
+                      <span>{v.employee_name ? (names.get(v.employee_name) ?? v.employee_name) : '全體'} {v.day ? `${v.day}日` : ''}：</span>
                       <span>{v.message}</span>
                     </li>
                   ))}
@@ -110,7 +115,7 @@ export function ValidationReportPanel({ report, isLoading, onRefresh, onJumpTo }
                       onClick={() => v.employee_name && v.day && onJumpTo?.(v.employee_name, v.day)}
                     >
                       <span className="font-semibold">[{v.rule}]</span>
-                      <span>{v.employee_name ?? '全體'} {v.day ? `${v.day}日` : ''}：</span>
+                      <span>{v.employee_name ? (names.get(v.employee_name) ?? v.employee_name) : '全體'} {v.day ? `${v.day}日` : ''}：</span>
                       <span>{v.message}</span>
                     </li>
                   ))}

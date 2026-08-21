@@ -55,7 +55,7 @@ export function NightInputTable({
           {nightEmployees.map((emp) => (
             <tr key={emp.id} className="border-t border-gray-100">
               <th className="sticky left-0 z-10 w-28 bg-white px-3 py-1.5 text-left font-medium text-gray-700">
-                {emp.name}
+                {emp.nickname ? `${emp.nickname} ${emp.name}` : emp.name}
               </th>
               {Array.from({ length: numDays }, (_, d) => {
                 const day = d + 1

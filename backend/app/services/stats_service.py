@@ -123,6 +123,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
         per_employee.append({
             "employee_id": emp.id,
             "employee_name": emp.name,
+            "nickname": emp.nickname,
             "role": emp.role,
             "shift_counts": counts,
             "total_work_days": work_days,
