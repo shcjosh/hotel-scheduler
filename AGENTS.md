@@ -6,23 +6,35 @@ opencode 每次開啟本專案時會自動載入本文件，作為開發與協�
 ## 專案簡介
 - 飯店排班系統（Hotel Shift Scheduler），portable 桌面應用（瀏覽器介面 + 本機後端）
 - Backend: Python + FastAPI + OR-Tools (CP-SAT) + SQLite
-- Frontend: React 18 + TypeScript + Vite + Tailwind
+- Frontend: React 19 + TypeScript + Vite + Tailwind
 - 打包: PyInstaller（onedir）+ GitHub Actions（Windows/Linux 雙平台）
 
+## 開發命令（在 backend/、frontend/ 目錄下執行）
+- 後端：`.venv\Scripts\python -m uvicorn app.api:app --port 8000`（Windows；Linux 為 `.venv/bin/python`）
+- 前端 dev（proxy `/api` → localhost:8000）：`npm run dev`（port 5173）
+- 單一後端模式（服務前端 build）：`cd frontend && npm run build` 後 `cd backend && .venv\Scripts\python run.py`
+- 測試：`cd backend && .venv\Scripts\python tests/test_phase8.py`（**不是 pytest**，tests/ 是各自帶 `assert` 的獨立腳本，自己設定 temp DB_PATH，逐檔執行）
+- 前端 lint：`npm run lint`（oxlint）；`npm run build` = `tsc -b && vite build`（含型別檢查）。後端無 lint/typecheck 指令。
+- 產生測試資料：`cd backend && .venv\Scripts\python tests/seed_dev.py`
+
+## 環境變數 / 啟動 quirks
+- `DB_PATH`（SQLite 路徑）必須在 import `app.api` **之前**設定；`run.py` 靠 `ensure_data_dir()` 完成，寫測試或獨立腳本時勿在 import 後才設。
+- `SCHEDULER_DISABLE_LIFECYCLE=1`：關閉「關瀏覽器分頁即自動結束」偵測（測試/開發時用，見 `run.py`）。
+- PyInstaller 不支援跨平台，需在目標平台執行；正式打包一律靠 CI（雙平台），本地打包僅作驗證。
+
 ## 版本號規則（SemVer）
-- 正式版：`X.Y.Z`（如 `1.0.2`），單一來源在 `backend/app/version.py`
-- 測試版：`X.Y.Z-beta`（如 `1.0.3-beta`）
+- 正式版：`X.Y.Z`，單一來源在 `backend/app/version.py`
+- 測試版：`X.Y.Z-beta`
 - 開 beta branch 時，`version.py` 要寫成 `X.Y.Z-beta`（不是正式版號）
 - 定版合併進 main 時，才把 `version.py` 改為正式 `X.Y.Z`
 
 ## 標準開發流程
-1. 開 branch `X.Y.Z-beta`（從 main 分出），`version.py = X.Y.Z-beta`
-2. 討論 → 實作 → 本地驗證（跑 `backend/tests/`）
-   - 同時更新 `README.md`（使用/功能說明）與 `RELEASE-NOTES.md`（新增 `vX.Y.Z-beta` 章節），
-     記錄本次 beta 的新功能與規則調整
+1. 開 branch `vX.Y.Z-beta`（從 main 分出，注意含 `v` 前綴），`version.py = X.Y.Z-beta`
+2. 討論 → 實作 → 本地驗證（逐檔跑 `backend/tests/test_phase*.py`）
+   - 同時更新 `README.md`（使用/功能說明）與 `RELEASE-NOTES.md`（新增 `vX.Y.Z-beta` 章節），記錄本次 beta 的新功能與規則調整
 3. push branch → `build` workflow 自動產雙平台 artifact（windows-x64 + linux-x64），**不建立 Release**
 4. 下載 artifact 到實機測試（Windows + Linux）
-5. 測試通過 → merge 進 main，`version.py` 改為正式 `X.Y.Z`，`RELEASE-NOTES.md` 標題同步由 `vX.Y.Z-beta` 改為 `vX.Y.Z`，`README.md` 的「目前版本」同步改為 `X.Y.Z`
+5. 測試通過 → merge 進 main，`version.py` 改為正式 `X.Y.Z`，`RELEASE-NOTES.md` 標題由 `vX.Y.Z-beta` 改為 `vX.Y.Z`，`README.md` 的「目前版本」同步改為 `X.Y.Z`
 6. 在 main 打 annotated tag `vX.Y.Z` → `release` workflow 觸發正式 Release（雙平台）
 7. 提交前檢查：`git status` / `git diff` / `git log --oneline -10`，只 stage 該 stage 的檔案
 

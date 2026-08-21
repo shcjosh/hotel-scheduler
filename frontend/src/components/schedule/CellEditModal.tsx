@@ -45,10 +45,9 @@ export function CellEditModal({
     )
   }, [currentShift, currentLeaveTypeCode, open])
 
-  const options = [
-    ...availableShifts.filter((s) => s !== 'SPECIAL').map((s) => ({ value: s, label: s })),
-    { value: 'OFF', label: '休' },
-    ...leaveTypes.map((lt) => ({ value: `${LT_PREFIX}${lt.code}`, label: lt.name })),
+  const shiftOptions = [
+    ...availableShifts.filter((s) => s !== 'SPECIAL'),
+    'OFF',
   ]
 
   function effectiveShift() {
@@ -102,19 +101,58 @@ export function CellEditModal({
           <span className="text-sm text-gray-600">目前：</span>
           <ShiftBadge shift={currentShift} leaveType={currentLeaveType} />
           <span className="text-gray-400">→</span>
-          <select
-            value={selected}
-            onChange={(e) => { setSelected(e.target.value); setResult(null) }}
-            className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-          >
-            {options.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
           <ShiftBadge
             shift={effectiveShift()}
             leaveType={leaveTypes.find((lt) => lt.code === effectiveLeaveType())}
           />
+        </div>
+
+        <div>
+          <div className="mb-1.5 text-sm font-medium text-gray-700">班別</div>
+          <div className="flex flex-wrap gap-2">
+            {shiftOptions.map((s) => {
+              const style = getShiftStyle(s)
+              const active = selected === s
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { setSelected(s); setResult(null) }}
+                  className={cn(
+                    'inline-flex h-9 min-w-11 items-center justify-center rounded-md px-2 text-sm font-semibold transition',
+                    style.bg,
+                    style.text,
+                    active ? 'ring-2 ring-blue-500 ring-offset-1' : 'opacity-70 hover:opacity-100',
+                  )}
+                >
+                  {style.label}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-1.5 text-sm font-medium text-gray-700">假別</div>
+          <div className="flex flex-wrap gap-2">
+            {leaveTypes.map((lt) => {
+              const active = selected === `${LT_PREFIX}${lt.code}`
+              return (
+                <button
+                  key={lt.code}
+                  type="button"
+                  onClick={() => { setSelected(`${LT_PREFIX}${lt.code}`); setResult(null) }}
+                  className={cn(
+                    'inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-semibold transition',
+                    active ? 'ring-2 ring-blue-500 ring-offset-1' : 'opacity-70 hover:opacity-100',
+                  )}
+                  style={{ backgroundColor: lt.color_bg, color: lt.color_text }}
+                >
+                  {lt.name}
+                </button>
+              )
+            })}
+          </div>
         </div>
 
         {isPublished && changed() && (
