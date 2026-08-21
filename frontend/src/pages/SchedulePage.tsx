@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CalendarX, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send } from 'lucide-react'
+import { CalendarX, FileDown, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
 import { getLeaveTypes } from '../api/leaveTypes'
+import { getSettings } from '../api/settings'
+import { printSchedule } from '../utils/printSchedule'
 import {
   setScheduleStatus,
   getSnapshots,
@@ -58,6 +60,11 @@ export function SchedulePage() {
     queryKey: ['leave-types'],
     queryFn: () => getLeaveTypes(),
   })
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: () => getSettings(),
+  })
+  const hotelName = settings?.hotel_name ?? '清翼居府中館'
   const { data: snapshots = [] } = useQuery({
     queryKey: ['snapshots', currentYear, currentMonth],
     queryFn: () => getSnapshots(currentYear, currentMonth),
@@ -112,6 +119,10 @@ export function SchedulePage() {
     }
   }
 
+  function handlePrint() {
+    if (data) printSchedule(data, employees, leaveTypes, hotelName)
+  }
+
   function handleSetStatus(status: ScheduleStatus) {
     if (status === 'locked' && !window.confirm('鎖定後該月份將唯讀，確定要鎖定嗎？')) return
     statusMut.mutate(status)
@@ -145,6 +156,12 @@ export function SchedulePage() {
             <History className="mr-2 h-4 w-4" />
             版本歷史
           </Button>
+          {!empty && data && (
+            <Button variant="outline" onClick={handlePrint} className="text-gray-700">
+              <FileDown className="mr-2 h-4 w-4" />
+              匯出 PDF
+            </Button>
+          )}
           {status === 'draft' && (
             <Button onClick={() => handleSetStatus('published')}>
               <Send className="mr-2 h-4 w-4" /> 發布班表
@@ -174,7 +191,6 @@ export function SchedulePage() {
             <Trash2 className="mr-2 h-4 w-4" />
             清空當月排班
           </Button>
-          <ShiftLegend leaveTypes={leaveTypes} />
         </div>
       </div>
 
@@ -204,6 +220,7 @@ export function SchedulePage() {
             leaveTypes={leaveTypes}
             onCellClick={(empName, day) => setEditing({ empName, day })}
           />
+          <ShiftLegend leaveTypes={leaveTypes} />
           <ValidationReportPanel
             report={report}
             isLoading={reportLoading}
