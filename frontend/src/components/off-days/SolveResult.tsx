@@ -17,6 +17,9 @@ const SOFT_LABELS: Record<string, string> = {
   s7_non_backup_d_count: 'S7 非備援D',
   s8_manager_backup_count: 'S8 管理職備援',
   s9_off_block_count: 'S9 連休次數',
+  s10_weekend_b_count: 'S10 週末B',
+  s10_weekend_double_a_count: 'S10 週末雙A',
+  s10_weekend_double_c_count: 'S10 週末雙C',
 }
 
 function empStats(row: string[]) {

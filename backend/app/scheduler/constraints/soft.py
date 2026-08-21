@@ -141,6 +141,32 @@ def add_s9_prefer_off_blocks(model, x, data, fixed):
     return terms, {"s9": stat_vars}
 
 
+def add_s10_weekend_staffing(model, x, data, fixed):
+    """S10: 週末人力加強。週六/週日盡量加人，優先序 B > 雙 A > 雙 C。"""
+    terms = []
+    stat_vars = {"s10_b": [], "s10_2a": [], "s10_2c": []}
+    n = len(data.employees)
+    for d in sorted(set(data.saturdays) | set(data.sundays)):
+        b_sum = sum(x[e][d]["B"] for e in range(n))
+        terms.append(b_sum * 6)
+        stat_vars["s10_b"].append(b_sum)
+
+        a_sum = sum(x[e][d]["A"] for e in range(n))
+        two_a = model.NewBoolVar(f"s10_2a_{d}")
+        model.Add(a_sum >= 2).OnlyEnforceIf(two_a)
+        model.Add(a_sum <= 1).OnlyEnforceIf(two_a.Not())
+        terms.append(two_a * 4)
+        stat_vars["s10_2a"].append(two_a)
+
+        c_sum = sum(x[e][d]["C"] for e in range(n))
+        two_c = model.NewBoolVar(f"s10_2c_{d}")
+        model.Add(c_sum >= 2).OnlyEnforceIf(two_c)
+        model.Add(c_sum <= 1).OnlyEnforceIf(two_c.Not())
+        terms.append(two_c * 2)
+        stat_vars["s10_2c"].append(two_c)
+    return terms, stat_vars
+
+
 SOFT_FUNCTIONS = [
     ("S1", add_s1_avoid_5_consecutive),
     ("S2", add_s2_avoid_b_to_a),
@@ -150,6 +176,7 @@ SOFT_FUNCTIONS = [
     ("S7", add_s7_d_backup_minimize),
     ("S8", add_s8_manager_backup_minimize),
     ("S9", add_s9_prefer_off_blocks),
+    ("S10", add_s10_weekend_staffing),
 ]
 
 

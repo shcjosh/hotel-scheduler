@@ -227,7 +227,7 @@ def _prev_day1(data, emp_id):
 
 
 def validate_soft(data, schedule):
-    """Returns soft warnings (S1-S3, S7, S8). S5/S6 computed separately by caller."""
+    """Returns soft warnings (S1-S3, S7-S10). S5/S6 computed separately by caller."""
     warnings = []
     backup_days = set(data.d_backup_requests)
 
@@ -281,6 +281,24 @@ def validate_soft(data, schedule):
             if s in COVERAGE_BACKUP_SHIFTS:
                 warnings.append(_v("S8", emp, d + 1, f"管理職備援排 {s}（建議上 M 班）"))
 
+    # S9: 連休 2 次優先 — 僅 1 次連休者（建議 2 次）
+    for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
+        shifts = schedule.get(emp.id, [])
+        row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]
+        runs, _ = count_off_blocks(row)
+        if runs < 2:
+            warnings.append(_v("S9", emp, None, f"連休 {runs} 次（建議 2 次）"))
+
+    # S10: 週末人力加強 — 週六/週日缺 B / 雙 A / 雙 C
+    for d in sorted(set(data.saturdays) | set(data.sundays)):
+        b = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "B")
+        a = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "A")
+        c = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "C")
+        if b == 0 and a < 2 and c < 2:
+            warnings.append(_v("S10", None, d + 1, "週末人力未加強（建議 B 或雙 A 或雙 C）"))
+
     return warnings
 
 
@@ -317,4 +335,5 @@ RULE_DESCRIPTIONS = {
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",
+    "S9": "連休 2 次優先", "S10": "週末人力加強",
 }
