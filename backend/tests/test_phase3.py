@@ -87,7 +87,7 @@ if not result.success:
 
 check(result.objective_value is not None, "1. objective_value 不為 None")
 stats = result.soft_constraint_stats
-check(stats is not None and len(stats) == 8, "2. 軟性約束統計全部回傳 (8 項)")
+check(stats is not None and len(stats) == 11, "2. 軟性約束統計全部回傳 (11 項)")
 check(stats["s1_5consecutive_count"] <= 3, f"3. S1 連續5天次數最少化 (={stats['s1_5consecutive_count']})")
 check(stats["s2_b_to_a_count"] == 0, f"4. S2 B→A = 0 (={stats['s2_b_to_a_count']})")
 check(stats["s3_c_to_b_count"] == 0, f"5. S3 C→B = 0 (={stats['s3_c_to_b_count']})")
@@ -100,6 +100,13 @@ check(stats["s6_work_days_spread"] <= 2, f"8. S6 上班天數差 <=2 (={stats['s
 check(stats["s7_non_backup_d_count"] == 0, f"9. S7 非備援日 D = 0 (={stats['s7_non_backup_d_count']})")
 violations = validator.validate(data, sched_by_id)
 check(len(violations) == 0, f"10. 硬性約束 0 violations (={len(violations)})")
+weekend_days = len(set(data.saturdays) | set(data.sundays))
+check(0 <= stats["s10_weekend_b_count"] <= weekend_days,
+      f"11. S10 週末B 在 0~{weekend_days} 之間 (={stats['s10_weekend_b_count']})")
+check(0 <= stats["s10_weekend_double_a_count"] <= weekend_days,
+      f"12. S10 週末雙A 在 0~{weekend_days} 之間 (={stats['s10_weekend_double_a_count']})")
+check(0 <= stats["s10_weekend_double_c_count"] <= weekend_days,
+      f"13. S10 週末雙C 在 0~{weekend_days} 之間 (={stats['s10_weekend_double_c_count']})")
 
 work_counts = {nm: sum(1 for s in row if s in ("A","B","C","D")) for nm, row in result.schedule.items()}
 print("  上班天數:", work_counts)
