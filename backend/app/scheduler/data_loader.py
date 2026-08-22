@@ -39,6 +39,7 @@ class ShiftScheduleData:
     weeks: list[list[int]]
     saturdays: list[int]
     sundays: list[int]
+    fridays: list[int]
     designated_off_days: dict[int, list[int]]
     special_leaves: dict[int, list[int]]
     previous_month: dict[int, list[str | None]]
@@ -80,6 +81,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
 
     saturdays = [i for i, dt in enumerate(dates) if dt.weekday() == 5]
     sundays = [i for i, dt in enumerate(dates) if dt.weekday() == 6]
+    fridays = [i for i, dt in enumerate(dates) if dt.weekday() == 4]
 
     employees = [
         EmployeeData(
@@ -205,6 +207,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         weeks=weeks,
         saturdays=saturdays,
         sundays=sundays,
+        fridays=fridays,
         designated_off_days=designated,
         special_leaves=special,
         previous_month=previous_month,

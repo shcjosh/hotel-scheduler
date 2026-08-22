@@ -13,9 +13,9 @@ const ROWS: { key: string; rule: string; desc: string; ideal: string; good: (v: 
   { key: 's7_non_backup_d_count', rule: 'S7', desc: '非備援D', ideal: '0 次', good: (v) => v === 0 },
   { key: 's8_manager_backup_count', rule: 'S8', desc: '管理職備援', ideal: '0 次', good: (v) => v === 0 },
   { key: 's9_off_block_count', rule: 'S9', desc: '連休次數', ideal: '越多越好', good: (v) => v >= 0 },
-  { key: 's10_weekend_b_count', rule: 'S10 B', desc: '週末排 B', ideal: '越多越好', good: (v) => v >= 0 },
-  { key: 's10_weekend_double_a_count', rule: 'S10 雙A', desc: '週末雙 A', ideal: '越多越好', good: (v) => v >= 0 },
-  { key: 's10_weekend_double_c_count', rule: 'S10 雙C', desc: '週末雙 C', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_weekday_b_count', rule: 'S10 B', desc: '平日排 B', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_frisat_double_a_count', rule: 'S10 雙A', desc: '五六雙 A', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_frisat_double_c_count', rule: 'S10 雙C', desc: '五六雙 C', ideal: '越多越好', good: (v) => v >= 0 },
 ]
 
 export function SoftConstraintTable({ stats }: SoftConstraintTableProps) {

@@ -291,13 +291,19 @@ def validate_soft(data, schedule):
         if runs < 2:
             warnings.append(_v("S9", emp, None, f"連休 {runs} 次（建議 2 次）"))
 
-    # S10: 週末人力加強 — 週六/週日缺 B / 雙 A / 雙 C
-    for d in sorted(set(data.saturdays) | set(data.sundays)):
-        b = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "B")
+    # S10: 週五/週六人力加強（雙A/雙C）＋ 平日（週日~週四）優先排 B
+    fri_sat = set(data.fridays) | set(data.saturdays)
+    for d in sorted(fri_sat):
         a = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "A")
         c = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "C")
-        if b == 0 and a < 2 and c < 2:
-            warnings.append(_v("S10", None, d + 1, "週末人力未加強（建議 B 或雙 A 或雙 C）"))
+        if a < 2 and c < 2:
+            warnings.append(_v("S10", None, d + 1, "週五/六人力未加強（建議雙 A 或雙 C）"))
+    for d in range(data.num_days):
+        if d in fri_sat:
+            continue
+        b = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "B")
+        if b == 0:
+            warnings.append(_v("S10", None, d + 1, "平日未排 B（建議排 B）"))
 
     return warnings
 
@@ -335,5 +341,5 @@ RULE_DESCRIPTIONS = {
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",
-    "S9": "連休 2 次優先", "S10": "週末人力加強",
+    "S9": "連休 2 次優先", "S10": "週五/六雙A/雙C＋平日B",
 }

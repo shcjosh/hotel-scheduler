@@ -100,13 +100,14 @@ check(stats["s6_work_days_spread"] <= 2, f"8. S6 上班天數差 <=2 (={stats['s
 check(stats["s7_non_backup_d_count"] == 0, f"9. S7 非備援日 D = 0 (={stats['s7_non_backup_d_count']})")
 violations = validator.validate(data, sched_by_id)
 check(len(violations) == 0, f"10. 硬性約束 0 violations (={len(violations)})")
-weekend_days = len(set(data.saturdays) | set(data.sundays))
-check(0 <= stats["s10_weekend_b_count"] <= weekend_days,
-      f"11. S10 週末B 在 0~{weekend_days} 之間 (={stats['s10_weekend_b_count']})")
-check(0 <= stats["s10_weekend_double_a_count"] <= weekend_days,
-      f"12. S10 週末雙A 在 0~{weekend_days} 之間 (={stats['s10_weekend_double_a_count']})")
-check(0 <= stats["s10_weekend_double_c_count"] <= weekend_days,
-      f"13. S10 週末雙C 在 0~{weekend_days} 之間 (={stats['s10_weekend_double_c_count']})")
+frisat_days = len(set(data.fridays) | set(data.saturdays))
+weekday_days = data.num_days - frisat_days
+check(0 <= stats["s10_weekday_b_count"] <= weekday_days,
+      f"11. S10 平日B 在 0~{weekday_days} 之間 (={stats['s10_weekday_b_count']})")
+check(0 <= stats["s10_frisat_double_a_count"] <= frisat_days,
+      f"12. S10 五六雙A 在 0~{frisat_days} 之間 (={stats['s10_frisat_double_a_count']})")
+check(0 <= stats["s10_frisat_double_c_count"] <= frisat_days,
+      f"13. S10 五六雙C 在 0~{frisat_days} 之間 (={stats['s10_frisat_double_c_count']})")
 
 work_counts = {nm: sum(1 for s in row if s in ("A","B","C","D")) for nm, row in result.schedule.items()}
 print("  上班天數:", work_counts)
