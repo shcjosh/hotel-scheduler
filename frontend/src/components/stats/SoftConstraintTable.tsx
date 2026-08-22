@@ -16,6 +16,7 @@ const ROWS: { key: string; rule: string; desc: string; ideal: string; good: (v: 
   { key: 's10_weekday_b_count', rule: 'S10 B', desc: '平日排 B', ideal: '越多越好', good: (v) => v >= 0 },
   { key: 's10_frisat_double_a_count', rule: 'S10 雙A', desc: '五六雙 A', ideal: '越多越好', good: (v) => v >= 0 },
   { key: 's10_frisat_double_c_count', rule: 'S10 雙C', desc: '五六雙 C', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_frisat_m_count', rule: 'S10 M', desc: '五六排 M', ideal: '越多越好', good: (v) => v >= 0 },
 ]
 
 export function SoftConstraintTable({ stats }: SoftConstraintTableProps) {

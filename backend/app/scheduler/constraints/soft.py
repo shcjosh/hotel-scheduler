@@ -142,9 +142,9 @@ def add_s9_prefer_off_blocks(model, x, data, fixed):
 
 
 def add_s10_weekend_staffing(model, x, data, fixed):
-    """S10: 週五/週六人力加強（雙A = 雙C），週日~週四優先排 B。"""
+    """S10: 週五/週六人力加強（雙A = 雙C = M），週日~週四優先排 B。"""
     terms = []
-    stat_vars = {"s10_b": [], "s10_2a": [], "s10_2c": []}
+    stat_vars = {"s10_b": [], "s10_2a": [], "s10_2c": [], "s10_m": []}
     n = len(data.employees)
     fri_sat = set(data.fridays) | set(data.saturdays)
     for d in sorted(fri_sat):
@@ -152,15 +152,19 @@ def add_s10_weekend_staffing(model, x, data, fixed):
         two_a = model.NewBoolVar(f"s10_2a_{d}")
         model.Add(a_sum >= 2).OnlyEnforceIf(two_a)
         model.Add(a_sum <= 1).OnlyEnforceIf(two_a.Not())
-        terms.append(two_a * 4)
+        terms.append(two_a * 6)
         stat_vars["s10_2a"].append(two_a)
 
         c_sum = sum(x[e][d]["C"] for e in range(n))
         two_c = model.NewBoolVar(f"s10_2c_{d}")
         model.Add(c_sum >= 2).OnlyEnforceIf(two_c)
         model.Add(c_sum <= 1).OnlyEnforceIf(two_c.Not())
-        terms.append(two_c * 4)
+        terms.append(two_c * 6)
         stat_vars["s10_2c"].append(two_c)
+
+        m_sum = sum(x[e][d]["M"] for e in range(n))
+        terms.append(m_sum * 6)
+        stat_vars["s10_m"].append(m_sum)
 
     for d in range(data.num_days):
         if d in fri_sat:

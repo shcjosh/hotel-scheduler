@@ -98,8 +98,12 @@ def validate(data, schedule):
             continue
         sat_off = sum(1 for d in data.saturdays if _shift_at(schedule, emp.id, d) == "OFF")
         sun_off = sum(1 for d in data.sundays if _shift_at(schedule, emp.id, d) == "OFF")
-        if sat_off + sun_off > 2:
-            violations.append(_v("H3", emp, None, f"週末休假 {sat_off + sun_off} 天（應 <=2）"))
+        total = sat_off + sun_off
+        if emp.role == "night":
+            if total > 2:
+                violations.append(_v("H3", emp, None, f"週末休假 {total} 天（應 <=2）"))
+        elif total != 2:
+            violations.append(_v("H3", emp, None, f"週末休假 {total} 天（應 =2）"))
 
     for emp in data.employees:
         if _ignored_night(data, emp):
@@ -291,13 +295,14 @@ def validate_soft(data, schedule):
         if runs < 2:
             warnings.append(_v("S9", emp, None, f"連休 {runs} 次（建議 2 次）"))
 
-    # S10: 週五/週六人力加強（雙A/雙C）＋ 平日（週日~週四）優先排 B
+    # S10: 週五/週六人力加強（雙A/雙C/M）＋ 平日（週日~週四）優先排 B
     fri_sat = set(data.fridays) | set(data.saturdays)
     for d in sorted(fri_sat):
         a = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "A")
         c = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "C")
-        if a < 2 and c < 2:
-            warnings.append(_v("S10", None, d + 1, "週五/六人力未加強（建議雙 A 或雙 C）"))
+        m = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "M")
+        if a < 2 and c < 2 and m == 0:
+            warnings.append(_v("S10", None, d + 1, "週五/六人力未加強（建議雙 A / 雙 C / M）"))
     for d in range(data.num_days):
         if d in fri_sat:
             continue
@@ -333,7 +338,7 @@ def compute_fairness_spread(data, schedule) -> int:
 
 
 RULE_DESCRIPTIONS = {
-    "H1": "每日班次覆蓋", "H2": "每週休 2 天", "H3": "週末休假限制（六+日<=2）",
+    "H1": "每日班次覆蓋", "H2": "每週休 2 天", "H3": "週末休假限制（六+日=2）",
     "H4": "連續上班上限", "H5": "班次銜接禁止", "H6": "指定休假",
     "H7": "可用班次限制", "H8": "跨月班次銜接", "H9": "跨月週連續性",
     "H10": "一天一班", "H11": "D 班備援邏輯", "H12": "連休 1~2 次",
@@ -341,5 +346,5 @@ RULE_DESCRIPTIONS = {
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",
-    "S9": "連休 2 次優先", "S10": "週五/六雙A/雙C＋平日B",
+    "S9": "連休 2 次優先", "S10": "週五/六雙A/雙C/M＋平日B",
 }

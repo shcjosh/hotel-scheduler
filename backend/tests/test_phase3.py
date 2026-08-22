@@ -87,7 +87,7 @@ if not result.success:
 
 check(result.objective_value is not None, "1. objective_value 不為 None")
 stats = result.soft_constraint_stats
-check(stats is not None and len(stats) == 11, "2. 軟性約束統計全部回傳 (11 項)")
+check(stats is not None and len(stats) == 12, "2. 軟性約束統計全部回傳 (12 項)")
 check(stats["s1_5consecutive_count"] <= 3, f"3. S1 連續5天次數最少化 (={stats['s1_5consecutive_count']})")
 check(stats["s2_b_to_a_count"] == 0, f"4. S2 B→A = 0 (={stats['s2_b_to_a_count']})")
 check(stats["s3_c_to_b_count"] == 0, f"5. S3 C→B = 0 (={stats['s3_c_to_b_count']})")
@@ -108,6 +108,8 @@ check(0 <= stats["s10_frisat_double_a_count"] <= frisat_days,
       f"12. S10 五六雙A 在 0~{frisat_days} 之間 (={stats['s10_frisat_double_a_count']})")
 check(0 <= stats["s10_frisat_double_c_count"] <= frisat_days,
       f"13. S10 五六雙C 在 0~{frisat_days} 之間 (={stats['s10_frisat_double_c_count']})")
+check(0 <= stats["s10_frisat_m_count"] <= frisat_days * len(data.employees),
+      f"14. S10 五六M 在 0~{frisat_days * len(data.employees)} 之間 (={stats['s10_frisat_m_count']})")
 
 work_counts = {nm: sum(1 for s in row if s in ("A","B","C","D")) for nm, row in result.schedule.items()}
 print("  上班天數:", work_counts)

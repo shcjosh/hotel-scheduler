@@ -91,7 +91,8 @@ H2  每週休 2 天
     不完整週（月初/月末 < 5 天）最多休 2 天。
 
 H3  週末休假限制
-    每人每月週六與週日休假加總最多 2 天。
+    一般/C+D備援/管理職：每人每月週六與週日休假加總恰好 2 天。
+    大夜專職：維持最多 2 天（<=2，因跑館僅見本館部分排班）。
     特休不受此限制。
 
 H4  連續上班上限
@@ -174,7 +175,7 @@ S9  連休 2 次優先
     盡量讓每人每月達成 2 次連休（配合 H12 的 1~2 次範圍）。
 
 S10 週末人力加強
-    週五/週六盡量加人，優先序雙 A = 雙 C > B；
+    週五/週六盡量加人，優先序雙 A = 雙 C = M > B；
     平日（週日~週四）優先排 B（v1.1.1-beta 調整）。
 
 ===============================================================================
@@ -639,7 +640,8 @@ H2  每週休2天:
 
 H3  週末限制:
     for each emp e:
-      sum(x[e,d,OFF] for d in saturdays) + sum(x[e,d,OFF] for d in sundays) <= 2
+      非大夜: sum(x[e,d,OFF] for d in saturdays) + sum(x[e,d,OFF] for d in sundays) == 2
+      大夜專職: sum(x[e,d,OFF] for d in saturdays) + sum(x[e,d,OFF] for d in sundays) <= 2
 
 H4  連續上班上限:
     for each emp e, for d in 0..num_days-6:
@@ -727,9 +729,10 @@ H13 大夜專職手動:
     for each emp e:
       objective += (連休次數) * 8
 
-  S10 週末人力加強 (權重 雙A +4 / 雙C +4 / 平日B +3):
+  S10 週末人力加強 (權重 雙A +6 / 雙C +6 / M +6 / 平日B +3):
     for each 週五/週六 d:
-      若 sum(x[e,d,A]) == 2 → +4；若 sum(x[e,d,C]) == 2 → +4
+      若 sum(x[e,d,A]) == 2 → +6；若 sum(x[e,d,C]) == 2 → +6
+      objective += sum(x[e,d,M]) * 6
     for each 週日~週四 d:
       objective += sum(x[e,d,B]) * 3
 
@@ -1283,7 +1286,7 @@ F.1 決策變數
 F.2 硬性約束 H1~H13（constraints/hard.py）
   H1  每日覆蓋：A>=1, C>=1（M 不計入覆蓋）；A<=2,C<=2,B<=1,D<=1
   H2  每週休 2 天（週一為週首，跨月週 H9 處理）
-  H3  週末限制（每月 Sat+Sun OFF 加總 <=2）
+  H3  週末限制（每月 Sat+Sun OFF 加總 =2；大夜 <=2）
   H4  連續上班 <=5（6 天視窗至少 1 休/特休，含跨月 5 個 spanning windows）
   H5  班次銜接禁止：C→A, D→A, D→C, D→M（D→M 為 Phase 7.5 新增）
   H6  指定休假固定 OFF
@@ -1309,7 +1312,7 @@ F.3 軟性約束 S1~S3、S5~S10（constraints/soft.py，最大化目標函數）
   S8  管理職備援最小化（manager 上 A/B/C/D × -15，Phase 7.5 新增）
       → 權重 -15 > S5 +5，確保管理職優先上 M；但覆蓋不足時 solver 仍會排備援
   S9  連休 2 次優先（每人連休次數 × +8，v1.0.3 新增）
-  S10 週末人力加強（週五/六 雙A=雙C +4，平日B +3，v1.1.1-beta 調整）
+  S10 週末人力加強（週五/六 雙A=雙C=M +6，平日B +3，v1.1.1-beta 調整）
 
   求解參數：max_time_in_seconds=30, num_search_workers=8,
             log_search_progress 由 env SCHEDULER_LOG_SEARCH_PROGRESS 控制（預設關）
@@ -1727,8 +1730,8 @@ L.7 週末人力加強（S10，v1.1.0-beta；v1.1.1-beta 調整）
     - 權重：B 班 +6、雙 A +4、雙 C +2（依優先序遞減）。
 
   調整（v1.1.1-beta）:
-    - 加強日改為「週五/週六」，優先序改為「雙 A = 雙 C > B」。
-    - 週五/六不再獎勵 B 班（刪除 B 權重），專注雙 A（+4）與雙 C（+4）。
+    - 加強日改為「週五/週六」，優先序改為「雙 A = 雙 C = M > B」。
+    - 週五/六不再獎勵 B 班（刪除 B 權重），專注雙 A（+6）、雙 C（+6）與 M（+6）。
     - 平日（週日~週四）新增「優先排 B」（+3）。
     - 統計回傳 s10_weekday_b_count / s10_frisat_double_a_count /
       s10_frisat_double_c_count（平日B / 五六雙A / 五六雙C 達成天數）。

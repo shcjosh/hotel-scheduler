@@ -221,6 +221,7 @@ def _extract_soft_stats(solver, trackers) -> dict:
         "s10_weekday_b_count": total("s10_b"),
         "s10_frisat_double_a_count": total("s10_2a"),
         "s10_frisat_double_c_count": total("s10_2c"),
+        "s10_frisat_m_count": total("s10_m"),
     }
     if trackers.get("s6_max") is not None:
         stats["s6_work_days_spread"] = int(

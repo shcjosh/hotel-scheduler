@@ -20,6 +20,7 @@ const SOFT_LABELS: Record<string, string> = {
   s10_weekday_b_count: 'S10 平日B',
   s10_frisat_double_a_count: 'S10 五六雙A',
   s10_frisat_double_c_count: 'S10 五六雙C',
+  s10_frisat_m_count: 'S10 五六M',
 }
 
 function empStats(row: string[]) {

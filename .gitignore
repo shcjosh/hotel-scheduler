@@ -30,3 +30,6 @@ Thumbs.db
 # 環境設定
 .env
 config.ini
+
+# opencode 設定
+opencode.json
