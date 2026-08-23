@@ -54,7 +54,7 @@ app.include_router(lifecycle.router, prefix=API_PREFIX, tags=["lifecycle"])
 
 @app.get(f"{API_PREFIX}/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": __version__}
 
 
 def _frontend_dist() -> Path | None:

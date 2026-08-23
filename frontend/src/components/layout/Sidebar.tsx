@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import {
   CalendarDays,
   Users,
@@ -8,6 +9,7 @@ import {
   BarChart3,
 } from 'lucide-react'
 import { cn } from '../../utils/cn'
+import { getHealth } from '../../api/health'
 
 const navItems = [
   { to: '/', label: '排班表', icon: CalendarDays },
@@ -19,6 +21,7 @@ const navItems = [
 ]
 
 export function Sidebar() {
+  const { data } = useQuery({ queryKey: ['health'], queryFn: () => getHealth() })
   return (
     <aside className="flex h-full w-[200px] flex-shrink-0 flex-col border-r border-gray-200 bg-gray-50">
       <div className="flex h-14 items-center gap-2 border-b border-gray-200 px-4">
@@ -45,6 +48,9 @@ export function Sidebar() {
           </NavLink>
         ))}
       </nav>
+      <div className="border-t border-gray-200 px-4 py-2 text-center text-xs text-gray-400">
+        v{data?.version ?? '…'}
+      </div>
     </aside>
   )
 }
