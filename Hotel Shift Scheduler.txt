@@ -761,8 +761,8 @@ hotel-scheduler/
 1. 使用者雙擊 hotel-scheduler.exe
 2. 程式檢查 data/ 目錄是否存在，不存在則建立
 3. 程式檢查 data/scheduler.db 是否存在，不存在則建立並初始化 Schema
-4. FastAPI 伺服器在 localhost:8000 啟動
-5. 自動開啟預設瀏覽器到 http://localhost:8000
+4. FastAPI 伺服器在 localhost:8765 啟動
+5. 自動開啟預設瀏覽器到 http://localhost:8765
 6. 使用者在瀏覽器中使用所有功能
 7. 關閉瀏覽器後，.exe 仍在背景執行
 8. 使用者可從系統匣圖示或 Ctrl+C 關閉程式
@@ -796,7 +796,7 @@ import uvicorn
 def open_browser():
     import time
     time.sleep(1.5)
-    webbrowser.open("http://localhost:8000")
+    webbrowser.open("http://localhost:8765")
 
 def get_base_path():
     """取得資源路徑（PyInstaller 打包後的路径）"""
@@ -823,7 +823,7 @@ def main():
     threading.Thread(target=open_browser, daemon=True).start()
 
     # 啟動 FastAPI
-    uvicorn.run("app.api:app", host="127.0.0.1", port=8000, log_level="info")
+    uvicorn.run("app.api:app", host="127.0.0.1", port=8765, log_level="info")
 
 if __name__ == "__main__":
     main()
@@ -1209,7 +1209,7 @@ Hotel_OpenCode/
     │   ├── utils/                   ← shift/date/roles/cn
     │   └── styles/globals.css       ← Tailwind directives
     ├── tailwind.config.js           ← v3，含 shift 色盤
-    ├── vite.config.ts               ← proxy /api → localhost:8000
+    ├── vite.config.ts               ← proxy /api → localhost:8765
     └── dist/                        ← build 產出（gitignore，由後端 mount 服務）
 
 ================================================================================
@@ -1404,12 +1404,12 @@ I. 啟動 / 開發 / 打包方式
 ================================================================================
 
 開發模式（前後端分離，proxy）：
-  cd backend && .venv/bin/python -m uvicorn app.api:app --port 8000
-  cd frontend && npm run dev          # http://localhost:5173, proxy /api → 8000
+  cd backend && .venv/bin/python -m uvicorn app.api:app --port 8765
+  cd frontend && npm run dev          # http://localhost:5173, proxy /api → 8765
 
 單一伺服器模式（後端服務已 build 前端）：
   cd frontend && npm run build
-  cd backend && .venv/bin/python run.py   # http://localhost:8000（含前端）
+  cd backend && .venv/bin/python run.py   # http://localhost:8765（含前端）
 
 產生測試資料：
   cd backend && .venv/bin/python tests/seed_dev.py
@@ -1452,7 +1452,7 @@ J. 已知限制與注意事項
 6. log_search_progress：預設關（避免污染 stdout），需觀察求解過程時設
    env SCHEDULER_LOG_SEARCH_PROGRESS=1。
 
-7. 前端 build 後由後端 mount "/" 服務；開發時 vite proxy /api → 8000。
+7. 前端 build 後由後端 mount "/" 服務；開發時 vite proxy /api → 8765。
    API 路由註冊在 mount 之前，故 /api/* 優先匹配。
 
 8. 大夜規則開關只影響 H2/H3/H4/H12（及 H9 跨月週）；H5/H8 銜接、H10 一天一班、

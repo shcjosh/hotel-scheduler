@@ -16,4 +16,4 @@ STATIC_DIR = Path(os.environ.get("STATIC_DIR", BASE_DIR / "static"))
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 HOST = os.environ.get("HOST", "127.0.0.1")
-PORT = int(os.environ.get("PORT", "8000"))
+PORT = int(os.environ.get("PORT", "8765"))

@@ -10,7 +10,7 @@
 ## 使用方式（打包版）
 - Windows：解壓縮 `hotel-scheduler-*-windows-x64.zip`，雙擊 `hotel-scheduler.exe`
 - Linux：解壓縮 `hotel-scheduler-*-linux-x64.tar.gz`，執行 `./hotel-scheduler`
-- 啟動後瀏覽器自動開啟 http://localhost:8000
+- 啟動後瀏覽器自動開啟 http://localhost:8765
 - 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
 
 資料庫 `data/scheduler.db` 與執行檔同層，整個資料夾可複製到其他機器直接使用。
@@ -38,7 +38,7 @@
 ## 開發啟動
 ```bash
 # 後端
-cd backend && .venv/bin/python -m uvicorn app.api:app --port 8000
+cd backend && .venv/bin/python -m uvicorn app.api:app --port 8765
 
 # 前端（開發模式，proxy /api → 後端）
 cd frontend && npm run dev
