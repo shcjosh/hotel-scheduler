@@ -218,9 +218,10 @@ def _extract_soft_stats(solver, trackers) -> dict:
         "s7_non_backup_d_count": total("s7"),
         "s8_manager_backup_count": total("s8"),
         "s9_off_block_count": total("s9"),
-        "s10_weekend_b_count": total("s10_b"),
-        "s10_weekend_double_a_count": total("s10_2a"),
-        "s10_weekend_double_c_count": total("s10_2c"),
+        "s10_weekday_b_count": total("s10_b"),
+        "s10_frisat_double_a_count": total("s10_2a"),
+        "s10_frisat_double_c_count": total("s10_2c"),
+        "s10_frisat_m_count": total("s10_m"),
     }
     if trackers.get("s6_max") is not None:
         stats["s6_work_days_spread"] = int(

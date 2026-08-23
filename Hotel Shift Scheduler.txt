@@ -91,7 +91,8 @@ H2  每週休 2 天
     不完整週（月初/月末 < 5 天）最多休 2 天。
 
 H3  週末休假限制
-    每人每月週六與週日休假加總最多 2 天。
+    一般/C+D備援/管理職：每人每月週六與週日休假加總恰好 2 天。
+    大夜專職：維持最多 2 天（<=2，因跑館僅見本館部分排班）。
     特休不受此限制。
 
 H4  連續上班上限
@@ -174,7 +175,8 @@ S9  連休 2 次優先
     盡量讓每人每月達成 2 次連休（配合 H12 的 1~2 次範圍）。
 
 S10 週末人力加強
-    週六/週日盡量加人，優先序 B 班 > 雙 A > 雙 C（v1.1.0-beta 新增）。
+    週五/週六盡量加人，優先序雙 A = 雙 C = M > B；
+    平日（週日~週四）優先排 B（v1.1.1-beta 調整）。
 
 ===============================================================================
 六、班次銜接矩陣
@@ -638,7 +640,8 @@ H2  每週休2天:
 
 H3  週末限制:
     for each emp e:
-      sum(x[e,d,OFF] for d in saturdays) + sum(x[e,d,OFF] for d in sundays) <= 2
+      非大夜: sum(x[e,d,OFF] for d in saturdays) + sum(x[e,d,OFF] for d in sundays) == 2
+      大夜專職: sum(x[e,d,OFF] for d in saturdays) + sum(x[e,d,OFF] for d in sundays) <= 2
 
 H4  連續上班上限:
     for each emp e, for d in 0..num_days-6:
@@ -726,10 +729,12 @@ H13 大夜專職手動:
     for each emp e:
       objective += (連休次數) * 8
 
-  S10 週末人力加強 (權重 B +6 / 雙A +4 / 雙C +2):
-    for each 週六/週日 d:
-      objective += sum(x[e,d,B]) * 6
-      若 sum(x[e,d,A]) == 2 → +4；若 sum(x[e,d,C]) == 2 → +2
+  S10 週末人力加強 (權重 雙A +6 / 雙C +6 / M +6 / 平日B +3):
+    for each 週五/週六 d:
+      若 sum(x[e,d,A]) == 2 → +6；若 sum(x[e,d,C]) == 2 → +6
+      objective += sum(x[e,d,M]) * 6
+    for each 週日~週四 d:
+      objective += sum(x[e,d,B]) * 3
 
 ================================================================================
 十四、Portable 打包方案
@@ -756,8 +761,8 @@ hotel-scheduler/
 1. 使用者雙擊 hotel-scheduler.exe
 2. 程式檢查 data/ 目錄是否存在，不存在則建立
 3. 程式檢查 data/scheduler.db 是否存在，不存在則建立並初始化 Schema
-4. FastAPI 伺服器在 localhost:8000 啟動
-5. 自動開啟預設瀏覽器到 http://localhost:8000
+4. FastAPI 伺服器在 localhost:8765 啟動
+5. 自動開啟預設瀏覽器到 http://localhost:8765
 6. 使用者在瀏覽器中使用所有功能
 7. 關閉瀏覽器後，.exe 仍在背景執行
 8. 使用者可從系統匣圖示或 Ctrl+C 關閉程式
@@ -791,7 +796,7 @@ import uvicorn
 def open_browser():
     import time
     time.sleep(1.5)
-    webbrowser.open("http://localhost:8000")
+    webbrowser.open("http://localhost:8765")
 
 def get_base_path():
     """取得資源路徑（PyInstaller 打包後的路径）"""
@@ -818,7 +823,7 @@ def main():
     threading.Thread(target=open_browser, daemon=True).start()
 
     # 啟動 FastAPI
-    uvicorn.run("app.api:app", host="127.0.0.1", port=8000, log_level="info")
+    uvicorn.run("app.api:app", host="127.0.0.1", port=8765, log_level="info")
 
 if __name__ == "__main__":
     main()
@@ -1204,7 +1209,7 @@ Hotel_OpenCode/
     │   ├── utils/                   ← shift/date/roles/cn
     │   └── styles/globals.css       ← Tailwind directives
     ├── tailwind.config.js           ← v3，含 shift 色盤
-    ├── vite.config.ts               ← proxy /api → localhost:8000
+    ├── vite.config.ts               ← proxy /api → localhost:8765
     └── dist/                        ← build 產出（gitignore，由後端 mount 服務）
 
 ================================================================================
@@ -1281,7 +1286,7 @@ F.1 決策變數
 F.2 硬性約束 H1~H13（constraints/hard.py）
   H1  每日覆蓋：A>=1, C>=1（M 不計入覆蓋）；A<=2,C<=2,B<=1,D<=1
   H2  每週休 2 天（週一為週首，跨月週 H9 處理）
-  H3  週末限制（每月 Sat+Sun OFF 加總 <=2）
+  H3  週末限制（每月 Sat+Sun OFF 加總 =2；大夜 <=2）
   H4  連續上班 <=5（6 天視窗至少 1 休/特休，含跨月 5 個 spanning windows）
   H5  班次銜接禁止：C→A, D→A, D→C, D→M（D→M 為 Phase 7.5 新增）
   H6  指定休假固定 OFF
@@ -1307,7 +1312,7 @@ F.3 軟性約束 S1~S3、S5~S10（constraints/soft.py，最大化目標函數）
   S8  管理職備援最小化（manager 上 A/B/C/D × -15，Phase 7.5 新增）
       → 權重 -15 > S5 +5，確保管理職優先上 M；但覆蓋不足時 solver 仍會排備援
   S9  連休 2 次優先（每人連休次數 × +8，v1.0.3 新增）
-  S10 週末人力加強（週六/日 B +6 > 雙A +4 > 雙C +2，v1.1.0-beta 新增）
+  S10 週末人力加強（週五/六 雙A=雙C=M +6，平日B +3，v1.1.1-beta 調整）
 
   求解參數：max_time_in_seconds=30, num_search_workers=8,
             log_search_progress 由 env SCHEDULER_LOG_SEARCH_PROGRESS 控制（預設關）
@@ -1399,12 +1404,12 @@ I. 啟動 / 開發 / 打包方式
 ================================================================================
 
 開發模式（前後端分離，proxy）：
-  cd backend && .venv/bin/python -m uvicorn app.api:app --port 8000
-  cd frontend && npm run dev          # http://localhost:5173, proxy /api → 8000
+  cd backend && .venv/bin/python -m uvicorn app.api:app --port 8765
+  cd frontend && npm run dev          # http://localhost:5173, proxy /api → 8765
 
 單一伺服器模式（後端服務已 build 前端）：
   cd frontend && npm run build
-  cd backend && .venv/bin/python run.py   # http://localhost:8000（含前端）
+  cd backend && .venv/bin/python run.py   # http://localhost:8765（含前端）
 
 產生測試資料：
   cd backend && .venv/bin/python tests/seed_dev.py
@@ -1447,7 +1452,7 @@ J. 已知限制與注意事項
 6. log_search_progress：預設關（避免污染 stdout），需觀察求解過程時設
    env SCHEDULER_LOG_SEARCH_PROGRESS=1。
 
-7. 前端 build 後由後端 mount "/" 服務；開發時 vite proxy /api → 8000。
+7. 前端 build 後由後端 mount "/" 服務；開發時 vite proxy /api → 8765。
    API 路由註冊在 mount 之前，故 /api/* 優先匹配。
 
 8. 大夜規則開關只影響 H2/H3/H4/H12（及 H9 跨月週）；H5/H8 銜接、H10 一天一班、
@@ -1714,17 +1719,22 @@ L.6 當月臨時異動（Temporary Adjustment，v1.0.7）
     - API：POST /schedules/adjust/preview、POST /schedules/adjust/apply。
     - 排班畫面預設顯示「下一個月」（當月通常已排班發布）。
 
-L.7 週末人力加強（S10，v1.1.0-beta）
+L.7 週末人力加強（S10，v1.1.0-beta；v1.1.1-beta 調整）
 ================================================================================
 
   動機:
     週六、週日客人較多，現行排班只保證每天 A≥1、C≥1，週末人力可能不足。
 
-  做法:
+  做法（v1.1.0-beta）:
     - 新增軟性約束 S10（constraints/soft.py）：週六/週日盡量加人，優先序 B > 雙 A > 雙 C。
     - 權重：B 班 +6、雙 A +4、雙 C +2（依優先序遞減）。
-    - 統計回傳 s10_weekend_b_count / double_a_count / double_c_count（週末達成天數）。
-    - 排班結果與統計頁顯示「週末 B / 雙 A / 雙 C」達成天數。
+
+  調整（v1.1.1-beta）:
+    - 加強日改為「週五/週六」，優先序改為「雙 A = 雙 C = M > B」。
+    - 週五/六不再獎勵 B 班（刪除 B 權重），專注雙 A（+6）、雙 C（+6）與 M（+6）。
+    - 平日（週日~週四）新增「優先排 B」（+3）。
+    - 統計回傳 s10_weekday_b_count / s10_frisat_double_a_count /
+      s10_frisat_double_c_count（平日B / 五六雙A / 五六雙C 達成天數）。
 
 附錄結束
 ================================================================================

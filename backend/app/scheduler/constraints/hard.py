@@ -57,11 +57,15 @@ def add_h2_weekly_off_days(model, x, data, fixed):
 def add_h3_weekend_limit(model, x, data, fixed):
     n = len(data.employees)
     for i in range(n):
-        if not _rule_enabled(data, data.employees[i], "H3"):
+        emp = data.employees[i]
+        if not _rule_enabled(data, emp, "H3"):
             continue
         sat_off = sum(x[i][d]["OFF"] for d in data.saturdays)
         sun_off = sum(x[i][d]["OFF"] for d in data.sundays)
-        model.Add(sat_off + sun_off <= 2)
+        if emp.role == "night":
+            model.Add(sat_off + sun_off <= 2)
+        else:
+            model.Add(sat_off + sun_off == 2)
 
 
 def add_h4_max_consecutive_work(model, x, data, fixed):

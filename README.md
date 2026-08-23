@@ -10,14 +10,14 @@
 ## 使用方式（打包版）
 - Windows：解壓縮 `hotel-scheduler-*-windows-x64.zip`，雙擊 `hotel-scheduler.exe`
 - Linux：解壓縮 `hotel-scheduler-*-linux-x64.tar.gz`，執行 `./hotel-scheduler`
-- 啟動後瀏覽器自動開啟 http://localhost:8000
+- 啟動後瀏覽器自動開啟 http://localhost:8765
 - 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
 
 資料庫 `data/scheduler.db` 與執行檔同層，整個資料夾可複製到其他機器直接使用。
 
 ## 功能
 - A/B/C/D/M 班排班（CP-SAT 求解引擎，13 條硬性 + 9 條軟性約束）
-- 週末人力加強（週六/日優先排 B > 雙A > 雙C）
+- 週五/六人力加強（雙A = 雙C），平日（週日～週四）優先排 B
 - 員工管理（一般/大夜/C+D備援/管理職，含暱稱欄位）
 - 休假管理（指定休假 + 特休/事假/病假/自訂假別 + 連休計數；圓形 Icon 選人、常用假別單鍵選取）
 - 跨月銜接設定與預覽
@@ -38,7 +38,7 @@
 ## 開發啟動
 ```bash
 # 後端
-cd backend && .venv/bin/python -m uvicorn app.api:app --port 8000
+cd backend && .venv/bin/python -m uvicorn app.api:app --port 8765
 
 # 前端（開發模式，proxy /api → 後端）
 cd frontend && npm run dev

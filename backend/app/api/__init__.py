@@ -18,6 +18,7 @@ from app.api.routes import (
     solve,
     stats,
     support,
+    updates,
 )
 from app.config import STATIC_DIR
 from app.database.connection import init_db
@@ -50,11 +51,12 @@ app.include_router(stats.router, prefix=API_PREFIX, tags=["stats"])
 app.include_router(export.router, prefix=API_PREFIX, tags=["export"])
 app.include_router(solve.router, prefix=API_PREFIX, tags=["solve"])
 app.include_router(lifecycle.router, prefix=API_PREFIX, tags=["lifecycle"])
+app.include_router(updates.router, prefix=API_PREFIX, tags=["updates"])
 
 
 @app.get(f"{API_PREFIX}/health")
 def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": __version__}
 
 
 def _frontend_dist() -> Path | None:

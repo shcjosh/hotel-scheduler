@@ -10,8 +10,8 @@ opencode 每次開啟本專案時會自動載入本文件，作為開發與協�
 - 打包: PyInstaller（onedir）+ GitHub Actions（Windows/Linux 雙平台）
 
 ## 開發命令（在 backend/、frontend/ 目錄下執行）
-- 後端：`.venv\Scripts\python -m uvicorn app.api:app --port 8000`（Windows；Linux 為 `.venv/bin/python`）
-- 前端 dev（proxy `/api` → localhost:8000）：`npm run dev`（port 5173）
+- 後端：`.venv\Scripts\python -m uvicorn app.api:app --port 8765`（Windows；Linux 為 `.venv/bin/python`）
+- 前端 dev（proxy `/api` → localhost:8765）：`npm run dev`（port 5173）
 - 單一後端模式（服務前端 build）：`cd frontend && npm run build` 後 `cd backend && .venv\Scripts\python run.py`
 - 測試：`cd backend && .venv\Scripts\python tests/test_phase8.py`（**不是 pytest**，tests/ 是各自帶 `assert` 的獨立腳本，自己設定 temp DB_PATH，逐檔執行）
 - 前端 lint：`npm run lint`（oxlint）；`npm run build` = `tsc -b && vite build`（含型別檢查）。後端無 lint/typecheck 指令。

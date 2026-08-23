@@ -1,5 +1,6 @@
 import type { Employee, LeaveType, MonthScheduleView } from '../types'
 import { getWeekday, getWeekdayLabel } from './date'
+import { SHIFT_ORDER, SHIFT_DESCRIPTIONS, getDesignatedOffStyle } from './shift'
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -12,6 +13,19 @@ function cellText(shift: string, source: string, leaveName?: string): string {
     return leaveName.length > 2 ? leaveName.slice(0, 2) : leaveName
   }
   return shift
+}
+
+const PRINT_SHIFT_COLORS: Record<string, { bg: string; text: string; label: string }> = {
+  A: { bg: '#e3f2fd', text: '#1e40af', label: 'A' },
+  B: { bg: '#fff3e0', text: '#9a3412', label: 'B' },
+  C: { bg: '#f3e5f5', text: '#6b21a8', label: 'C' },
+  D: { bg: '#1a237e', text: '#ffffff', label: 'D' },
+  M: { bg: '#ccfbf1', text: '#115e59', label: 'M' },
+  OFF: { bg: '#ffcdd2', text: '#991b1b', label: '休' },
+}
+
+function legendItem(label: string, bg: string, text: string, desc: string): string {
+  return `<span class="lg"><span class="sw" style="background:${bg};color:${text}">${esc(label)}</span>${esc(desc)}</span>`
 }
 
 export function printSchedule(
@@ -57,6 +71,20 @@ export function printSchedule(
     rows.push(`<tr>${cells.join('')}</tr>`)
   }
 
+  const legendItems: string[] = []
+  for (const s of SHIFT_ORDER) {
+    if (s === 'SPECIAL') continue
+    const c = PRINT_SHIFT_COLORS[s]
+    legendItems.push(legendItem(c.label, c.bg, c.text, SHIFT_DESCRIPTIONS[s]))
+  }
+  const designated = getDesignatedOffStyle()
+  legendItems.push(legendItem(designated.label, designated.bg, designated.text, '指定休假'))
+  for (const lt of leaveTypes) {
+    const name = lt.name || '假'
+    const label = name.length > 2 ? name.slice(0, 2) : name
+    legendItems.push(legendItem(label, lt.color_bg ?? '#e1bee7', lt.color_text ?? '#4a148c', name))
+  }
+
   const title = `${hotelName} ${year} 年 ${month} 月班表`
   const html = `<!doctype html>
 <html lang="zh-TW">
@@ -76,6 +104,9 @@ export function printSchedule(
   .weekend { background: #e5e7eb; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .week-start { border-left: 2px solid #111827; }
   .week-end { border-right: 2px solid #111827; }
+  .legend { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 8px; }
+  .lg { display: inline-flex; align-items: center; gap: 3px; }
+  .sw { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 12px; border-radius: 2px; font-size: 7px; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 </style>
 </head>
 <body>
@@ -84,6 +115,7 @@ export function printSchedule(
 <thead><tr><th class="name">員工</th>${dayHeaders.join('')}</tr></thead>
 <tbody>${rows.join('')}</tbody>
 </table>
+<div class="legend">${legendItems.join('')}</div>
 <script>window.onload = function () { window.print(); }</script>
 </body>
 </html>`

@@ -1,6 +1,6 @@
 """飯店排班系統 - 入口點（開發與 PyInstaller 打包通用）。
 
-啟動後自動開啟瀏覽器到 http://localhost:8000
+啟動後自動開啟瀏覽器到 http://localhost:8765
 """
 import os
 import sys
@@ -17,6 +17,7 @@ import threading
 import time
 import webbrowser
 from pathlib import Path
+import socket
 
 
 def ensure_data_dir() -> None:
@@ -34,19 +35,36 @@ ensure_data_dir()
 
 # 直接 import app 讓 PyInstaller 能追蹤 fastapi/sqlalchemy/ortools 等依賴
 from app.api import app  # noqa: E402
+from app.config import HOST, PORT  # noqa: E402
 from app.lifecycle import lifecycle  # noqa: E402
+
+
+def _port_in_use(host: str, port: int) -> bool:
+    """綁定測試：port 已被占用則回傳 True（偵測既有實例）。"""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind((host, port))
+        return False
+    except OSError:
+        return True
+    finally:
+        s.close()
 
 
 def open_browser() -> None:
     time.sleep(2)
-    webbrowser.open("http://localhost:8000")
+    webbrowser.open(f"http://localhost:{PORT}")
 
 
 def main() -> None:
+    if _port_in_use(HOST, PORT):
+        # 已有實例在跑（如瀏覽器當機後殘留後台）：只開瀏覽器連到既有實例，然後退出
+        webbrowser.open(f"http://localhost:{PORT}")
+        return
     threading.Thread(target=open_browser, daemon=True).start()
     import uvicorn
 
-    config = uvicorn.Config(app, host="127.0.0.1", port=8000, log_level="warning")
+    config = uvicorn.Config(app, host=HOST, port=PORT, log_level="warning")
     server = uvicorn.Server(config)
     # 測試期間可設 SCHEDULER_DISABLE_LIFECYCLE=1 關閉「關分頁自動結束」偵測
     if os.environ.get("SCHEDULER_DISABLE_LIFECYCLE") != "1":
