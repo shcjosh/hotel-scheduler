@@ -83,6 +83,7 @@ export function NightPage() {
   }
 
   const violations = validation?.violations ?? []
+  const allIgnored = validation?.all_ignored ?? false
   const ok = violations.length === 0
 
   return (
@@ -166,10 +167,19 @@ export function NightPage() {
         <div
           className={cn(
             'rounded-lg border p-4',
-            ok ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50',
+            allIgnored
+              ? 'border-blue-200 bg-blue-50'
+              : ok
+              ? 'border-green-200 bg-green-50'
+              : 'border-red-200 bg-red-50',
           )}
         >
-          {ok ? (
+          {allIgnored ? (
+            <div className="flex items-center gap-2 text-blue-700">
+              <CheckCircle2 className="h-5 w-5" />
+              <span className="font-medium">已略過所有規則檢驗 ✓</span>
+            </div>
+          ) : ok ? (
             <div className="flex items-center gap-2 text-green-700">
               <CheckCircle2 className="h-5 w-5" />
               <span className="font-medium">大夜班表合規 ✓</span>

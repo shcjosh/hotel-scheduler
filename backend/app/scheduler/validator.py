@@ -316,6 +316,8 @@ def validate_soft(data, schedule):
 def count_preferred_unsatisfied(data, schedule) -> int:
     count = 0
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         if not emp.preferred_shift:
             continue
         for d in range(data.num_days):
@@ -330,6 +332,8 @@ def count_preferred_unsatisfied(data, schedule) -> int:
 def compute_fairness_spread(data, schedule) -> int:
     totals = []
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         totals.append(sum(1 for s in shifts if _is_work(s)))
     if not totals:

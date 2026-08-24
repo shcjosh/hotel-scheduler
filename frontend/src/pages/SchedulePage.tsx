@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CalendarX, FileDown, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send } from 'lucide-react'
+import { CalendarX, FileDown, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send, Paintbrush, CheckCheck, X } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
@@ -23,13 +23,17 @@ import {
 import { ScheduleTable } from '../components/schedule/ScheduleTable'
 import { ShiftLegend } from '../components/schedule/ShiftLegend'
 import { CellEditModal } from '../components/schedule/CellEditModal'
+import { BatchApplyModal, type PendingCellChange } from '../components/schedule/BatchApplyModal'
 import { AdjustScheduleModal } from '../components/schedule/AdjustScheduleModal'
 import { ValidationReportPanel } from '../components/schedule/ValidationReport'
 import { SupportRequestPanel } from '../components/support/SupportRequestPanel'
 import { VersionHistoryDrawer } from '../components/schedule/VersionHistoryDrawer'
 import { Button } from '../components/ui/button'
 import { displayName } from '../utils/employee'
+import { getShiftStyle } from '../utils/shift'
+import { cn } from '../utils/cn'
 import type { ScheduleStatus } from '../types'
+import type { CellViolation } from '../api/schedules'
 
 function hasRealData(schedule: Record<string, string[]>): boolean {
   return Object.values(schedule).some((row) => row.some((s) => s && s !== 'OFF'))
@@ -41,12 +45,23 @@ const STATUS_META: Record<ScheduleStatus, { label: string; dot: string; cls: str
   locked: { label: '已鎖定', dot: '🔒', cls: 'bg-gray-200 text-gray-700' },
 }
 
+const LT_PREFIX = 'LT:'
+
 export function SchedulePage() {
   const { currentYear, currentMonth } = useUIStore()
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<{ empName: string; day: number } | null>(null)
   const [versionOpen, setVersionOpen] = useState(false)
   const [adjustOpen, setAdjustOpen] = useState(false)
+
+  // 快速連選／畫筆模式
+  const [selectedTool, setSelectedTool] = useState<string | null>(null)
+  const [pendingChanges, setPendingChanges] = useState<Record<string, { shift: string; leaveType?: string }>>({})
+  const [batchModalOpen, setBatchModalOpen] = useState(false)
+  const [batchChecking, setBatchChecking] = useState(false)
+  const [batchSaving, setBatchSaving] = useState(false)
+  const [batchViolations, setBatchViolations] = useState<CellViolation[]>([])
+  const [batchWarnings, setBatchWarnings] = useState<CellViolation[]>([])
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -100,7 +115,10 @@ export function SchedulePage() {
 
   const clearMut = useMutation({
     mutationFn: () => clearSchedule(currentYear, currentMonth),
-    onSuccess: () => invalidateAll(),
+    onSuccess: () => {
+      setPendingChanges({})
+      invalidateAll()
+    },
   })
 
   const statusMut = useMutation({
@@ -110,7 +128,10 @@ export function SchedulePage() {
 
   const restoreMut = useMutation({
     mutationFn: (id: number) => restoreSnapshot(id),
-    onSuccess: () => invalidateAll(),
+    onSuccess: () => {
+      setPendingChanges({})
+      invalidateAll()
+    },
   })
 
   function handleClear() {
@@ -135,6 +156,121 @@ export function SchedulePage() {
   const status = data?.status ?? 'draft'
   const statusMeta = STATUS_META[status]
 
+  // 處理點擊格子
+  function handleCellClick(empName: string, day: number) {
+    if (status === 'locked') return
+    const emp = employees.find((e) => e.name === empName)
+    if (!emp || emp.role === 'night') return
+
+    if (selectedTool) {
+      // 快速連選模式
+      const key = `${empName}_${day}`
+      const originalShift = data?.schedule[empName]?.[day - 1]
+      const originalLeaveCode = data?.leave_details?.[empName]?.[String(day)]
+
+      const isLT = selectedTool.startsWith(LT_PREFIX)
+      const targetShift = isLT ? 'SPECIAL' : selectedTool
+      const targetLeaveType = isLT ? selectedTool.slice(LT_PREFIX.length) : undefined
+
+      // 如果點擊的值跟原始資料相同，則清除暫存
+      if (originalShift === targetShift && (!isLT || originalLeaveCode === targetLeaveType)) {
+        setPendingChanges((prev) => {
+          const next = { ...prev }
+          delete next[key]
+          return next
+        })
+      } else {
+        setPendingChanges((prev) => ({
+          ...prev,
+          [key]: { shift: targetShift, leaveType: targetLeaveType },
+        }))
+      }
+    } else {
+      // 單格編輯彈窗
+      setEditing({ empName, day })
+    }
+  }
+
+  // 批次檢查並開啟確認彈窗
+  async function handleOpenBatchModal() {
+    const changeKeys = Object.keys(pendingChanges)
+    if (changeKeys.length === 0 || !data) return
+
+    setBatchModalOpen(true)
+    setBatchChecking(true)
+    setBatchViolations([])
+    setBatchWarnings([])
+
+    try {
+      const allViolations: CellViolation[] = []
+      const allWarnings: CellViolation[] = []
+      for (const key of changeKeys) {
+        const [empName, dayStr] = key.split('_')
+        const day = Number(dayStr)
+        const emp = employees.find((e) => e.name === empName)
+        if (!emp) continue
+        const item = pendingChanges[key]
+        const r = await validateCell(emp.id, currentYear, currentMonth, day, item.shift)
+        for (const v of r.violations) {
+          allViolations.push({ ...v, message: `${empName} (${day}號): ${v.message}` })
+        }
+        for (const w of r.warnings) {
+          allWarnings.push({ ...w, message: `${empName} (${day}號): ${w.message}` })
+        }
+      }
+      setBatchViolations(allViolations)
+      setBatchWarnings(allWarnings)
+    } catch {
+      setBatchViolations([{ rule: 'ERR', severity: 'hard', message: '檢查過程發生錯誤' }])
+    } finally {
+      setBatchChecking(false)
+    }
+  }
+
+  // 批次確認套用
+  async function handleBatchConfirm(reason?: string) {
+    const changeKeys = Object.keys(pendingChanges)
+    if (changeKeys.length === 0) return
+
+    setBatchSaving(true)
+    try {
+      for (const key of changeKeys) {
+        const [empName, dayStr] = key.split('_')
+        const day = Number(dayStr)
+        const emp = employees.find((e) => e.name === empName)
+        if (!emp) continue
+        const item = pendingChanges[key]
+        await updateScheduleEntry(
+          emp.id,
+          currentYear,
+          currentMonth,
+          day,
+          item.shift,
+          item.leaveType,
+          reason,
+        )
+      }
+      setPendingChanges({})
+      setBatchModalOpen(false)
+      invalidateAll()
+    } finally {
+      setBatchSaving(false)
+    }
+  }
+
+  const pendingChangeList: PendingCellChange[] = Object.entries(pendingChanges).map(([key, val]) => {
+    const [empName, dayStr] = key.split('_')
+    const day = Number(dayStr)
+    const prevShift = data?.schedule[empName]?.[day - 1] ?? ''
+    return {
+      empName,
+      day,
+      shift: val.shift === 'SPECIAL' && val.leaveType ? `請假(${val.leaveType})` : val.shift,
+      leaveType: val.leaveType,
+      prevShift,
+    }
+  })
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -145,7 +281,9 @@ export function SchedulePage() {
               {statusMeta.dot} {statusMeta.label}
             </span>
           </h2>
-          <p className="text-sm text-gray-500">點擊格位可手動微調班次</p>
+          <p className="text-sm text-gray-500">
+            {selectedTool ? '畫筆連選模式：單擊格位即可快速改班' : '點擊格位可手動微調班次，或選取下方畫筆快速連改'}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -194,6 +332,76 @@ export function SchedulePage() {
         </div>
       </div>
 
+      {/* 快速手動調整工具列 */}
+      {!isLoading && !isError && !empty && status !== 'locked' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/60 px-4 py-2.5 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="flex items-center gap-1 text-xs font-semibold text-blue-900">
+              <Paintbrush className="h-3.5 w-3.5" /> 快捷畫筆：
+            </span>
+            {['A', 'B', 'C', 'M', 'OFF'].map((s) => {
+              const style = getShiftStyle(s)
+              const active = selectedTool === s
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSelectedTool((cur) => (cur === s ? null : s))}
+                  className={cn(
+                    'inline-flex h-7 min-w-8 items-center justify-center rounded px-2 text-xs font-bold transition',
+                    style.bg,
+                    style.text,
+                    active ? 'ring-2 ring-blue-600 ring-offset-1 scale-105 shadow-sm' : 'opacity-80 hover:opacity-100',
+                  )}
+                >
+                  {style.label}
+                </button>
+              )
+            })}
+            {leaveTypes.slice(0, 3).map((lt) => {
+              const active = selectedTool === `${LT_PREFIX}${lt.code}`
+              return (
+                <button
+                  key={lt.code}
+                  type="button"
+                  onClick={() => setSelectedTool((cur) => (cur === `${LT_PREFIX}${lt.code}` ? null : `${LT_PREFIX}${lt.code}`))}
+                  className={cn(
+                    'inline-flex h-7 items-center justify-center rounded px-2.5 text-xs font-bold transition',
+                    active ? 'ring-2 ring-blue-600 ring-offset-1 scale-105 shadow-sm' : 'opacity-80 hover:opacity-100',
+                  )}
+                  style={{ backgroundColor: lt.color_bg, color: lt.color_text }}
+                >
+                  {lt.name}
+                </button>
+              )
+            })}
+            {selectedTool && (
+              <button
+                type="button"
+                onClick={() => setSelectedTool(null)}
+                className="flex items-center gap-0.5 rounded px-2 py-1 text-xs text-gray-500 hover:bg-blue-100 hover:text-gray-700"
+              >
+                <X className="h-3 w-3" /> 取消畫筆
+              </button>
+            )}
+          </div>
+
+          {pendingChangeList.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-blue-900">
+                已暫存 {pendingChangeList.length} 處修改
+              </span>
+              <Button variant="outline" className="px-2 py-1 text-xs" onClick={() => setPendingChanges({})}>
+                放棄
+              </Button>
+              <Button className="px-3 py-1 text-xs" onClick={handleOpenBatchModal}>
+                <CheckCheck className="mr-1 h-3.5 w-3.5" /> 檢查並套用
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {isLoading && (
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-500">載入中…</div>
       )}
@@ -218,7 +426,8 @@ export function SchedulePage() {
             view={data}
             employees={employees}
             leaveTypes={leaveTypes}
-            onCellClick={(empName, day) => setEditing({ empName, day })}
+            pendingChanges={pendingChanges}
+            onCellClick={handleCellClick}
           />
           <ShiftLegend leaveTypes={leaveTypes} />
           <ValidationReportPanel
@@ -260,6 +469,20 @@ export function SchedulePage() {
         />
       )}
 
+      {batchModalOpen && (
+        <BatchApplyModal
+          open={batchModalOpen}
+          changes={pendingChangeList}
+          isPublished={status === 'published'}
+          violations={batchViolations}
+          warnings={batchWarnings}
+          isChecking={batchChecking}
+          isSaving={batchSaving}
+          onClose={() => setBatchModalOpen(false)}
+          onConfirm={handleBatchConfirm}
+        />
+      )}
+
       <VersionHistoryDrawer
         open={versionOpen}
         snapshots={snapshots}
@@ -285,3 +508,4 @@ export function SchedulePage() {
     </div>
   )
 }
+

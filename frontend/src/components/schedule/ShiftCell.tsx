@@ -7,11 +7,12 @@ interface ShiftCellProps {
   source?: string
   locked?: boolean
   compact?: boolean
+  pending?: boolean
   leaveType?: { name?: string; color_bg?: string; color_text?: string } | null
   onClick?: () => void
 }
 
-export function ShiftCell({ shift, source, locked, compact, leaveType, onClick }: ShiftCellProps) {
+export function ShiftCell({ shift, source, locked, compact, pending, leaveType, onClick }: ShiftCellProps) {
   const leaveStyle = shift === 'SPECIAL' ? getLeaveTypeStyle(leaveType) : null
   const designatedStyle = shift === 'OFF' && source === 'designated' ? getDesignatedOffStyle() : null
   const style = leaveStyle ?? designatedStyle ?? getShiftStyle(shift)
@@ -28,9 +29,10 @@ export function ShiftCell({ shift, source, locked, compact, leaveType, onClick }
         !inline && style.text,
         compact ? 'h-7 w-9' : 'h-8 w-10',
         locked ? 'cursor-not-allowed' : 'cursor-pointer hover:ring-2 hover:ring-indigo-400',
+        pending && 'ring-2 ring-blue-600 ring-offset-1 scale-105 z-10 shadow-sm',
       )}
       style={inline ? { backgroundColor: style.bg, color: style.text } : undefined}
-      title={locked ? '大夜專職班次（請至大夜班表修改）' : `${style.label}（點擊修改）`}
+      title={locked ? '大夜專職班次（請至大夜班表修改）' : pending ? `${style.label}（尚未儲存變更）` : `${style.label}（點擊修改）`}
     >
       {style.label}
       {locked && (
@@ -38,7 +40,13 @@ export function ShiftCell({ shift, source, locked, compact, leaveType, onClick }
           <Lock className="h-2 w-2" />
         </span>
       )}
-      {!locked && source === 'manual' && (
+      {!locked && pending && (
+        <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-600" />
+        </span>
+      )}
+      {!locked && !pending && source === 'manual' && (
         <span className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-blue-500" />
       )}
     </button>

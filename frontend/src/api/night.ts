@@ -70,7 +70,7 @@ export async function deleteNightEntry(
 export async function getNightValidation(
   year: number,
   month: number,
-): Promise<{ violations: NightViolation[] }> {
+): Promise<{ violations: NightViolation[]; all_ignored?: boolean }> {
   const { data } = await apiClient.get(`/night/${year}/${month}/validation`)
   return data
 }

@@ -129,14 +129,21 @@ def add_s8_manager_backup_minimize(model, x, data, fixed):
 
 
 def add_s9_prefer_off_blocks(model, x, data, fixed):
-    """S9: 連休 2 次優先（軟性）。獎勵每人連休次數，把大家往 2 次推。"""
+    """S9: 連休 2 次優先（軟性）。獎勵每人連休次數，把大家往 2 次推。
+
+    K.1 自動公平機制：若員工上月連休 < 2 次，加重其連休獎勵權重（+14），優先補償連休。
+    """
     terms = []
     stat_vars = []
+    last_month_off = getattr(data, "last_month_consecutive_off", {})
     for e, emp in enumerate(data.employees):
         if not _rule_enabled(data, emp, "H12"):
             continue
         counted_end = build_off_block_counters(model, x, e, data.num_days)
-        terms.append(sum(counted_end) * 8)
+        last_cnt = last_month_off.get(emp.id)
+        # 上月未達 2 次（0 或 1 次）者，提高權重為 14；其餘維持 8
+        weight = 14 if (last_cnt is not None and last_cnt < 2) else 8
+        terms.append(sum(counted_end) * weight)
         stat_vars.extend(counted_end)
     return terms, {"s9": stat_vars}
 

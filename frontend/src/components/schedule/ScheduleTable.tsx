@@ -9,10 +9,11 @@ interface ScheduleTableProps {
   view: MonthScheduleView
   employees: Employee[]
   leaveTypes?: LeaveType[]
+  pendingChanges?: Record<string, { shift: string; leaveType?: string }>
   onCellClick?: (empName: string, day: number) => void
 }
 
-export function ScheduleTable({ view, employees, leaveTypes = [], onCellClick }: ScheduleTableProps) {
+export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges = {}, onCellClick }: ScheduleTableProps) {
   const { schedule, sources, leave_details: leaveDetails, num_days: numDays, year, month } = view
   const names = Object.keys(schedule)
   const empByName = new Map(employees.map((e) => [e.name, e]))
@@ -56,11 +57,16 @@ export function ScheduleTable({ view, employees, leaveTypes = [], onCellClick }:
                 <th className="sticky left-0 z-10 w-32 border-b border-r border-gray-200 bg-white px-3 py-1.5 text-left text-sm font-medium text-gray-700">
                   {emp ? displayName(emp) : name}
                 </th>
-                {schedule[name].map((shift, d) => {
+                {schedule[name].map((originalShift, d) => {
                   const day = d + 1
                   const weekend = isWeekend(year, month, day)
-                  const source = sources?.[name]?.[d]
-                  const leaveCode = leaveDetails?.[name]?.[String(day)]
+                  const cellKey = `${name}_${day}`
+                  const pending = pendingChanges[cellKey]
+                  const shift = pending ? pending.shift : originalShift
+                  const source = pending ? 'manual' : sources?.[name]?.[d]
+                  const leaveCode = pending
+                    ? (pending.leaveType ?? null)
+                    : (leaveDetails?.[name]?.[String(day)] ?? null)
                   const leaveType = leaveCode ? leaveTypeByCode.get(leaveCode) : undefined
                   return (
                     <td
@@ -75,6 +81,7 @@ export function ScheduleTable({ view, employees, leaveTypes = [], onCellClick }:
                         source={source}
                         locked={locked}
                         compact
+                        pending={!!pending}
                         leaveType={leaveType}
                         onClick={() => onCellClick?.(name, day)}
                       />
