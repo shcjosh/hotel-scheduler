@@ -17,6 +17,7 @@ interface EmployeeFormProps {
 export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeFormProps) {
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
+  const [tag, setTag] = useState('')
   const [role, setRole] = useState<EmployeeRole>('general')
   const [shifts, setShifts] = useState<string[]>(['A', 'B', 'C'])
   const [preferred, setPreferred] = useState<string | null>(null)
@@ -28,6 +29,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
     if (employee) {
       setName(employee.name)
       setNickname(employee.nickname ?? '')
+      setTag(employee.tag ?? '')
       setRole(employee.role)
       setShifts(employee.available_shifts)
       setPreferred(employee.preferred_shift)
@@ -35,6 +37,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
     } else {
       setName('')
       setNickname('')
+      setTag('')
       setRole('general')
       setShifts(['A', 'B', 'C'])
       setPreferred(null)
@@ -77,6 +80,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
       await onSubmit({
         name: name.trim(),
         nickname: nickname.trim() || null,
+        tag: tag.trim() || null,
         role,
         available_shifts: shifts,
         preferred_shift: preferred,
@@ -112,6 +116,15 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
             onChange={(e) => setNickname(e.target.value)}
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             placeholder="如：John"
+          />
+        </Field>
+
+        <Field label="標籤（選填，如「二館」）">
+          <input
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            placeholder="如：二館"
           />
         </Field>
 

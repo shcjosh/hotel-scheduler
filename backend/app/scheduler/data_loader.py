@@ -96,7 +96,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         )
         for e in db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1)
+            .where(Employee.is_active == 1, (Employee.tag.is_(None)) | (Employee.tag == ""))
             .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     ]
@@ -201,6 +201,30 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             external_support_all.add(row.shift)
         else:
             external_support.setdefault(row.day, set()).add(row.shift)
+
+    # 二館支援：帶 tag 的員工為外部支援，手動排的 A1/C1/D1 計入該日該班覆蓋
+    support_ids = [
+        e.id
+        for e in db.scalars(
+            select(Employee).where(
+                Employee.is_active == 1,
+                Employee.tag.is_not(None),
+                Employee.tag != "",
+            )
+        )
+    ]
+    if support_ids:
+        for row in db.scalars(
+            select(ScheduleEntry).where(
+                ScheduleEntry.employee_id.in_(support_ids),
+                ScheduleEntry.year == year,
+                ScheduleEntry.month == month,
+            )
+        ):
+            shift = row.shift
+            if shift in ("A1", "C1", "D1"):
+                base = shift[0]  # A1->A, C1->C, D1->D
+                external_support.setdefault(row.day, set()).add(base)
 
     # K.1: Load last month consecutive off count per employee
     last_month_off: dict[int, int] = {}

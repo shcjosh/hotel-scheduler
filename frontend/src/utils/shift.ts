@@ -12,6 +12,9 @@ export const SHIFT_COLORS: Record<string, ShiftStyle> = {
   C: { bg: 'bg-purple-100', text: 'text-purple-800', label: 'C' },
   D: { bg: 'bg-indigo-900', text: 'text-white', label: 'D' },
   M: { bg: 'bg-teal-100', text: 'text-teal-800', label: 'M' },
+  A1: { bg: 'bg-sky-200', text: 'text-sky-900', label: 'A1' },
+  C1: { bg: 'bg-fuchsia-200', text: 'text-fuchsia-900', label: 'C1' },
+  D1: { bg: 'bg-slate-700', text: 'text-white', label: 'D1' },
   OFF: { bg: 'bg-red-200', text: 'text-red-800', label: '休' },
   SPECIAL: { bg: 'bg-purple-300', text: 'text-purple-900', label: '特休' },
 }

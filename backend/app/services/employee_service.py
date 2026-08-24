@@ -69,6 +69,7 @@ def create_employee(db: Session, data: EmployeeCreate) -> Employee:
     employee = Employee(
         name=data.name,
         nickname=data.nickname or None,
+        tag=data.tag or None,
         sort_order=sort_order,
         role=data.role,
         available_shifts=_to_json(shifts),
@@ -117,6 +118,8 @@ def update_employee(db: Session, employee: Employee, data: EmployeeUpdate) -> Em
         employee.name = payload["name"]
     if "nickname" in payload:
         employee.nickname = payload["nickname"] or None
+    if "tag" in payload:
+        employee.tag = payload["tag"] or None
     if "sort_order" in payload and payload["sort_order"] is not None:
         employee.sort_order = payload["sort_order"]
     if "is_active" in payload:
@@ -154,6 +157,7 @@ def to_out(employee: Employee) -> dict:
         "id": employee.id,
         "name": employee.name,
         "nickname": employee.nickname,
+        "tag": employee.tag,
         "sort_order": employee.sort_order,
         "role": employee.role,
         "available_shifts": _from_json(employee.available_shifts),

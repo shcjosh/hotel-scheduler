@@ -46,6 +46,10 @@ def _run_migrations() -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE employees ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0"
             )
+        if emp_cols and "tag" not in emp_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE employees ADD COLUMN tag TEXT"
+            )
 
 
 def init_db() -> None:

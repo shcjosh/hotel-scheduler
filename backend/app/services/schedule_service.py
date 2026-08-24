@@ -15,8 +15,8 @@ from app.scheduler.off_count import count_off_blocks
 import calendar
 import json
 
-VALID_CELL_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL"}
-WORK_SHIFTS_SET = {"A", "B", "C", "D"}
+VALID_CELL_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL", "A1", "C1", "D1", "EMPTY"}
+WORK_SHIFTS_SET = {"A", "B", "C", "D", "M", "A1", "C1", "D1"}
 
 
 def list_entries(
@@ -174,6 +174,15 @@ def upsert_cell(
     if shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{shift}")
 
+    is_support = bool(emp.tag)
+    if is_support:
+        # 二館支援人員只能排 A1/C1/D1 或空
+        if shift not in ("A1", "C1", "D1", "EMPTY"):
+            raise ValueError("二館支援人員只能排 A1 / C1 / D1 / 空")
+    else:
+        if shift in ("A1", "C1", "D1"):
+            raise ValueError("A1 / C1 / D1 僅限二館支援人員")
+
     from app.services import status_service
 
     status = status_service.get_status(db, year, month)
@@ -247,6 +256,9 @@ def upsert_cell(
 
     db.flush()
 
+    if shift == "EMPTY":
+        db.delete(existing)
+
     if status == "published":
         from app.services import change_log_service
 
@@ -255,7 +267,6 @@ def upsert_cell(
         )
 
     db.commit()
-    db.refresh(existing)
     return existing
 
 
@@ -267,6 +278,10 @@ def validate_cell(
         raise ValueError("員工不存在或已離職")
     if new_shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{new_shift}")
+
+    # 二館支援人員完全豁免規則檢驗
+    if emp.tag:
+        return {"violations": [], "warnings": []}
 
     num_days = calendar.monthrange(year, month)[1]
     entries = {

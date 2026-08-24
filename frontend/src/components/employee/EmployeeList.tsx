@@ -28,6 +28,7 @@ export function EmployeeList({ employees, onEdit, onDelete, onMoveUp, onMoveDown
           <tr>
             <th className="w-16 px-3 py-2 text-center">順序</th>
             <th className="px-4 py-2 text-left">姓名</th>
+            <th className="px-4 py-2 text-left">標籤</th>
             <th className="px-4 py-2 text-left">角色</th>
             <th className="px-4 py-2 text-left">可上班班次</th>
             <th className="px-4 py-2 text-left">偏好班次</th>
@@ -61,6 +62,15 @@ export function EmployeeList({ employees, onEdit, onDelete, onMoveUp, onMoveDown
                 </div>
               </td>
               <td className="px-4 py-2 font-medium text-gray-800">{displayName(emp)}</td>
+              <td className="px-4 py-2">
+                {emp.tag ? (
+                  <span className="inline-flex items-center rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                    {emp.tag}
+                  </span>
+                ) : (
+                  <span className="text-gray-400">-</span>
+                )}
+              </td>
               <td className="px-4 py-2 text-gray-600">
                 {ROLE_LABELS[emp.role]}
               </td>
@@ -96,7 +106,7 @@ export function EmployeeList({ employees, onEdit, onDelete, onMoveUp, onMoveDown
                 )}
               </td>
               <td className="px-4 py-2 text-gray-600">
-                {emp.scheduling_mode === 'auto' ? '自動' : '手動'}
+                {emp.tag ? '手動' : emp.scheduling_mode === 'auto' ? '自動' : '手動'}
               </td>
               <td className="px-4 py-2">
                 <div className="flex justify-end gap-1">

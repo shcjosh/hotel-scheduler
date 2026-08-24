@@ -358,6 +358,27 @@ export function SchedulePage() {
                 </button>
               )
             })}
+            <span className="mx-1 h-4 w-px bg-blue-200" />
+            {['A1', 'C1', 'D1'].map((s) => {
+              const style = getShiftStyle(s)
+              const active = selectedTool === s
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSelectedTool((cur) => (cur === s ? null : s))}
+                  className={cn(
+                    'inline-flex h-7 min-w-8 items-center justify-center rounded px-2 text-xs font-bold transition',
+                    style.bg,
+                    style.text,
+                    active ? 'ring-2 ring-amber-600 ring-offset-1 scale-105 shadow-sm' : 'opacity-80 hover:opacity-100',
+                  )}
+                  title="二館支援班次"
+                >
+                  {style.label}
+                </button>
+              )
+            })}
             {leaveTypes.slice(0, 3).map((lt) => {
               const active = selectedTool === `${LT_PREFIX}${lt.code}`
               return (

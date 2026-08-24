@@ -54,8 +54,15 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
             const locked = emp?.role === 'night'
             return (
               <tr key={name} className="hover:bg-indigo-50/40">
-                <th className="sticky left-0 z-10 w-32 border-b border-r border-gray-200 bg-white px-3 py-1.5 text-left text-sm font-medium text-gray-700">
-                  {emp ? displayName(emp) : name}
+                <th className="sticky left-0 z-10 w-32 border-b border-r border-gray-200 bg-white px-3 py-1 text-left text-sm font-medium text-gray-700">
+                  <div className="flex flex-col items-start justify-center gap-0.5">
+                    {emp?.tag && (
+                      <span className="inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-800">
+                        {emp.tag}
+                      </span>
+                    )}
+                    <span className="leading-tight">{emp ? displayName(emp) : name}</span>
+                  </div>
                 </th>
                 {schedule[name].map((originalShift, d) => {
                   const day = d + 1
