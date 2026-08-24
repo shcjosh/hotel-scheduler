@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { UserPlus } from 'lucide-react'
-import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '../api/employees'
+import { getEmployees, createEmployee, updateEmployee, deleteEmployee, reorderEmployees } from '../api/employees'
 import type { EmployeePayload } from '../api/employees'
 import { EmployeeList } from '../components/employee/EmployeeList'
 import { EmployeeForm } from '../components/employee/EmployeeForm'
@@ -28,6 +28,10 @@ export function EmployeesPage() {
       updateEmployee(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
   })
+  const reorderMut = useMutation({
+    mutationFn: (ids: number[]) => reorderEmployees(ids),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  })
 
   function openCreate() {
     setEditing(null)
@@ -50,12 +54,22 @@ export function EmployeesPage() {
     queryClient.invalidateQueries({ queryKey: ['employees'] })
   }
 
+  async function move(index: number, dir: -1 | 1) {
+    const target = index + dir
+    if (target < 0 || target >= employees.length) return
+    const ids = employees.map((e) => e.id)
+    const tmp = ids[index]
+    ids[index] = ids[target]
+    ids[target] = tmp
+    await reorderMut.mutateAsync(ids)
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-800">員工管理</h2>
-          <p className="text-sm text-gray-500">管理員工資料、角色與可用班次</p>
+          <p className="text-sm text-gray-500">管理員工資料、順序、角色與可用班次</p>
         </div>
         <Button onClick={openCreate}>
           <UserPlus className="mr-2 h-4 w-4" />
@@ -78,6 +92,8 @@ export function EmployeesPage() {
           employees={employees}
           onEdit={openEdit}
           onDelete={handleDelete}
+          onMoveUp={(idx) => move(idx, -1)}
+          onMoveDown={(idx) => move(idx, 1)}
         />
       )}
 

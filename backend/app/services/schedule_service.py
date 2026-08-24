@@ -47,7 +47,7 @@ def get_month_view(
         db.scalars(
             select(Employee)
             .where(Employee.is_active == 1)
-            .order_by(Employee.id)
+            .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )
     entries = list_entries(db, year=year, month=month)
@@ -71,7 +71,7 @@ def get_month_view(
     sources: dict[str, list[str]] = {}
     leave_details: dict[str, dict[int, str]] = {}
     for emp in employees:
-        schedule[emp.name] = [by_emp[emp.id].get(d, "OFF") for d in range(1, num_days + 1)]
+        schedule[emp.name] = [by_emp[emp.id].get(d, "EMPTY") for d in range(1, num_days + 1)]
         sources[emp.name] = [src_by_emp[emp.id].get(d, "auto") for d in range(1, num_days + 1)]
         leave_details[emp.name] = leave_by_emp.get(emp.id, {})
     return {"schedule": schedule, "sources": sources, "leave_details": leave_details}

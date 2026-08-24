@@ -36,7 +36,7 @@ import type { ScheduleStatus } from '../types'
 import type { CellViolation } from '../api/schedules'
 
 function hasRealData(schedule: Record<string, string[]>): boolean {
-  return Object.values(schedule).some((row) => row.some((s) => s && s !== 'OFF'))
+  return Object.values(schedule).some((row) => row.some((s) => s && s !== 'OFF' && s !== 'EMPTY'))
 }
 
 const STATUS_META: Record<ScheduleStatus, { label: string; dot: string; cls: string }> = {

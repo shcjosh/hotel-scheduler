@@ -17,6 +17,9 @@ export const SHIFT_COLORS: Record<string, ShiftStyle> = {
 }
 
 export function getShiftStyle(shift: string): ShiftStyle {
+  if (shift === 'EMPTY' || !shift) {
+    return { bg: 'bg-transparent', text: 'text-transparent', label: '' }
+  }
   return (
     SHIFT_COLORS[shift] ?? {
       bg: 'bg-gray-100',

@@ -95,7 +95,9 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             scheduling_mode=e.scheduling_mode,
         )
         for e in db.scalars(
-            select(Employee).where(Employee.is_active == 1).order_by(Employee.id)
+            select(Employee)
+            .where(Employee.is_active == 1)
+            .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     ]
 

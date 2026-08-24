@@ -7,6 +7,7 @@ function esc(s: string): string {
 }
 
 function cellText(shift: string, source: string, leaveName?: string): string {
+  if (shift === 'EMPTY' || !shift) return ''
   if (shift === 'OFF') return source === 'designated' ? '指定' : '休'
   if (shift === 'SPECIAL') {
     if (!leaveName) return '假'

@@ -4,6 +4,7 @@ import type { Employee, EmployeeRole, SchedulingMode } from '../types'
 export interface EmployeePayload {
   name: string
   nickname?: string | null
+  sort_order?: number
   role: EmployeeRole
   available_shifts: string[]
   preferred_shift: string | null
@@ -14,6 +15,11 @@ export async function getEmployees(includeInactive = false): Promise<Employee[]>
   const { data } = await apiClient.get<Employee[]>('/employees', {
     params: includeInactive ? { include_inactive: true } : undefined,
   })
+  return data
+}
+
+export async function reorderEmployees(employeeIds: number[]): Promise<Employee[]> {
+  const { data } = await apiClient.post<Employee[]>('/employees/reorder', employeeIds)
   return data
 }
 
