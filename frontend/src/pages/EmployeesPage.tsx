@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { UserPlus } from 'lucide-react'
 import { getEmployees, createEmployee, updateEmployee, deleteEmployee, reorderEmployees } from '../api/employees'
 import type { EmployeePayload } from '../api/employees'
+import { updateRuleOverrides, type NightRuleState } from '../api/night'
 import { EmployeeList } from '../components/employee/EmployeeList'
 import { EmployeeForm } from '../components/employee/EmployeeForm'
 import { Button } from '../components/ui/button'
@@ -41,11 +42,21 @@ export function EmployeesPage() {
     setEditing(emp)
     setFormOpen(true)
   }
-  async function handleSubmit(payload: EmployeePayload) {
-    if (editing) {
-      await updateMut.mutateAsync({ id: editing.id, payload })
-    } else {
-      await createMut.mutateAsync(payload)
+  async function handleSubmit(payload: EmployeePayload, nightRules: NightRuleState | null) {
+    const emp = editing
+      ? await updateMut.mutateAsync({ id: editing.id, payload })
+      : await createMut.mutateAsync(payload)
+    if (payload.role === 'night' && nightRules) {
+      try {
+        await updateRuleOverrides(emp.id, {
+          rules: { H2: nightRules.H2, H3: nightRules.H3, H4: nightRules.H4, H12: nightRules.H12 },
+        })
+        await updateRuleOverrides(emp.id, { ignore_all: nightRules.ignore_all })
+      } catch (e) {
+        window.alert(
+          `員工已儲存，但大夜規則開關儲存失敗：${e instanceof Error ? e.message : '未知錯誤'}\n請重新編輯該員工再調整規則開關。`,
+        )
+      }
     }
   }
   async function handleDelete(emp: Employee) {

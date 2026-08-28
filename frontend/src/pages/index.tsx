@@ -1,5 +1,4 @@
 export { EmployeesPage } from './EmployeesPage'
 export { OffDaysPage } from './OffDaysPage'
 export { CrossMonthPage } from './CrossMonthPage'
-export { NightPage } from './NightPage'
 export { StatsPage } from './StatsPage'

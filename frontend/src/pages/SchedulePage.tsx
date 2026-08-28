@@ -20,6 +20,12 @@ import {
   updateSupportRequest,
   deleteSupportRequest,
 } from '../api/support'
+import {
+  getNightSchedule,
+  addBackupRequest,
+  removeBackupRequest,
+  clearNightSchedule,
+} from '../api/night'
 import { ScheduleTable } from '../components/schedule/ScheduleTable'
 import { ShiftLegend } from '../components/schedule/ShiftLegend'
 import { CellEditModal } from '../components/schedule/CellEditModal'
@@ -27,6 +33,7 @@ import { BatchApplyModal, type PendingCellChange } from '../components/schedule/
 import { AdjustScheduleModal } from '../components/schedule/AdjustScheduleModal'
 import { ValidationReportPanel } from '../components/schedule/ValidationReport'
 import { SupportRequestPanel } from '../components/support/SupportRequestPanel'
+import { DBackupRequestPanel } from '../components/night/DBackupRequestPanel'
 import { VersionHistoryDrawer } from '../components/schedule/VersionHistoryDrawer'
 import { Button } from '../components/ui/button'
 import { displayName } from '../utils/employee'
@@ -92,11 +99,16 @@ export function SchedulePage() {
     queryKey: ['support-requests', currentYear, currentMonth],
     queryFn: () => getSupportRequests(currentYear, currentMonth),
   })
+  const { data: night } = useQuery({
+    queryKey: ['night', currentYear, currentMonth],
+    queryFn: () => getNightSchedule(currentYear, currentMonth),
+  })
 
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ['schedule', currentYear, currentMonth] })
     queryClient.invalidateQueries({ queryKey: ['validation', currentYear, currentMonth] })
     queryClient.invalidateQueries({ queryKey: ['snapshots', currentYear, currentMonth] })
+    queryClient.invalidateQueries({ queryKey: ['night', currentYear, currentMonth] })
   }
 
   const supportMut = useMutation({
@@ -120,6 +132,28 @@ export function SchedulePage() {
       invalidateAll()
     },
   })
+
+  const backupAddMut = useMutation({
+    mutationFn: (day: number) => addBackupRequest(currentYear, currentMonth, day),
+    onSuccess: () => invalidateAll(),
+  })
+  const backupRemoveMut = useMutation({
+    mutationFn: (id: number) => removeBackupRequest(id),
+    onSuccess: () => invalidateAll(),
+  })
+  const clearNightMut = useMutation({
+    mutationFn: () => clearNightSchedule(currentYear, currentMonth),
+    onSuccess: () => {
+      setPendingChanges({})
+      invalidateAll()
+    },
+  })
+
+  function handleClearNight() {
+    if (window.confirm(`確定要清空 ${currentYear} 年 ${currentMonth} 月的大夜排班嗎？`)) {
+      clearNightMut.mutate()
+    }
+  }
 
   const statusMut = useMutation({
     mutationFn: (status: ScheduleStatus) => setScheduleStatus(currentYear, currentMonth, status),
@@ -336,6 +370,16 @@ export function SchedulePage() {
             <Trash2 className="mr-2 h-4 w-4" />
             清空當月排班
           </Button>
+          <Button
+            variant="outline"
+            onClick={handleClearNight}
+            disabled={clearNightMut.isPending}
+            className="text-red-600"
+            title="僅清空大夜專職（D/休）手動輸入的格位"
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            清空大夜排班
+          </Button>
         </div>
       </div>
 
@@ -475,6 +519,17 @@ export function SchedulePage() {
             onRemove={(id) => supportMut.mutateAsync(() => deleteSupportRequest(id))}
           />
         </>
+      )}
+
+      {!isLoading && !isError && data && status !== 'locked' && (
+        <DBackupRequestPanel
+          year={currentYear}
+          month={currentMonth}
+          numDays={data.num_days}
+          requests={night?.d_backup_requests ?? []}
+          onAdd={(d) => backupAddMut.mutateAsync(d)}
+          onRemove={(id) => backupRemoveMut.mutateAsync(id)}
+        />
       )}
 
       {editing && editingEmp && (
