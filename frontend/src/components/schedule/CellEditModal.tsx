@@ -132,28 +132,30 @@ export function CellEditModal({
           </div>
         </div>
 
-        <div>
-          <div className="mb-1.5 text-sm font-medium text-gray-700">假別</div>
-          <div className="flex flex-wrap gap-2">
-            {leaveTypes.map((lt) => {
-              const active = selected === `${LT_PREFIX}${lt.code}`
-              return (
-                <button
-                  key={lt.code}
-                  type="button"
-                  onClick={() => { setSelected(`${LT_PREFIX}${lt.code}`); setResult(null) }}
-                  className={cn(
-                    'inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-semibold transition',
-                    active ? 'ring-2 ring-blue-500 ring-offset-1' : 'opacity-70 hover:opacity-100',
-                  )}
-                  style={{ backgroundColor: lt.color_bg, color: lt.color_text }}
-                >
-                  {lt.name}
-                </button>
-              )
-            })}
+        {leaveTypes.length > 0 && (
+          <div>
+            <div className="mb-1.5 text-sm font-medium text-gray-700">假別</div>
+            <div className="flex flex-wrap gap-2">
+              {leaveTypes.map((lt) => {
+                const active = selected === `${LT_PREFIX}${lt.code}`
+                return (
+                  <button
+                    key={lt.code}
+                    type="button"
+                    onClick={() => { setSelected(`${LT_PREFIX}${lt.code}`); setResult(null) }}
+                    className={cn(
+                      'inline-flex h-9 items-center justify-center rounded-md px-3 text-sm font-semibold transition',
+                      active ? 'ring-2 ring-blue-500 ring-offset-1' : 'opacity-70 hover:opacity-100',
+                    )}
+                    style={{ backgroundColor: lt.color_bg, color: lt.color_text }}
+                  >
+                    {lt.name}
+                  </button>
+                )
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {isPublished && changed() && (
           <div>

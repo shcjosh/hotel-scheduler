@@ -51,7 +51,6 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
         <tbody>
           {names.map((name) => {
             const emp = empByName.get(name)
-            const locked = emp?.role === 'night'
             return (
               <tr key={name} className="hover:bg-indigo-50/40">
                 <th className="sticky left-0 z-10 w-32 border-b border-r border-gray-200 bg-white px-3 py-1 text-left text-sm font-medium text-gray-700">
@@ -86,7 +85,6 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
                       <ShiftCell
                         shift={shift}
                         source={source}
-                        locked={locked}
                         compact
                         pending={!!pending}
                         leaveType={leaveType}

@@ -160,7 +160,7 @@ export function SchedulePage() {
   function handleCellClick(empName: string, day: number) {
     if (status === 'locked') return
     const emp = employees.find((e) => e.name === empName)
-    if (!emp || emp.role === 'night') return
+    if (!emp) return
 
     if (selectedTool) {
       // 快速連選模式
@@ -171,6 +171,13 @@ export function SchedulePage() {
       const isLT = selectedTool.startsWith(LT_PREFIX)
       const targetShift = isLT ? 'SPECIAL' : selectedTool
       const targetLeaveType = isLT ? selectedTool.slice(LT_PREFIX.length) : undefined
+
+      // 大夜格位只能 D/OFF；非大夜不可排 D（D 班備援由系統自動指派）
+      if (emp.role === 'night') {
+        if (targetShift !== 'D' && targetShift !== 'OFF') return
+      } else if (targetShift === 'D') {
+        return
+      }
 
       // 如果點擊的值跟原始資料相同，則清除暫存
       if (originalShift === targetShift && (!isLT || originalLeaveCode === targetLeaveType)) {
@@ -339,7 +346,7 @@ export function SchedulePage() {
             <span className="flex items-center gap-1 text-xs font-semibold text-blue-900">
               <Paintbrush className="h-3.5 w-3.5" /> 快捷畫筆：
             </span>
-            {['A', 'B', 'C', 'M', 'OFF'].map((s) => {
+            {['A', 'B', 'C', 'D', 'M', 'OFF'].map((s) => {
               const style = getShiftStyle(s)
               const active = selectedTool === s
               return (
@@ -353,6 +360,7 @@ export function SchedulePage() {
                     style.text,
                     active ? 'ring-2 ring-blue-600 ring-offset-1 scale-105 shadow-sm' : 'opacity-80 hover:opacity-100',
                   )}
+                  title={s === 'D' ? '僅可塗在大夜專職格位' : undefined}
                 >
                   {style.label}
                 </button>
@@ -477,8 +485,12 @@ export function SchedulePage() {
           month={currentMonth}
           currentShift={editingShift}
           currentLeaveTypeCode={editingLeaveCode}
-          availableShifts={editingEmp.available_shifts}
-          leaveTypes={leaveTypes}
+          availableShifts={
+            editingEmp.role === 'night'
+              ? editingEmp.available_shifts
+              : editingEmp.available_shifts.filter((s) => s !== 'D')
+          }
+          leaveTypes={editingEmp.role === 'night' ? [] : leaveTypes}
           isPublished={status === 'published'}
           onClose={() => setEditing(null)}
           onValidate={(newShift) =>
