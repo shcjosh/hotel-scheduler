@@ -206,8 +206,10 @@ export function SchedulePage() {
       const targetShift = isLT ? 'SPECIAL' : selectedTool
       const targetLeaveType = isLT ? selectedTool.slice(LT_PREFIX.length) : undefined
 
-      // 大夜格位只能 D/OFF；非大夜不可排 D（D 班備援由系統自動指派）
-      if (emp.role === 'night') {
+      // 二館支援只能 A1/C1/D1；大夜格位只能 D/OFF；非大夜不可排 D（備援由系統指派）
+      if (emp.tag) {
+        if (isLT || !['A1', 'C1', 'D1'].includes(targetShift)) return
+      } else if (emp.role === 'night') {
         if (targetShift !== 'D' && targetShift !== 'OFF') return
       } else if (targetShift === 'D') {
         return
@@ -541,11 +543,13 @@ export function SchedulePage() {
           currentShift={editingShift}
           currentLeaveTypeCode={editingLeaveCode}
           availableShifts={
-            editingEmp.role === 'night'
-              ? editingEmp.available_shifts
-              : editingEmp.available_shifts.filter((s) => s !== 'D')
+            editingEmp.tag
+              ? ['A1', 'C1', 'D1']
+              : editingEmp.role === 'night'
+                ? editingEmp.available_shifts
+                : editingEmp.available_shifts.filter((s) => s !== 'D')
           }
-          leaveTypes={editingEmp.role === 'night' ? [] : leaveTypes}
+          leaveTypes={editingEmp.tag || editingEmp.role === 'night' ? [] : leaveTypes}
           isPublished={status === 'published'}
           onClose={() => setEditing(null)}
           onValidate={(newShift) =>

@@ -179,6 +179,58 @@ r = schedule_service.validate_cell(db, chen.id, 2026, 8, 9, "D")
 check("16. 關閉 H12：H12 不檢查", not any(v["rule"] == "H12" for v in r["violations"]))
 
 print("=" * 70)
+print("F. H8 跨月視窗不擋大夜手動班表（v1.1.4 修復：上月末連續上班）")
+print("=" * 70)
+
+# chen 全月 D（E 段遺留）+ 上月末 5 天全 D 連續上班
+# → H8 spanning 視窗要求 8/1~8/4 須有休 → 修復前 INFEASIBLE
+link = db.scalars(select(PreviousMonthLink).where(
+    PreviousMonthLink.employee_id == chen.id
+)).first()
+link.day_5_shift = "D"
+link.day_4_shift = "D"
+link.day_3_shift = "D"
+link.day_2_shift = "D"
+link.day_1_shift = "D"
+db.commit()
+data3 = data_loader.load(db, 2026, 8)
+result3 = engine.solve(data3, max_time=30)
+check("17. 上月末連續上班 + 本月開頭全 D，大夜仍可求解（H8 豁免 night）", result3.success)
+
+print("=" * 70)
+print("G. 二館支援的大夜專職可排 D1（tag 優先於角色）")
+print("=" * 70)
+
+brian = Employee(name="劉亮增", role="night", tag="二館",
+                 available_shifts='["D"]', preferred_shift="D", scheduling_mode="manual")
+db.add(brian)
+db.commit()
+
+schedule_service.upsert_cell(db, brian.id, 2026, 8, 1, "D1")
+e = entry(brian.id, 1)
+check("18. tag+大夜 排 D1 成功且 source=night_input",
+      e is not None and e.shift == "D1" and e.source == "night_input")
+
+for bad in ("D", "OFF", "SPECIAL"):
+    try:
+        schedule_service.upsert_cell(db, brian.id, 2026, 8, 2, bad)
+        check(f"19. tag+大夜 排 {bad} 被擋", False)
+    except ValueError:
+        check(f"19. tag+大夜 排 {bad} 被擋", True)
+
+data4 = data_loader.load(db, 2026, 8)
+check("20. tag 員工不在求解名單、其 D1 計入外部支援",
+      all(emp.id != brian.id for emp in data4.employees)
+      and "D" in data4.external_support.get(1, set()))
+
+schedule_service.upsert_cell(db, brian.id, 2026, 8, 1, "EMPTY")
+check("21. tag+大夜 EMPTY 刪除紀錄", entry(brian.id, 1) is None)
+
+schedule_service.upsert_cell(db, brian.id, 2026, 8, 5, "D1")
+schedule_service.clear_month_schedule(db, 2026, 8)
+check("22. 清空班表保留二館支援 D1（source=night_input）", entry(brian.id, 5) is not None)
+
+print("=" * 70)
 failed = [name for name, ok in passed if not ok]
 if failed:
     print(f"FAILED: {len(failed)} 項 -> {failed}")

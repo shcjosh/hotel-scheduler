@@ -45,10 +45,10 @@ export function CellEditModal({
     )
   }, [currentShift, currentLeaveTypeCode, open])
 
-  const shiftOptions = [
-    ...availableShifts.filter((s) => s !== 'SPECIAL'),
-    'OFF',
-  ]
+  const isSupport = availableShifts.includes('A1')
+  const shiftOptions = isSupport
+    ? [...availableShifts, 'EMPTY']
+    : [...availableShifts.filter((s) => s !== 'SPECIAL'), 'OFF']
 
   function effectiveShift() {
     return selected.startsWith(LT_PREFIX) ? 'SPECIAL' : selected
@@ -120,12 +120,14 @@ export function CellEditModal({
                   onClick={() => { setSelected(s); setResult(null) }}
                   className={cn(
                     'inline-flex h-9 min-w-11 items-center justify-center rounded-md px-2 text-sm font-semibold transition',
-                    style.bg,
-                    style.text,
+                    s === 'EMPTY'
+                      ? 'border border-gray-300 bg-white text-gray-500'
+                      : style.bg,
+                    s === 'EMPTY' ? 'text-gray-500' : style.text,
                     active ? 'ring-2 ring-blue-500 ring-offset-1' : 'opacity-70 hover:opacity-100',
                   )}
                 >
-                  {style.label}
+                  {s === 'EMPTY' ? '空白' : style.label}
                 </button>
               )
             })}

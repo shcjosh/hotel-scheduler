@@ -176,16 +176,14 @@ def upsert_cell(
         raise ValueError(f"無效班次：{shift}")
 
     is_support = bool(emp.tag)
+    is_night = emp.role == "night"
     if is_support:
-        # 二館支援人員只能排 A1/C1/D1 或空
+        # 二館支援人員只能排 A1/C1/D1 或空（tag 優先於角色，如大夜專職的二館支援）
         if shift not in ("A1", "C1", "D1", "EMPTY"):
             raise ValueError("二館支援人員只能排 A1 / C1 / D1 / 空")
-    else:
-        if shift in ("A1", "C1", "D1"):
-            raise ValueError("A1 / C1 / D1 僅限二館支援人員")
-
-    is_night = emp.role == "night"
-    if is_night:
+    elif shift in ("A1", "C1", "D1"):
+        raise ValueError("A1 / C1 / D1 僅限二館支援人員")
+    elif is_night:
         # 大夜專職只能排 D / OFF / 空（原大夜班表頁的規則，來源一律 night_input）
         if shift not in ("D", "OFF", "EMPTY"):
             raise ValueError("大夜專職人員只能排 D 或休")
