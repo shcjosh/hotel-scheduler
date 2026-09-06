@@ -184,7 +184,11 @@ def validate_night_schedule(db: Session, year: int, month: int) -> dict:
     data = data_loader.load(db, year, month)
     night_emps = [e for e in data.employees if e.role == "night"]
     if not night_emps:
-        return {"violations": []}
+        return {"violations": [], "all_ignored": False}
+
+    all_ignored = all(emp.id in data.night_ignore_all for emp in night_emps)
+    if all_ignored:
+        return {"violations": [], "all_ignored": True}
 
     night_data = dataclasses.replace(data, employees=night_emps)
     night_partial: dict[int, list[str]] = {}
@@ -200,11 +204,13 @@ def validate_night_schedule(db: Session, year: int, month: int) -> dict:
         if v["rule"] not in ("H2", "H3", "H4", "H12"):
             continue
         eid = v["employee_id"]
+        if eid in data.night_ignore_all:
+            continue
         enabled = night_data.night_rule_overrides.get(eid)
         if enabled is not None and v["rule"] not in enabled:
             continue
         out.append({"rule": v["rule"], "message": v["message"], "employee_id": eid})
-    return {"violations": out}
+    return {"violations": out, "all_ignored": False}
 
 
 def get_rule_overrides(db: Session) -> dict:

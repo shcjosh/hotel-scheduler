@@ -17,9 +17,10 @@ const SOFT_LABELS: Record<string, string> = {
   s7_non_backup_d_count: 'S7 非備援D',
   s8_manager_backup_count: 'S8 管理職備援',
   s9_off_block_count: 'S9 連休次數',
-  s10_weekday_b_count: 'S10 平日B',
-  s10_frisat_double_a_count: 'S10 五六雙A',
-  s10_frisat_double_c_count: 'S10 五六雙C',
+  s10_frisat_2a2c_count: 'S10 五六2A2C',
+  s10_frisat_abc_count: 'S10 五六ABC',
+  s10_weekday_abc_count: 'S10 平日ABC',
+  s10_weekday_avoid_4p_count: 'S10 平日4人',
   s10_frisat_m_count: 'S10 五六M',
 }
 

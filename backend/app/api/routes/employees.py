@@ -26,6 +26,12 @@ def create_employee(data: EmployeeCreate, db: Session = Depends(get_db)):
     return employee_service.to_out(employee)
 
 
+@router.post("/employees/reorder", response_model=list[EmployeeOut])
+def reorder_employees(employee_ids: list[int], db: Session = Depends(get_db)):
+    employees = employee_service.reorder_employees(db, employee_ids)
+    return [employee_service.to_out(e) for e in employees]
+
+
 @router.get("/employees/{employee_id}", response_model=EmployeeOut)
 def get_employee(employee_id: int, db: Session = Depends(get_db)):
     employee = employee_service.get_employee(db, employee_id)

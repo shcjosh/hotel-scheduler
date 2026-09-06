@@ -129,49 +129,85 @@ def add_s8_manager_backup_minimize(model, x, data, fixed):
 
 
 def add_s9_prefer_off_blocks(model, x, data, fixed):
-    """S9: 連休 2 次優先（軟性）。獎勵每人連休次數，把大家往 2 次推。"""
+    """S9: 連休 2 次優先（軟性）。獎勵每人連休次數，把大家往 2 次推。
+
+    K.1 自動公平機制：若員工上月連休 < 2 次，加重其連休獎勵權重（+14），優先補償連休。
+    """
     terms = []
     stat_vars = []
+    last_month_off = getattr(data, "last_month_consecutive_off", {})
     for e, emp in enumerate(data.employees):
         if not _rule_enabled(data, emp, "H12"):
             continue
         counted_end = build_off_block_counters(model, x, e, data.num_days)
-        terms.append(sum(counted_end) * 8)
+        last_cnt = last_month_off.get(emp.id)
+        # 上月未達 2 次（0 或 1 次）者，提高權重為 14；其餘維持 8
+        weight = 14 if (last_cnt is not None and last_cnt < 2) else 8
+        terms.append(sum(counted_end) * weight)
         stat_vars.extend(counted_end)
     return terms, {"s9": stat_vars}
 
 
 def add_s10_weekend_staffing(model, x, data, fixed):
-    """S10: 週五/週六人力加強（雙A = 雙C = M），週日~週四優先排 B。"""
+    """S10: 白天班（A/B/C）人數組合偏好（M/D 不計入白天班）：
+    - 週五、週六：恰 2A+2C（B=0）獎勵 +18；恰 1A+1B+1C 獎勵 +15；M 班每 1 人獎勵 +6
+    - 週日～週四：恰 1A+1B+1C 獎勵 +5；白天班（A+B+C）>= 4 人懲罰 -10
+    """
     terms = []
-    stat_vars = {"s10_b": [], "s10_2a": [], "s10_2c": [], "s10_m": []}
+    stat_vars = {
+        "s10_frisat_2a2c": [],
+        "s10_frisat_abc": [],
+        "s10_frisat_m": [],
+        "s10_weekday_abc": [],
+        "s10_weekday_avoid_4p": [],
+    }
     n = len(data.employees)
     fri_sat = set(data.fridays) | set(data.saturdays)
-    for d in sorted(fri_sat):
-        a_sum = sum(x[e][d]["A"] for e in range(n))
-        two_a = model.NewBoolVar(f"s10_2a_{d}")
-        model.Add(a_sum >= 2).OnlyEnforceIf(two_a)
-        model.Add(a_sum <= 1).OnlyEnforceIf(two_a.Not())
-        terms.append(two_a * 6)
-        stat_vars["s10_2a"].append(two_a)
-
-        c_sum = sum(x[e][d]["C"] for e in range(n))
-        two_c = model.NewBoolVar(f"s10_2c_{d}")
-        model.Add(c_sum >= 2).OnlyEnforceIf(two_c)
-        model.Add(c_sum <= 1).OnlyEnforceIf(two_c.Not())
-        terms.append(two_c * 6)
-        stat_vars["s10_2c"].append(two_c)
-
-        m_sum = sum(x[e][d]["M"] for e in range(n))
-        terms.append(m_sum * 6)
-        stat_vars["s10_m"].append(m_sum)
 
     for d in range(data.num_days):
-        if d in fri_sat:
-            continue
+        a_sum = sum(x[e][d]["A"] for e in range(n))
         b_sum = sum(x[e][d]["B"] for e in range(n))
-        terms.append(b_sum * 3)
-        stat_vars["s10_b"].append(b_sum)
+        c_sum = sum(x[e][d]["C"] for e in range(n))
+        day_total = a_sum + b_sum + c_sum
+
+        if d in fri_sat:
+            # 五六：恰 2A + 2C（B=0）
+            is_2a2c = model.NewBoolVar(f"s10_2a2c_{d}")
+            model.Add(a_sum == 2).OnlyEnforceIf(is_2a2c)
+            model.Add(c_sum == 2).OnlyEnforceIf(is_2a2c)
+            model.Add(b_sum == 0).OnlyEnforceIf(is_2a2c)
+
+            # 五六：恰 1A + 1B + 1C
+            is_abc = model.NewBoolVar(f"s10_fs_abc_{d}")
+            model.Add(a_sum == 1).OnlyEnforceIf(is_abc)
+            model.Add(b_sum == 1).OnlyEnforceIf(is_abc)
+            model.Add(c_sum == 1).OnlyEnforceIf(is_abc)
+
+            terms.append(is_2a2c * 18)
+            terms.append(is_abc * 15)
+            stat_vars["s10_frisat_2a2c"].append(is_2a2c)
+            stat_vars["s10_frisat_abc"].append(is_abc)
+
+            m_sum = sum(x[e][d]["M"] for e in range(n))
+            terms.append(m_sum * 6)
+            stat_vars["s10_frisat_m"].append(m_sum)
+        else:
+            # 平日：恰 1A + 1B + 1C
+            is_wd_abc = model.NewBoolVar(f"s10_wd_abc_{d}")
+            model.Add(a_sum == 1).OnlyEnforceIf(is_wd_abc)
+            model.Add(b_sum == 1).OnlyEnforceIf(is_wd_abc)
+            model.Add(c_sum == 1).OnlyEnforceIf(is_wd_abc)
+
+            # 平日：白天班 >= 4 人懲罰
+            is_wd_4p = model.NewBoolVar(f"s10_wd_4p_{d}")
+            model.Add(day_total >= 4).OnlyEnforceIf(is_wd_4p)
+            model.Add(day_total <= 3).OnlyEnforceIf(is_wd_4p.Not())
+
+            terms.append(is_wd_abc * 5)
+            terms.append(is_wd_4p * (-10))
+            stat_vars["s10_weekday_abc"].append(is_wd_abc)
+            stat_vars["s10_weekday_avoid_4p"].append(is_wd_4p)
+
     return terms, stat_vars
 
 

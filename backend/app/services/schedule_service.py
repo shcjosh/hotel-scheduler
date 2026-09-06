@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database.models import (
     DesignatedOffDay,
     Employee,
+    NightRuleOverride,
     PreviousMonthLink,
     ScheduleEntry,
     SpecialLeave,
@@ -15,8 +16,8 @@ from app.scheduler.off_count import count_off_blocks
 import calendar
 import json
 
-VALID_CELL_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL"}
-WORK_SHIFTS_SET = {"A", "B", "C", "D"}
+VALID_CELL_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL", "A1", "C1", "D1", "EMPTY"}
+WORK_SHIFTS_SET = {"A", "B", "C", "D", "M", "A1", "C1", "D1"}
 
 
 def list_entries(
@@ -47,7 +48,7 @@ def get_month_view(
         db.scalars(
             select(Employee)
             .where(Employee.is_active == 1)
-            .order_by(Employee.id)
+            .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )
     entries = list_entries(db, year=year, month=month)
@@ -71,7 +72,7 @@ def get_month_view(
     sources: dict[str, list[str]] = {}
     leave_details: dict[str, dict[int, str]] = {}
     for emp in employees:
-        schedule[emp.name] = [by_emp[emp.id].get(d, "OFF") for d in range(1, num_days + 1)]
+        schedule[emp.name] = [by_emp[emp.id].get(d, "EMPTY") for d in range(1, num_days + 1)]
         sources[emp.name] = [src_by_emp[emp.id].get(d, "auto") for d in range(1, num_days + 1)]
         leave_details[emp.name] = leave_by_emp.get(emp.id, {})
     return {"schedule": schedule, "sources": sources, "leave_details": leave_details}
@@ -174,6 +175,21 @@ def upsert_cell(
     if shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{shift}")
 
+    is_support = bool(emp.tag)
+    is_night = emp.role == "night"
+    if is_support:
+        # 二館支援人員只能排 A1/C1/D1 或空（tag 優先於角色，如大夜專職的二館支援）
+        if shift not in ("A1", "C1", "D1", "EMPTY"):
+            raise ValueError("二館支援人員只能排 A1 / C1 / D1 / 空")
+    elif shift in ("A1", "C1", "D1"):
+        raise ValueError("A1 / C1 / D1 僅限二館支援人員")
+    elif is_night:
+        # 大夜專職只能排 D / OFF / 空（原大夜班表頁的規則，來源一律 night_input）
+        if shift not in ("D", "OFF", "EMPTY"):
+            raise ValueError("大夜專職人員只能排 D 或休")
+    elif shift == "D":
+        raise ValueError("僅大夜專職人員可排 D 班（D 班備援由系統自動指派）")
+
     from app.services import status_service
 
     status = status_service.get_status(db, year, month)
@@ -188,8 +204,6 @@ def upsert_cell(
             ScheduleEntry.day == day,
         )
     ).first()
-    if existing is not None and existing.source == "night_input":
-        raise PermissionError("大夜專職班次請至大夜班表頁面修改")
 
     old_shift = existing.shift if existing is not None else "OFF"
 
@@ -234,18 +248,22 @@ def upsert_cell(
         if sl is not None:
             db.delete(sl)
 
+    source = "night_input" if is_night else "manual"
     if existing is not None:
         existing.shift = shift
-        existing.source = "manual"
+        existing.source = source
         existing.updated_at = now_iso()
     else:
         existing = ScheduleEntry(
             employee_id=emp_id, year=year, month=month, day=day,
-            shift=shift, source="manual",
+            shift=shift, source=source,
         )
         db.add(existing)
 
     db.flush()
+
+    if shift == "EMPTY":
+        db.delete(existing)
 
     if status == "published":
         from app.services import change_log_service
@@ -255,7 +273,6 @@ def upsert_cell(
         )
 
     db.commit()
-    db.refresh(existing)
     return existing
 
 
@@ -267,6 +284,25 @@ def validate_cell(
         raise ValueError("員工不存在或已離職")
     if new_shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{new_shift}")
+
+    # 二館支援人員完全豁免規則檢驗
+    if emp.tag:
+        return {"violations": [], "warnings": []}
+
+    # 大夜專職：尊重逐人規則開關（無視所有規則 → 不檢查；H4/H12 可關閉）
+    disabled_night: set[str] = set()
+    if emp.role == "night":
+        overrides = {
+            r.rule_name: bool(r.enabled)
+            for r in db.scalars(
+                select(NightRuleOverride).where(
+                    NightRuleOverride.employee_id == emp_id
+                )
+            )
+        }
+        if overrides.get("ALL"):
+            return {"violations": [], "warnings": []}
+        disabled_night = {r for r in ("H4", "H12") if not overrides.get(r, True)}
 
     num_days = calendar.monthrange(year, month)[1]
     entries = {
@@ -357,6 +393,9 @@ def validate_cell(
     runs, _ = count_off_blocks(shifts)
     if runs != 2:
         v("H12", f"連休 {runs} 次（應為 2）")
+
+    if disabled_night:
+        violations = [x for x in violations if x["rule"] not in disabled_night]
 
     return {"violations": violations, "warnings": warnings}
 

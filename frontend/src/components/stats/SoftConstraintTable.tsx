@@ -13,10 +13,11 @@ const ROWS: { key: string; rule: string; desc: string; ideal: string; good: (v: 
   { key: 's7_non_backup_d_count', rule: 'S7', desc: '非備援D', ideal: '0 次', good: (v) => v === 0 },
   { key: 's8_manager_backup_count', rule: 'S8', desc: '管理職備援', ideal: '0 次', good: (v) => v === 0 },
   { key: 's9_off_block_count', rule: 'S9', desc: '連休次數', ideal: '越多越好', good: (v) => v >= 0 },
-  { key: 's10_weekday_b_count', rule: 'S10 B', desc: '平日排 B', ideal: '越多越好', good: (v) => v >= 0 },
-  { key: 's10_frisat_double_a_count', rule: 'S10 雙A', desc: '五六雙 A', ideal: '越多越好', good: (v) => v >= 0 },
-  { key: 's10_frisat_double_c_count', rule: 'S10 雙C', desc: '五六雙 C', ideal: '越多越好', good: (v) => v >= 0 },
-  { key: 's10_frisat_m_count', rule: 'S10 M', desc: '五六排 M', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_frisat_2a2c_count', rule: 'S10 五六2A2C', desc: '五六 4人排雙A雙C', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_frisat_abc_count', rule: 'S10 五六ABC', desc: '五六 3人排1A1B1C', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_weekday_abc_count', rule: 'S10 平日ABC', desc: '平日 3人排1A1B1C', ideal: '越多越好', good: (v) => v >= 0 },
+  { key: 's10_weekday_avoid_4p_count', rule: 'S10 平日4人', desc: '平日避免4人白天班', ideal: '0 次', good: (v) => v === 0 },
+  { key: 's10_frisat_m_count', rule: 'S10 五六M', desc: '五六排 M 班', ideal: '越多越好', good: (v) => v >= 0 },
 ]
 
 export function SoftConstraintTable({ stats }: SoftConstraintTableProps) {

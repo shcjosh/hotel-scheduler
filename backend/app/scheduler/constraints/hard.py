@@ -2,19 +2,14 @@ ALL_SHIFTS = ["A", "B", "C", "D", "M", "OFF", "SPECIAL"]
 WORK_SHIFTS = ["A", "B", "C", "D", "M"]
 COVERAGE_BACKUP_SHIFTS = ["A", "B", "C", "D"]
 REST_SHIFTS = ["OFF", "SPECIAL"]
-DEFAULT_NIGHT_RULES = {"H2", "H3", "H4", "H12"}
 
 
 def _rule_enabled(data, emp, rule):
-    """Night employees may have per-rule overrides; others always enabled."""
-    if emp.role != "night":
-        return True
-    if emp.id in getattr(data, "night_ignore_all", set()):
-        return False
-    enabled = getattr(data, "night_rule_overrides", {}).get(emp.id)
-    if enabled is None:
-        return rule in DEFAULT_NIGHT_RULES
-    return rule in enabled
+    """Night employees have fully fixed cells (H13) — applying these rules in
+    the solver can only make the model INFEASIBLE, never change the solution.
+    The per-rule switches (night_rule_overrides) therefore only affect the
+    validation report (validator.py / diagnostics.py), not the solve."""
+    return emp.role != "night"
 
 
 def _is_ignored_night(data, i):
@@ -126,6 +121,8 @@ def _prev_is_rest(prev_list, j):
 def add_h8_cross_month_transition(model, x, data, fixed):
     idx = data.emp_index()
     for emp in data.employees:
+        if not _rule_enabled(data, emp, "H8"):
+            continue
         i = idx[emp.id]
         prev = data.previous_month.get(emp.id)
 

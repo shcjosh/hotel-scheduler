@@ -16,6 +16,7 @@ from app.database.models import (
     SpecialLeave,
     SupportRequest,
 )
+from app.scheduler.off_count import count_off_blocks
 from app.services.employee_service import _from_json
 
 
@@ -51,6 +52,7 @@ class ShiftScheduleData:
     night_ignore_all: set[int] = field(default_factory=set)
     external_support: dict[int, set[str]] = field(default_factory=dict)
     external_support_all: set[str] = field(default_factory=set)
+    last_month_consecutive_off: dict[int, int] = field(default_factory=dict)
 
     def emp_index(self) -> dict[int, int]:
         return {emp.id: i for i, emp in enumerate(self.employees)}
@@ -93,7 +95,9 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             scheduling_mode=e.scheduling_mode,
         )
         for e in db.scalars(
-            select(Employee).where(Employee.is_active == 1).order_by(Employee.id)
+            select(Employee)
+            .where(Employee.is_active == 1, (Employee.tag.is_(None)) | (Employee.tag == ""))
+            .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     ]
 
@@ -198,6 +202,52 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         else:
             external_support.setdefault(row.day, set()).add(row.shift)
 
+    # 二館支援：帶 tag 的員工為外部支援，手動排的 A1/C1/D1 計入該日該班覆蓋
+    support_ids = [
+        e.id
+        for e in db.scalars(
+            select(Employee).where(
+                Employee.is_active == 1,
+                Employee.tag.is_not(None),
+                Employee.tag != "",
+            )
+        )
+    ]
+    if support_ids:
+        for row in db.scalars(
+            select(ScheduleEntry).where(
+                ScheduleEntry.employee_id.in_(support_ids),
+                ScheduleEntry.year == year,
+                ScheduleEntry.month == month,
+            )
+        ):
+            shift = row.shift
+            if shift in ("A1", "C1", "D1"):
+                base = shift[0]  # A1->A, C1->C, D1->D
+                external_support.setdefault(row.day, set()).add(base)
+
+    # K.1: Load last month consecutive off count per employee
+    last_month_off: dict[int, int] = {}
+    prev_y = year if month > 1 else year - 1
+    prev_m = month - 1 if month > 1 else 12
+    prev_days = calendar.monthrange(prev_y, prev_m)[1]
+    prev_entries = list(
+        db.scalars(
+            select(ScheduleEntry).where(
+                ScheduleEntry.year == prev_y, ScheduleEntry.month == prev_m
+            )
+        )
+    )
+    if prev_entries:
+        prev_by_emp: dict[int, dict[int, str]] = {}
+        for pe in prev_entries:
+            prev_by_emp.setdefault(pe.employee_id, {})[pe.day] = pe.shift
+        for emp in employees:
+            if emp.id in prev_by_emp:
+                shifts = [prev_by_emp[emp.id].get(d, "OFF") for d in range(1, prev_days + 1)]
+                cnt, _ = count_off_blocks(shifts)
+                last_month_off[emp.id] = cnt
+
     return ShiftScheduleData(
         employees=employees,
         year=year,
@@ -219,4 +269,5 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         night_ignore_all=night_ignore_all,
         external_support=external_support,
         external_support_all=external_support_all,
+        last_month_consecutive_off=last_month_off,
     )

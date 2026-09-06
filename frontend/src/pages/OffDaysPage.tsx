@@ -34,7 +34,7 @@ type Mode = 'designated' | 'leave'
 const BUILTIN_CODES = ['SPECIAL', 'PERSONAL', 'SICK']
 
 export function OffDaysPage() {
-  const { currentYear: year, currentMonth: month, solveMaxTime, solveEnableDBackup } = useUIStore()
+  const { currentYear: year, currentMonth: month, solveMaxTime, solveEnableDBackup, setSolveEnableDBackup } = useUIStore()
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [mode, setMode] = useState<Mode>('designated')
@@ -196,6 +196,15 @@ export function OffDaysPage() {
           {empSummary && (
             <ConsecutiveOffCounter count={empSummary.consecutive_off_count} />
           )}
+          <label className="flex items-center gap-2 text-sm text-gray-700" title="排班時啟用 D 班備援：備援日由 C+D 備援／管理職改排 D 班">
+            <input
+              type="checkbox"
+              checked={solveEnableDBackup}
+              onChange={(e) => setSolveEnableDBackup(e.target.checked)}
+              className="h-4 w-4"
+            />
+            啟用 D 班備援邏輯
+          </label>
           <button
             onClick={handleSolve}
             disabled={solving}

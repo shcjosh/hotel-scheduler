@@ -295,20 +295,23 @@ def validate_soft(data, schedule):
         if runs < 2:
             warnings.append(_v("S9", emp, None, f"連休 {runs} 次（建議 2 次）"))
 
-    # S10: 週五/週六人力加強（雙A/雙C/M）＋ 平日（週日~週四）優先排 B
+    # S10: 白天班組合偏好（五六 2A2C/ABC、平日 ABC/避免4人）
     fri_sat = set(data.fridays) | set(data.saturdays)
-    for d in sorted(fri_sat):
-        a = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "A")
-        c = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "C")
-        m = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "M")
-        if a < 2 and c < 2 and m == 0:
-            warnings.append(_v("S10", None, d + 1, "週五/六人力未加強（建議雙 A / 雙 C / M）"))
     for d in range(data.num_days):
-        if d in fri_sat:
-            continue
+        a = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "A")
         b = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "B")
-        if b == 0:
-            warnings.append(_v("S10", None, d + 1, "平日未排 B（建議排 B）"))
+        c = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "C")
+        total_day = a + b + c
+        if d in fri_sat:
+            if total_day >= 4 and not (a == 2 and c == 2 and b == 0):
+                warnings.append(_v("S10", None, d + 1, "週五/六 4 人白天班建議排 2A 2C"))
+            elif total_day == 3 and not (a == 1 and b == 1 and c == 1):
+                warnings.append(_v("S10", None, d + 1, "週五/六 3 人白天班建議排 1A 1B 1C"))
+        else:
+            if total_day >= 4:
+                warnings.append(_v("S10", None, d + 1, f"平日白天班達 {total_day} 人（建議避免 4 人）"))
+            elif total_day == 3 and not (a == 1 and b == 1 and c == 1):
+                warnings.append(_v("S10", None, d + 1, "平日 3 人白天班建議排 1A 1B 1C"))
 
     return warnings
 
@@ -316,6 +319,8 @@ def validate_soft(data, schedule):
 def count_preferred_unsatisfied(data, schedule) -> int:
     count = 0
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         if not emp.preferred_shift:
             continue
         for d in range(data.num_days):
@@ -330,6 +335,8 @@ def count_preferred_unsatisfied(data, schedule) -> int:
 def compute_fairness_spread(data, schedule) -> int:
     totals = []
     for emp in data.employees:
+        if _ignored_night(data, emp):
+            continue
         shifts = schedule.get(emp.id, [])
         totals.append(sum(1 for s in shifts if _is_work(s)))
     if not totals:
@@ -346,5 +353,5 @@ RULE_DESCRIPTIONS = {
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",
-    "S9": "連休 2 次優先", "S10": "週五/六雙A/雙C/M＋平日B",
+    "S9": "連休 2 次優先", "S10": "五六2A2C/ABC＋平日ABC、避免4人",
 }
