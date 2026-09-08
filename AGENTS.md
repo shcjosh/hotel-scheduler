@@ -1,7 +1,8 @@
 # AGENTS.md — 開發流程與規則（飯店排班系統）
 
 opencode 每次開啟本專案時會自動載入本文件，作為開發與協作的準則。
-詳細規格與架構見 `Hotel Shift Scheduler.txt`（含開發紀錄附錄）。
+詳細規格與架構見 `SPEC.md`（純現況，2026-09 起取代舊 `Hotel Shift Scheduler.txt`）；
+版本歷史見 `RELEASE-NOTES.md`；未實作方向見 `ROADMAP.md`。
 
 ## 專案簡介
 - 飯店排班系統（Hotel Shift Scheduler），portable 桌面應用（瀏覽器介面 + 本機後端）

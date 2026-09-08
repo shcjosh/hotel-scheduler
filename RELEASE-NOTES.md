@@ -253,3 +253,19 @@
 - 手動微調 + 即時合規檢查
 - 請求支援（A/C 班缺人）
 - 統計報表 + CSV/JSON 匯出
+
+## v1.0.0（Phase 1~8 初始開發，2026-08）
+
+依原始規格書分八個 Phase 完成（歷史紀錄；當時規格已由 `SPEC.md` 取代）：
+
+- Phase 1：Backend 骨架 + DB Schema + 基礎 API
+- Phase 2：排班引擎核心（硬性約束 H1~H13，CP-SAT）
+- Phase 3：軟性約束 + 目標函數
+- Phase 4：前端骨架 + 排班表頁面
+- Phase 5：員工管理 + 休假管理 UI
+- Phase 6：跨月設定 + 大夜班表 UI
+- Phase 7：手動微調 + 規則驗證報告
+- Phase 8：統計報表 + PyInstaller 打包部署
+
+> 附註：原規格書（Hotel Shift Scheduler.txt）含「開發紀錄附錄」，2026-09 已拆分為
+> `SPEC.md`（純現況）、本檔（版本歷史）與 `ROADMAP.md`（未實作方向），原檔移除。

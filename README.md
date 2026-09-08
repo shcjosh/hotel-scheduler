@@ -34,7 +34,7 @@
 
 ## 開發環境
 - Backend: Python 3.11+ / FastAPI / OR-Tools / SQLite
-- Frontend: React 18 / TypeScript / Tailwind CSS / Vite
+- Frontend: React 19 / TypeScript / Tailwind CSS / Vite
 
 ## 開發啟動
 ```bash
