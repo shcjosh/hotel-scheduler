@@ -20,6 +20,7 @@ const OPTIONS: { value: string; label: string }[] = [
   { value: 'B', label: 'B' },
   { value: 'C', label: 'C' },
   { value: 'D', label: 'D' },
+  { value: 'M', label: 'M' },
   { value: 'OFF', label: '休' },
   { value: 'SPECIAL', label: '特休' },
 ]
