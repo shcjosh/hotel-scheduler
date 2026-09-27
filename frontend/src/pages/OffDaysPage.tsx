@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Settings2, Sparkles, Loader2 } from 'lucide-react'
 import { getEmployees } from '../api/employees'
@@ -17,6 +17,7 @@ import {
   deleteLeaveType,
 } from '../api/leaveTypes'
 import { solveSchedule } from '../api/solve'
+import { getSetting, updateSetting } from '../api/settings'
 import { getScheduleStatus } from '../api/scheduleMeta'
 import { useUIStore } from '../stores/uiStore'
 import { getMonthDays } from '../utils/date'
@@ -44,6 +45,16 @@ export function OffDaysPage() {
   const [solving, setSolving] = useState(false)
   const [result, setResult] = useState<SolveResponse | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
+  const [managerCap, setManagerCap] = useState('')
+  const managerCapKey = `manager_backup_cap:${year}:${month}`
+
+  const { data: managerCapSetting } = useQuery({
+    queryKey: ['manager-cap', year, month],
+    queryFn: () => getSetting(managerCapKey),
+  })
+  useEffect(() => {
+    if (managerCapSetting !== undefined) setManagerCap(managerCapSetting)
+  }, [managerCapSetting])
 
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
@@ -160,6 +171,7 @@ export function OffDaysPage() {
     setSolveError(null)
     setResult(null)
     try {
+      await updateSetting(managerCapKey, managerCap.trim())
       const r = await solveSchedule(year, month, solveMaxTime, solveEnableDBackup)
       setResult(r)
     } catch (e) {
@@ -204,6 +216,24 @@ export function OffDaysPage() {
               className="h-4 w-4"
             />
             啟用 D 班備援邏輯
+          </label>
+          <label
+            className="flex items-center gap-1.5 text-sm text-gray-700"
+            title="店長每月最多可被排 A/C 的天數（每位管理職各自計算）；留空表示不限制，超過上限的部分會自動轉為支援請求"
+          >
+            店長最多卡班
+            <input
+              type="number"
+              min={0}
+              value={managerCap}
+              onChange={(e) => setManagerCap(e.target.value)}
+              onBlur={() => {
+                updateSetting(managerCapKey, managerCap.trim()).catch(() => {})
+              }}
+              placeholder="不限"
+              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+            />
+            天（A/C）
           </label>
           <button
             onClick={handleSolve}

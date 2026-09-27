@@ -13,6 +13,7 @@ from app.database.models import (
     NightRuleOverride,
     PreviousMonthLink,
     ScheduleEntry,
+    Setting,
     SpecialLeave,
     SupportRequest,
 )
@@ -53,6 +54,9 @@ class ShiftScheduleData:
     external_support: dict[int, set[str]] = field(default_factory=dict)
     external_support_all: set[str] = field(default_factory=set)
     last_month_consecutive_off: dict[int, int] = field(default_factory=dict)
+    # 店長（管理職）每月可被排 A/C 的格數上限；None = 不限制（現況）。
+    # 由每月設定 manager_backup_cap:{y}:{m} 讀入，每位管理職各自計算。
+    manager_backup_cap: int | None = None
 
     def emp_index(self) -> dict[int, int]:
         return {emp.id: i for i, emp in enumerate(self.employees)}
@@ -248,6 +252,18 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 cnt, _ = count_off_blocks(shifts)
                 last_month_off[emp.id] = cnt
 
+    # 店長卡班上限（每月設定，空白 = 不限制）：每位管理職 A/C 合計上限格數
+    cap_raw = db.scalar(
+        select(Setting.value).where(
+            Setting.key == f"manager_backup_cap:{year}:{month}"
+        )
+    )
+    manager_backup_cap = (
+        int(str(cap_raw).strip())
+        if cap_raw is not None and str(cap_raw).strip().isdigit()
+        else None
+    )
+
     return ShiftScheduleData(
         employees=employees,
         year=year,
@@ -270,4 +286,5 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         external_support=external_support,
         external_support_all=external_support_all,
         last_month_consecutive_off=last_month_off,
+        manager_backup_cap=manager_backup_cap,
     )

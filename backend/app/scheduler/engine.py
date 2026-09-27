@@ -171,6 +171,10 @@ def solve_adjust(
                 model.Add(x[i][d][cur] == 1)
 
     for code, fn in hard.CONSTRAINT_FUNCTIONS:
+        if code == "MCAP":
+            # 店長卡班上限是「月排程政策」，不套用在突發請假的最小變動重排，
+            # 避免凍結的過去格位已用滿上限時，臨時異動直接無解。
+            continue
         fn(model, x, data, fixed)
 
     BIG = 1000

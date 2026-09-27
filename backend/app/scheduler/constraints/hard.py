@@ -262,6 +262,23 @@ def add_h13_night_manual(model, x, data, fixed):
                 model.Add(x[i][d][shift] == 1)
 
 
+def add_manager_backup_cap(model, x, data, fixed):
+    """店長（管理職）每月排 A/C 的格數上限（每位管理職各自計算）。
+
+    由每月設定 `manager_backup_cap:{y}:{m}` 帶入；None 表示不限制。
+    超過上限的缺口會使求解失敗，再由 solve 路由自動轉為支援請求。
+    """
+    cap = getattr(data, "manager_backup_cap", None)
+    if cap is None:
+        return
+    for i, emp in enumerate(data.employees):
+        if emp.role != "manager":
+            continue
+        model.Add(
+            sum(x[i][d]["A"] + x[i][d]["C"] for d in range(data.num_days)) <= cap
+        )
+
+
 CONSTRAINT_FUNCTIONS = [
     ("H1", add_h1_daily_coverage),
     ("H2", add_h2_weekly_off_days),
@@ -276,4 +293,5 @@ CONSTRAINT_FUNCTIONS = [
     ("H11", add_h11_d_backup),
     ("H12", add_h12_consecutive_off),
     ("H13", add_h13_night_manual),
+    ("MCAP", add_manager_backup_cap),
 ]
