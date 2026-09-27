@@ -34,6 +34,8 @@ def _month_view(db: Session, year: int, month: int) -> MonthScheduleView:
         schedule=view["schedule"],
         sources=view["sources"],
         leave_details=view["leave_details"],
+        leave_sequence=view.get("leave_sequence", {}),
+        leave_base=view.get("leave_base", {}),
         status=status_service.get_status(db, year, month),
     )
 

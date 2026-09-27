@@ -54,6 +54,10 @@ def _run_migrations() -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE employees ADD COLUMN resign_date TEXT"
             )
+        if emp_cols and "hire_date" not in emp_cols:
+            conn.exec_driver_sql(
+                "ALTER TABLE employees ADD COLUMN hire_date TEXT"
+            )
 
 
 def init_db() -> None:

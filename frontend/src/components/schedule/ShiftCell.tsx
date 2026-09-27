@@ -7,14 +7,17 @@ interface ShiftCellProps {
   compact?: boolean
   pending?: boolean
   leaveType?: { name?: string; color_bg?: string; color_text?: string } | null
+  /** 整天特休的「特 N」編號（僅 leave_type=SPECIAL 時傳入） */
+  sequence?: number | null
   onClick?: () => void
 }
 
-export function ShiftCell({ shift, source, compact, pending, leaveType, onClick }: ShiftCellProps) {
+export function ShiftCell({ shift, source, compact, pending, leaveType, sequence, onClick }: ShiftCellProps) {
   const leaveStyle = shift === 'SPECIAL' ? getLeaveTypeStyle(leaveType) : null
   const designatedStyle = shift === 'OFF' && source === 'designated' ? getDesignatedOffStyle() : null
   const style = leaveStyle ?? designatedStyle ?? getShiftStyle(shift)
   const inline = leaveStyle !== null || designatedStyle !== null
+  const label = shift === 'SPECIAL' && sequence != null ? `特${sequence}` : style.label
 
   return (
     <button
@@ -29,9 +32,9 @@ export function ShiftCell({ shift, source, compact, pending, leaveType, onClick 
         pending && 'ring-2 ring-blue-600 ring-offset-1 scale-105 z-10 shadow-sm',
       )}
       style={inline ? { backgroundColor: style.bg, color: style.text } : undefined}
-      title={pending ? `${style.label}（尚未儲存變更）` : `${style.label}（點擊修改）`}
+      title={pending ? `${label}（尚未儲存變更）` : `${label}（點擊修改）`}
     >
-      {style.label}
+      {label}
       {pending && (
         <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5 items-center justify-center">
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />

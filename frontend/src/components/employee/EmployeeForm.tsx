@@ -36,6 +36,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
   const [preferred, setPreferred] = useState<string | null>(null)
   const [mode, setMode] = useState<SchedulingMode>('auto')
   const [resignDate, setResignDate] = useState('')
+  const [hireDate, setHireDate] = useState('')
   const [nightRules, setNightRules] = useState<NightRuleState | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -50,6 +51,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
       setPreferred(employee.preferred_shift)
       setMode(employee.scheduling_mode)
       setResignDate(employee.resign_date ?? '')
+      setHireDate(employee.hire_date ?? '')
     } else {
       setName('')
       setNickname('')
@@ -59,6 +61,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
       setPreferred(null)
       setMode('auto')
       setResignDate('')
+      setHireDate('')
     }
     setError(null)
   }, [employee, open])
@@ -121,6 +124,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           nickname: nickname.trim() || null,
           tag: tag.trim() || null,
           resign_date: resignDate.trim() || null,
+          hire_date: hireDate.trim() || null,
           role,
           available_shifts: shifts,
           preferred_shift: preferred,
@@ -168,6 +172,18 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             placeholder="如：二館"
           />
+        </Field>
+
+        <Field label="到職日（選填）">
+          <input
+            type="date"
+            value={hireDate}
+            onChange={(e) => setHireDate(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            用於自動計算特休週年期間與額度（勞基法）；留空 = 不計算特休。
+          </p>
         </Field>
 
         <Field label="離職日（最後上班日，選填）">

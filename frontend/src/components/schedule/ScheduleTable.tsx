@@ -15,9 +15,43 @@ interface ScheduleTableProps {
 
 export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges = {}, onCellClick }: ScheduleTableProps) {
   const { schedule, sources, leave_details: leaveDetails, num_days: numDays, year, month } = view
+  const leaveSequence = view.leave_sequence ?? {}
+  const leaveBase = view.leave_base ?? {}
   const names = Object.keys(schedule)
   const empByName = new Map(employees.map((e) => [e.name, e]))
   const leaveTypeByCode = new Map(leaveTypes.map((lt) => [lt.code, lt]))
+
+  const pad = (n: number) => String(n).padStart(2, '0')
+
+  // 計算每位員工本月的「特 N」編號。無暫存修改時直接用後端值；
+  // 有暫存修改時，以 leave_base 提供的期間起始序號即時累加（畫筆模式）。
+  function sequenceForEmp(name: string): Record<number, number> {
+    const hasPending = Object.keys(pendingChanges).some((k) => k.startsWith(`${name}_`))
+    const saved = leaveSequence[name] ?? {}
+    if (!hasPending) {
+      const out: Record<number, number> = {}
+      for (const [d, n] of Object.entries(saved)) out[Number(d)] = n
+      return out
+    }
+    const bases = leaveBase[name] ?? []
+    const counters: Record<string, number> = {}
+    const out: Record<number, number> = {}
+    const row = schedule[name] ?? []
+    for (let day = 1; day <= numDays; day++) {
+      const pending = pendingChanges[`${name}_${day}`]
+      const shift = pending ? pending.shift : row[day - 1]
+      const code = pending
+        ? (pending.leaveType ?? null)
+        : (leaveDetails?.[name]?.[String(day)] ?? null)
+      if (shift !== 'SPECIAL' || code !== 'SPECIAL') continue
+      const iso = `${year}-${pad(month)}-${pad(day)}`
+      const b = bases.find((x) => x.period_start <= iso && iso <= x.period_end)
+      if (!b) continue
+      counters[b.period_start] = (counters[b.period_start] ?? b.base) + 1
+      out[day] = counters[b.period_start]
+    }
+    return out
+  }
 
   return (
     <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -51,6 +85,7 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
         <tbody>
           {names.map((name) => {
             const emp = empByName.get(name)
+            const seqMap = sequenceForEmp(name)
             return (
               <tr key={name} className="hover:bg-indigo-50/40">
                 <th className="sticky left-0 z-10 w-32 border-b border-r border-gray-200 bg-white px-3 py-1 text-left text-sm font-medium text-gray-700">
@@ -84,6 +119,7 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
                     ? (pending.leaveType ?? null)
                     : (leaveDetails?.[name]?.[String(day)] ?? null)
                   const leaveType = leaveCode ? leaveTypeByCode.get(leaveCode) : undefined
+                  const sequence = leaveCode === 'SPECIAL' ? (seqMap[day] ?? null) : null
                   return (
                     <td
                       key={day}
@@ -98,6 +134,7 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
                         compact
                         pending={!!pending}
                         leaveType={leaveType}
+                        sequence={sequence}
                         onClick={() => onCellClick?.(name, day)}
                       />
                     </td>

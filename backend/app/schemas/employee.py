@@ -52,11 +52,20 @@ def _validate_resign_date(v: str | None) -> str | None:
     return v
 
 
+def _validate_hire_date(v: str | None) -> str | None:
+    if v is None or v == "":
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        raise ValueError("hire_date 格式須為 YYYY-MM-DD")
+    return v
+
+
 class EmployeeCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     nickname: str | None = Field(default=None, max_length=255)
     tag: str | None = Field(default=None, max_length=50)
     resign_date: str | None = None
+    hire_date: str | None = None
     sort_order: int | None = Field(default=None)
     role: Role
     available_shifts: list[Shift] | None = None
@@ -67,6 +76,7 @@ class EmployeeCreate(BaseModel):
         _validate_available_shifts
     )
     _validate_resign_date = field_validator("resign_date")(_validate_resign_date)
+    _validate_hire_date = field_validator("hire_date")(_validate_hire_date)
 
 
 class EmployeeUpdate(BaseModel):
@@ -74,6 +84,7 @@ class EmployeeUpdate(BaseModel):
     nickname: str | None = Field(default=None, max_length=255)
     tag: str | None = Field(default=None, max_length=50)
     resign_date: str | None = None
+    hire_date: str | None = None
     sort_order: int | None = None
     role: Role | None = None
     available_shifts: list[Shift] | None = None
@@ -85,6 +96,7 @@ class EmployeeUpdate(BaseModel):
         _validate_available_shifts
     )
     _validate_resign_date = field_validator("resign_date")(_validate_resign_date)
+    _validate_hire_date = field_validator("hire_date")(_validate_hire_date)
 
 
 class EmployeeOut(BaseModel):
@@ -95,6 +107,7 @@ class EmployeeOut(BaseModel):
     nickname: str | None
     tag: str | None
     resign_date: str | None = None
+    hire_date: str | None = None
     sort_order: int
     role: str
     available_shifts: list[str]

@@ -18,6 +18,7 @@ export interface Employee {
   nickname: string | null
   tag: string | null
   resign_date: string | null
+  hire_date: string | null
   sort_order: number
   role: EmployeeRole
   available_shifts: string[]
@@ -47,6 +48,8 @@ export interface MonthScheduleView {
   schedule: Record<string, string[]>
   sources: Record<string, string[]>
   leave_details: Record<string, Record<string, string>>
+  leave_sequence: Record<string, Record<string, number>>
+  leave_base: Record<string, { period_start: string; period_end: string; base: number }[]>
   status: ScheduleStatus
 }
 

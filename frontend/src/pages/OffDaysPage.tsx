@@ -27,6 +27,7 @@ import { OffDayCalendar } from '../components/off-days/OffDayCalendar'
 import { ConsecutiveOffCounter } from '../components/off-days/ConsecutiveOffCounter'
 import { LeaveTypeManager } from '../components/off-days/LeaveTypeManager'
 import { SolveResult } from '../components/off-days/SolveResult'
+import { AnnualLeavePanel } from '../components/off-days/AnnualLeavePanel'
 import { cn } from '../utils/cn'
 import type { LeaveType, SolveResponse } from '../types'
 
@@ -83,6 +84,7 @@ export function OffDaysPage() {
   )
   const empId = selectedId ?? visibleEmployees[0]?.id ?? null
   const empKey = empId !== null ? String(empId) : null
+  const selectedEmp = visibleEmployees.find((e) => e.id === empId) ?? null
   const numDays = getMonthDays(year, month)
 
   const designatedSet = useMemo(
@@ -368,6 +370,8 @@ export function OffDaysPage() {
           尚無員工
         </div>
       )}
+
+      <AnnualLeavePanel employee={selectedEmp} />
 
       {summary && visibleEmployees.length > 0 && (
         <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
