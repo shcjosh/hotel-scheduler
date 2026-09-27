@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus } from 'lucide-react'
+import { UserPlus, ChevronDown, ChevronRight } from 'lucide-react'
 import { getEmployees, createEmployee, updateEmployee, deleteEmployee, reorderEmployees } from '../api/employees'
 import type { EmployeePayload } from '../api/employees'
 import { updateRuleOverrides, type NightRuleState } from '../api/night'
@@ -13,19 +13,23 @@ import type { Employee } from '../types'
 export function EmployeesPage() {
   const queryClient = useQueryClient()
   const { data: employees = [], isLoading, isError, error } = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => getEmployees(),
+    queryKey: ['employees', 'all'],
+    queryFn: () => getEmployees(true),
   })
 
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
+  const [showResigned, setShowResigned] = useState(false)
+
+  const activeEmployees = employees.filter((e) => e.is_active === 1 && !e.resign_date)
+  const resignedEmployees = employees.filter((e) => e.resign_date || e.is_active === 0)
 
   const createMut = useMutation({
     mutationFn: (payload: EmployeePayload) => createEmployee(payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
   })
   const updateMut = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: EmployeePayload }) =>
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<EmployeePayload> }) =>
       updateEmployee(id, payload),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
   })
@@ -60,15 +64,42 @@ export function EmployeesPage() {
     }
   }
   async function handleDelete(emp: Employee) {
-    if (!window.confirm(`確定要刪除「${displayName(emp)}」嗎？（軟刪除）`)) return
-    await deleteEmployee(emp.id)
-    queryClient.invalidateQueries({ queryKey: ['employees'] })
+    if (
+      !window.confirm(
+        `確定要「刪除」${displayName(emp)} 嗎？\n\n刪除會永久移除，且僅限沒有任何班表/休假紀錄的員工。\n若要保留歷史班表，請改用「設離職」。`,
+      )
+    )
+      return
+    try {
+      await deleteEmployee(emp.id)
+      queryClient.invalidateQueries({ queryKey: ['employees'] })
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : '刪除失敗')
+    }
+  }
+
+  async function handleResign(emp: Employee) {
+    const input = window.prompt(
+      `設定「${displayName(emp)}」的最後上班日（YYYY-MM-DD）；留空 = 取消離職。\n離職月之後的班表將不再顯示此人。`,
+      emp.resign_date ?? '',
+    )
+    if (input === null) return
+    const value = input.trim()
+    if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      window.alert('日期格式錯誤，請用 YYYY-MM-DD，例如 2026-09-30')
+      return
+    }
+    try {
+      await updateMut.mutateAsync({ id: emp.id, payload: { resign_date: value || null } })
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : '設定失敗')
+    }
   }
 
   async function move(index: number, dir: -1 | 1) {
     const target = index + dir
-    if (target < 0 || target >= employees.length) return
-    const ids = employees.map((e) => e.id)
+    if (target < 0 || target >= activeEmployees.length) return
+    const ids = activeEmployees.map((e) => e.id)
     const tmp = ids[index]
     ids[index] = ids[target]
     ids[target] = tmp
@@ -99,13 +130,45 @@ export function EmployeesPage() {
         </div>
       )}
       {!isLoading && !isError && (
-        <EmployeeList
-          employees={employees}
-          onEdit={openEdit}
-          onDelete={handleDelete}
-          onMoveUp={(idx) => move(idx, -1)}
-          onMoveDown={(idx) => move(idx, 1)}
-        />
+        <>
+          <EmployeeList
+            employees={activeEmployees}
+            onEdit={openEdit}
+            onDelete={handleDelete}
+            onResign={handleResign}
+            onMoveUp={(idx) => move(idx, -1)}
+            onMoveDown={(idx) => move(idx, 1)}
+          />
+
+          {resignedEmployees.length > 0 && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowResigned((o) => !o)}
+                className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-gray-800"
+              >
+                {showResigned ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+                已離職 / 已停用員工
+                <span className="rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600">
+                  {resignedEmployees.length}
+                </span>
+              </button>
+              {showResigned && (
+                <EmployeeList
+                  employees={resignedEmployees}
+                  onEdit={openEdit}
+                  onDelete={handleDelete}
+                  onResign={handleResign}
+                  reorderable={false}
+                />
+              )}
+            </div>
+          )}
+        </>
       )}
 
       <EmployeeForm

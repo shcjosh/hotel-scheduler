@@ -53,9 +53,23 @@
 | 外部支援 | 任意 + `tag` | 完全手動 | A1/C1/D1 | 帶標籤（如「二館」）員工：豁免所有個人規則、不參與求解，其支援班次計入當日覆蓋 |
 
 - 員工欄位另含：`nickname`（暱稱，顯示與 PDF 用）、`sort_order`（自訂排序，
-  排班表/統計/PDF 依序顯示）、`available_shifts`（JSON）、`preferred_shift`
+  排班表/統計/PDF 依序顯示）、`available_shifts`（JSON）、`preferred_shift`、
+  `resign_date`（最後上班日 YYYY-MM-DD，見 §3.1）
 - D 班備援指派鏈（求解前自動）：CD 備援（當日無請假者）→ 管理職 → 無法指派；
   無法指派時求解直接失敗並列出該日與原因，UI 可「略過該備援日並重排」
+
+### 3.1 離職員工（`resign_date`）
+
+- `resign_date` = **最後上班日**（YYYY-MM-DD，可空）。有值 = 已離職。
+- 可見性（`employee_service.visible_in_month_clause`，用於班表/統計/休假/大夜/跨月）：
+  查詢月份 ≤ 離職月 → 仍顯示（名字反灰 +「離職」徽章）；> 離職月 → 不顯示。
+- 求解（`data_loader`）：離職月之後不納入；離職月內「月中離職」（最後上班日非月底）
+  會把該日之後固定 OFF，且該員不套用 H2/H3/H4/H12（含依 H2 的 H9；驗證器同步跳過），
+  缺口照常轉支援請求。
+- 刪除：`DELETE /employees/{id}` 為**真刪**，僅限無任何班表/休假/跨月/大夜規則/
+  D 備援紀錄者；否則 400 並提示改用「設離職」。設定 `resign_date` 會把先前
+  軟刪除（`is_active=0`）的員工復原為可見，讓歷史班表回來。
+- `is_active` 保留為軟刪除欄位（向後相容），新流程不再使用。
 
 ## 4. 硬性約束（H1~H13，必須滿足）
 
@@ -182,7 +196,7 @@
 
 | 表 | 用途 / 重點欄位 |
 |---|---|
-| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), is_active（軟刪除） |
+| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, is_active（軟刪除，向後相容） |
 | `schedule_entries` | employee_id, y/m/d, shift, source(`auto`\|`manual`\|`night_input`\|`backup`\|`designated`\|`special`)；UNIQUE(emp,y,m,d) |
 | `designated_off_days` | 指定休假；每人每月 ≤2（應用層驗證）；UNIQUE(emp,y,m,d) |
 | `special_leaves` | 請假；+ `leave_type`（預設 SPECIAL）；UNIQUE(emp,y,m,d) |
@@ -201,8 +215,9 @@
 路由定義在 `backend/app/api/routes/`（FastAPI app 於 `app/api/__init__.py`，
 靜態檔 mount 在路由註冊之後，`/api/*` 優先匹配）。
 
-- **員工** `employees`：GET/POST `/employees`、POST `/employees/reorder`、
-  GET/PUT/DELETE `/employees/{id}`（DELETE 為軟刪除）
+- **員工** `employees`：GET/POST `/employees`（`?include_inactive=true` 含軟刪除者）、
+  POST `/employees/reorder`、GET/PUT/DELETE `/employees/{id}`
+  （PUT 可設 `resign_date` 設離職；DELETE 為真刪，僅限無班表/休假歷史者，否則 400）
 - **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+status）、
   PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF、source 維持 night_input；
   鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
@@ -242,7 +257,7 @@
 | 路由 | 頁面 | 重點 |
 |---|---|---|
 | `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例） |
-| `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則） |
+| `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
 | `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult） |
 | `/cross-month` | CrossMonthPage | 上月末 5 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
 | `/stats` | StatsPage | 每人班次/休假統計 + 公平性 + 每日覆蓋 + S1~S10 細項 + 上月連休「優先 2 次」標記 + 調班紀錄 + 求解時間上限設定 + CSV/JSON 匯出 |
@@ -255,7 +270,8 @@
 
 ### 13.1 求解流程（`engine.solve`）
 
-1. `data_loader.load`：員工（排除帶 tag 者）、指定休、請假、跨月 links、
+1. `data_loader.load`：員工（排除帶 tag 者；已離職者離職月後排除，月中離職設
+   `resign_cutoff`）、指定休、請假、跨月 links、
    大夜班（schedule_entries source=night_input）、D 備援請求與指派鏈、
    外部支援（tag 員工的 A1/C1/D1 → 當日該班覆蓋）、支援請求（open/resolved
    皆視為有人；ignored 不算）、規則開關、上月每人連休次數
@@ -343,7 +359,7 @@ cd frontend && npm run dev
 # 單一後端模式（服務前端 build）
 cd frontend && npm run build && cd ../backend && .venv/bin/python run.py
 # 測試（逐檔執行，各自帶 assert 與 temp DB_PATH，非 pytest）
-cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge）
+cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign）
 # 測試資料
 cd backend && .venv/bin/python tests/seed_dev.py
 ```

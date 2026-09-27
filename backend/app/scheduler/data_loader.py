@@ -18,7 +18,7 @@ from app.database.models import (
     SupportRequest,
 )
 from app.scheduler.off_count import count_off_blocks
-from app.services.employee_service import _from_json
+from app.services.employee_service import _from_json, visible_in_month_clause
 
 
 @dataclass
@@ -57,6 +57,9 @@ class ShiftScheduleData:
     # 店長（管理職）每月可被排 A/C 的格數上限；None = 不限制（現況）。
     # 由每月設定 manager_backup_cap:{y}:{m} 讀入，每位管理職各自計算。
     manager_backup_cap: int | None = None
+    # 離職月內「月中離職」的員工：emp_id -> 最後上班日（1-based）。
+    # 這些員工在該月最後上班日之後固定不排班，且不套用 H2/H3/H4/H12。
+    resign_cutoff: dict[int, int] = field(default_factory=dict)
 
     def emp_index(self) -> dict[int, int]:
         return {emp.id: i for i, emp in enumerate(self.employees)}
@@ -89,21 +92,36 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
     sundays = [i for i, dt in enumerate(dates) if dt.weekday() == 6]
     fridays = [i for i, dt in enumerate(dates) if dt.weekday() == 4]
 
-    employees = [
-        EmployeeData(
-            id=e.id,
-            name=e.name,
-            role=e.role,
-            available_shifts=_from_json(e.available_shifts),
-            preferred_shift=e.preferred_shift,
-            scheduling_mode=e.scheduling_mode,
+    employees: list[EmployeeData] = []
+    resign_cutoff: dict[int, int] = {}
+    for e in db.scalars(
+        select(Employee)
+        .where(
+            Employee.is_active == 1,
+            (Employee.tag.is_(None)) | (Employee.tag == ""),
+            visible_in_month_clause(year, month),
         )
-        for e in db.scalars(
-            select(Employee)
-            .where(Employee.is_active == 1, (Employee.tag.is_(None)) | (Employee.tag == ""))
-            .order_by(Employee.sort_order.asc(), Employee.id.asc())
+        .order_by(Employee.sort_order.asc(), Employee.id.asc())
+    ):
+        employees.append(
+            EmployeeData(
+                id=e.id,
+                name=e.name,
+                role=e.role,
+                available_shifts=_from_json(e.available_shifts),
+                preferred_shift=e.preferred_shift,
+                scheduling_mode=e.scheduling_mode,
+            )
         )
-    ]
+        # 月中離職（最後上班日在該月內且非月底）：設定排班截止日
+        if e.resign_date:
+            r_year, r_month, r_day = (
+                int(e.resign_date[0:4]),
+                int(e.resign_date[5:7]),
+                int(e.resign_date[8:10]),
+            )
+            if r_year == year and r_month == month and r_day < num_days:
+                resign_cutoff[e.id] = r_day
 
     designated: dict[int, list[int]] = {}
     for row in db.scalars(
@@ -170,12 +188,20 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             continue
         assigned = None
         for eid in cd_backup_ids:
-            if day not in designated.get(eid, []) and day not in special.get(eid, []):
+            if (
+                day not in designated.get(eid, [])
+                and day not in special.get(eid, [])
+                and day <= resign_cutoff.get(eid, num_days)
+            ):
                 assigned = eid
                 break
         if assigned is None:
             for eid in manager_ids:
-                if day not in designated.get(eid, []) and day not in special.get(eid, []):
+                if (
+                    day not in designated.get(eid, [])
+                    and day not in special.get(eid, [])
+                    and day <= resign_cutoff.get(eid, num_days)
+                ):
                     assigned = eid
                     break
         if assigned is None:
@@ -214,6 +240,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 Employee.is_active == 1,
                 Employee.tag.is_not(None),
                 Employee.tag != "",
+                visible_in_month_clause(year, month),
             )
         )
     ]
@@ -287,4 +314,5 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         external_support_all=external_support_all,
         last_month_consecutive_off=last_month_off,
         manager_backup_cap=manager_backup_cap,
+        resign_cutoff=resign_cutoff,
     )

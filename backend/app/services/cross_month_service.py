@@ -5,6 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database.models import Employee, PreviousMonthLink, ScheduleEntry
+from app.services.employee_service import visible_in_month_clause
 
 VALID_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL", None}
 WORK_SHIFTS = {"A", "B", "C", "D", "M"}
@@ -91,7 +92,11 @@ def auto_load_from_prev_month(db: Session, year: int, month: int) -> bool:
         employees = list(
             db.scalars(
                 select(Employee)
-                .where(Employee.is_active == 1, _not_support())
+                .where(
+                    Employee.is_active == 1,
+                    _not_support(),
+                    visible_in_month_clause(year, month),
+                )
                 .order_by(Employee.id)
             )
         )
@@ -170,7 +175,11 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1, _not_support())
+            .where(
+                Employee.is_active == 1,
+                _not_support(),
+                visible_in_month_clause(year, month),
+            )
             .order_by(Employee.id)
         )
     )

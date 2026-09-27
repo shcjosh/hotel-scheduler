@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database.models import DBackupRequest, Employee, NightRuleOverride, ScheduleEntry
 from app.scheduler import data_loader, validator
+from app.services.employee_service import visible_in_month_clause
 
 NIGHT_RULES = ["H2", "H3", "H4", "H12"]
 IGNORE_ALL_RULE = "ALL"
@@ -15,7 +16,11 @@ def get_night_schedule(db: Session, year: int, month: int) -> dict:
     night_emps = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1, Employee.role == "night")
+            .where(
+                Employee.is_active == 1,
+                Employee.role == "night",
+                visible_in_month_clause(year, month),
+            )
             .order_by(Employee.id)
         )
     )

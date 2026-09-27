@@ -8,8 +8,17 @@ def _rule_enabled(data, emp, rule):
     """Night employees have fully fixed cells (H13) — applying these rules in
     the solver can only make the model INFEASIBLE, never change the solution.
     The per-rule switches (night_rule_overrides) therefore only affect the
-    validation report (validator.py / diagnostics.py), not the solve."""
-    return emp.role != "night"
+    validation report (validator.py / diagnostics.py), not the solve.
+
+    月中離職員工同理：最後上班日之後固定不排班，其週休/連休計數已不完整，
+    故不套用 H2/H3/H4/H12（含依 H2 的 H9）。"""
+    if emp.role == "night":
+        return False
+    if rule in ("H2", "H3", "H4", "H12") and emp.id in getattr(
+        data, "resign_cutoff", {}
+    ):
+        return False
+    return True
 
 
 def _is_ignored_night(data, i):
@@ -279,6 +288,18 @@ def add_manager_backup_cap(model, x, data, fixed):
         )
 
 
+def add_resign_cutoff(model, x, data, fixed):
+    """月中離職：最後上班日之後的格位固定為 OFF（不排班）。"""
+    for i, emp in enumerate(data.employees):
+        last = data.resign_cutoff.get(emp.id)
+        if last is None:
+            continue
+        for d in range(last, data.num_days):
+            if (i, d) in fixed:
+                continue
+            model.Add(x[i][d]["OFF"] == 1)
+
+
 CONSTRAINT_FUNCTIONS = [
     ("H1", add_h1_daily_coverage),
     ("H2", add_h2_weekly_off_days),
@@ -294,4 +315,5 @@ CONSTRAINT_FUNCTIONS = [
     ("H12", add_h12_consecutive_off),
     ("H13", add_h13_night_manual),
     ("MCAP", add_manager_backup_cap),
+    ("RESIGN", add_resign_cutoff),
 ]

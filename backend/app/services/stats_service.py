@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models import Employee, ScheduleEntry, Setting, SpecialLeave
-from app.services import leave_type_service, off_day_service, schedule_service
+from app.services import employee_service, leave_type_service, off_day_service, schedule_service
 
 WORK_SHIFTS = ("A", "B", "C", "D", "M")
 ALL_COUNT_SHIFTS = ("A", "B", "C", "D", "M", "OFF", "SPECIAL")
@@ -76,7 +76,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1)
+            .where(Employee.is_active == 1, employee_service.visible_in_month_clause(year, month))
             .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )

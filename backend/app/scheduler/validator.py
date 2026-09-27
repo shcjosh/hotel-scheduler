@@ -26,6 +26,11 @@ def _ignored_night(data, emp):
     return emp.role == "night" and emp.id in getattr(data, "night_ignore_all", set())
 
 
+def _partial_resign(data, emp):
+    """月中離職：該員當月最後上班日後固定不排班，週休/連休計數不完整，跳過個人規則。"""
+    return emp.id in getattr(data, "resign_cutoff", {})
+
+
 def _v(rule, emp, day, message):
     return {
         "rule": rule,
@@ -68,7 +73,7 @@ def validate(data, schedule):
 
     for w_i, w in enumerate(data.weeks):
         for emp in data.employees:
-            if _ignored_night(data, emp):
+            if _ignored_night(data, emp) or _partial_resign(data, emp):
                 continue
             curr_off = sum(1 for d in w if _shift_at(schedule, emp.id, d) == "OFF")
             if w_i == 0:
@@ -94,7 +99,7 @@ def validate(data, schedule):
                     violations.append(_v("H2", emp, None, f"不完整週休 {curr_off} 天（應 <=2）"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _partial_resign(data, emp):
             continue
         sat_off = sum(1 for d in data.saturdays if _shift_at(schedule, emp.id, d) == "OFF")
         sun_off = sum(1 for d in data.sundays if _shift_at(schedule, emp.id, d) == "OFF")
@@ -106,7 +111,7 @@ def validate(data, schedule):
             violations.append(_v("H3", emp, None, f"週末休假 {total} 天（應 =2）"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _partial_resign(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         prev = prev_cache[emp.id]
@@ -202,7 +207,7 @@ def validate(data, schedule):
             violations.append(_v("H11", None, day, f"{day} 號備援日無人遞補 C 班"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _partial_resign(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]
@@ -287,7 +292,7 @@ def validate_soft(data, schedule):
 
     # S9: 連休 2 次優先 — 僅 1 次連休者（建議 2 次）
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _partial_resign(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]

@@ -31,3 +31,14 @@ const AVATAR_COLORS = [
 export function avatarColor(id: number): string {
   return AVATAR_COLORS[id % AVATAR_COLORS.length]
 }
+
+/** 員工在指定月份是否可見（已離職者在最後上班月及之前可見）。 */
+export function isVisibleInMonth(
+  e: Pick<Employee, 'resign_date'>,
+  year: number,
+  month: number,
+): boolean {
+  if (!e.resign_date) return true
+  const key = `${year}-${String(month).padStart(2, '0')}`
+  return e.resign_date.slice(0, 7) >= key
+}

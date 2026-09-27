@@ -22,7 +22,7 @@ import { getScheduleStatus } from '../api/scheduleMeta'
 import { useUIStore } from '../stores/uiStore'
 import { getMonthDays } from '../utils/date'
 import { ROLE_LABELS } from '../utils/roles'
-import { displayName, avatarText, avatarColor } from '../utils/employee'
+import { displayName, avatarText, avatarColor, isVisibleInMonth } from '../utils/employee'
 import { OffDayCalendar } from '../components/off-days/OffDayCalendar'
 import { ConsecutiveOffCounter } from '../components/off-days/ConsecutiveOffCounter'
 import { LeaveTypeManager } from '../components/off-days/LeaveTypeManager'
@@ -77,7 +77,11 @@ export function OffDaysPage() {
     queryFn: () => getScheduleStatus(year, month),
   })
 
-  const empId = selectedId ?? employees[0]?.id ?? null
+  const visibleEmployees = useMemo(
+    () => employees.filter((e) => isVisibleInMonth(e, year, month)),
+    [employees, year, month],
+  )
+  const empId = selectedId ?? visibleEmployees[0]?.id ?? null
   const empKey = empId !== null ? String(empId) : null
   const numDays = getMonthDays(year, month)
 
@@ -248,8 +252,8 @@ export function OffDaysPage() {
 
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
         <div className="flex items-end gap-1.5">
-          {employees.map((e) => {
-            const selected = selectedId === e.id || (selectedId === null && e.id === employees[0]?.id)
+          {visibleEmployees.map((e) => {
+            const selected = selectedId === e.id || (selectedId === null && e.id === visibleEmployees[0]?.id)
             return (
               <button
                 key={e.id}
@@ -365,7 +369,7 @@ export function OffDaysPage() {
         </div>
       )}
 
-      {summary && employees.length > 0 && (
+      {summary && visibleEmployees.length > 0 && (
         <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
           <table className="w-full text-sm">
             <thead className="bg-gray-100 text-gray-600">
@@ -381,7 +385,7 @@ export function OffDaysPage() {
               </tr>
             </thead>
             <tbody>
-              {employees.map((e) => {
+              {visibleEmployees.map((e) => {
                 const s = summary[String(e.id)]
                 return (
                   <tr

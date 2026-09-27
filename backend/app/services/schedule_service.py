@@ -12,6 +12,7 @@ from app.database.models import (
 )
 from app.schemas.schedule import ScheduleEntryCreate, ScheduleEntryUpdate
 from app.scheduler.off_count import count_off_blocks
+from app.services.employee_service import is_schedulable_on, visible_in_month_clause
 
 import calendar
 import json
@@ -47,7 +48,7 @@ def get_month_view(
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1)
+            .where(Employee.is_active == 1, visible_in_month_clause(year, month))
             .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )
@@ -171,9 +172,11 @@ def upsert_cell(
 ) -> ScheduleEntry:
     emp = db.get(Employee, emp_id)
     if emp is None or not emp.is_active:
-        raise ValueError("員工不存在或已離職")
+        raise ValueError("員工不存在或已停用")
     if shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{shift}")
+    if not is_schedulable_on(emp, year, month, day):
+        raise ValueError("該員工已離職，無法排班")
 
     is_support = bool(emp.tag)
     is_night = emp.role == "night"
@@ -281,7 +284,7 @@ def validate_cell(
 ) -> dict:
     emp = db.get(Employee, emp_id)
     if emp is None or not emp.is_active:
-        raise ValueError("員工不存在或已離職")
+        raise ValueError("員工不存在或已停用")
     if new_shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{new_shift}")
 
