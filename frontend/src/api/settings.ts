@@ -6,6 +6,13 @@ export async function getSettings(): Promise<{ hotel_name: string; user_name: st
 }
 
 export async function updateSetting(key: string, value: string): Promise<string> {
-  const { data } = await apiClient.put<{ value: string }>(`/settings/${key}`, { value })
+  const { data } = await apiClient.put<{ value: string }>(`/settings/${encodeURIComponent(key)}`, { value })
+  return data.value
+}
+
+export async function getSetting(key: string): Promise<string> {
+  const { data } = await apiClient.get<{ key: string; value: string }>(
+    `/settings/${encodeURIComponent(key)}`,
+  )
   return data.value
 }

@@ -21,6 +21,8 @@ class Employee(Base):
     name: Mapped[str] = mapped_column(Text, nullable=False)
     nickname: Mapped[str | None] = mapped_column(Text, nullable=True)
     tag: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 最後上班日（YYYY-MM-DD）；有值 = 已離職。離職月之後不再顯示/排班。
+    resign_date: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     role: Mapped[str] = mapped_column(Text, nullable=False)
     available_shifts: Mapped[str] = mapped_column(Text, nullable=False)

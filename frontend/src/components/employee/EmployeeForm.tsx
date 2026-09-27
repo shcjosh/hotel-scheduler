@@ -35,6 +35,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
   const [shifts, setShifts] = useState<string[]>(['A', 'B', 'C'])
   const [preferred, setPreferred] = useState<string | null>(null)
   const [mode, setMode] = useState<SchedulingMode>('auto')
+  const [resignDate, setResignDate] = useState('')
   const [nightRules, setNightRules] = useState<NightRuleState | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,6 +49,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
       setShifts(employee.available_shifts)
       setPreferred(employee.preferred_shift)
       setMode(employee.scheduling_mode)
+      setResignDate(employee.resign_date ?? '')
     } else {
       setName('')
       setNickname('')
@@ -56,6 +58,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
       setShifts(['A', 'B', 'C'])
       setPreferred(null)
       setMode('auto')
+      setResignDate('')
     }
     setError(null)
   }, [employee, open])
@@ -117,6 +120,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           name: name.trim(),
           nickname: nickname.trim() || null,
           tag: tag.trim() || null,
+          resign_date: resignDate.trim() || null,
           role,
           available_shifts: shifts,
           preferred_shift: preferred,
@@ -164,6 +168,18 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
             className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
             placeholder="如：二館"
           />
+        </Field>
+
+        <Field label="離職日（最後上班日，選填）">
+          <input
+            type="date"
+            value={resignDate}
+            onChange={(e) => setResignDate(e.target.value)}
+            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            設定後，離職日之後不再排班；離職月之後的班表不再顯示此人。留空 = 在職。
+          </p>
         </Field>
 
         <Field label="角色">

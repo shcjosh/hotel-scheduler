@@ -5,6 +5,7 @@ export interface EmployeePayload {
   name: string
   nickname?: string | null
   tag?: string | null
+  resign_date?: string | null
   sort_order?: number
   role: EmployeeRole
   available_shifts: string[]

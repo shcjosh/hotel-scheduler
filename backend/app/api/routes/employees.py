@@ -54,10 +54,13 @@ def update_employee(
     return employee_service.to_out(employee)
 
 
-@router.delete("/employees/{employee_id}", response_model=EmployeeOut)
+@router.delete("/employees/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_employee(employee_id: int, db: Session = Depends(get_db)):
     employee = employee_service.get_employee(db, employee_id)
     if employee is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
-    employee = employee_service.soft_delete_employee(db, employee)
-    return employee_service.to_out(employee)
+    try:
+        employee_service.hard_delete_employee(db, employee)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return None

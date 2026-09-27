@@ -60,7 +60,17 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
                         {emp.tag}
                       </span>
                     )}
-                    <span className="leading-tight">{emp ? displayName(emp) : name}</span>
+                    {emp?.resign_date && (
+                      <span
+                        className="inline-flex items-center rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-gray-600"
+                        title={`最後上班日 ${emp.resign_date}`}
+                      >
+                        離職
+                      </span>
+                    )}
+                    <span className={cn('leading-tight', emp?.resign_date && 'text-gray-400')}>
+                      {emp ? displayName(emp) : name}
+                    </span>
                   </div>
                 </th>
                 {schedule[name].map((originalShift, d) => {

@@ -11,6 +11,7 @@ import { useUIStore } from '../stores/uiStore'
 import { CrossMonthForm } from '../components/cross-month/CrossMonthForm'
 import { CrossMonthPreview } from '../components/cross-month/CrossMonthPreview'
 import { Button } from '../components/ui/button'
+import { isVisibleInMonth } from '../utils/employee'
 
 export function CrossMonthPage() {
   const { currentYear: year, currentMonth: month } = useUIStore()
@@ -47,6 +48,7 @@ export function CrossMonthPage() {
   const links = cm?.previous_month_links ?? {}
   const hasAuto = Object.values(links).some((l) => l.source === 'auto')
   const hasData = Object.keys(links).length > 0
+  const scheduleEmployees = employees.filter((e) => !e.tag && isVisibleInMonth(e, year, month))
 
   return (
     <div className="space-y-4">
@@ -85,13 +87,13 @@ export function CrossMonthPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-500">
           載入中…
         </div>
-      ) : employees.length === 0 ? (
+      ) : scheduleEmployees.length === 0 ? (
         <div className="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center text-gray-500">
           尚無員工
         </div>
       ) : (
         <CrossMonthForm
-          employees={employees}
+          employees={scheduleEmployees}
           links={links}
           dates={cm?.prev_last_5_dates ?? []}
           onSave={(l) => saveMut.mutateAsync(l)}
@@ -106,7 +108,7 @@ export function CrossMonthPage() {
 
       <div>
         <h3 className="mb-2 text-sm font-semibold text-gray-700">銜接預覽</h3>
-        <CrossMonthPreview preview={preview} employees={employees} />
+        <CrossMonthPreview preview={preview} employees={scheduleEmployees} />
       </div>
     </div>
   )

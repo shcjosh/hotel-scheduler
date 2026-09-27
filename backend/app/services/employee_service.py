@@ -1,14 +1,51 @@
 import json
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.database.models import Employee, now_iso
+from app.database.models import (
+    DBackupRequest,
+    DesignatedOffDay,
+    Employee,
+    NightRuleOverride,
+    PreviousMonthLink,
+    ScheduleEntry,
+    SpecialLeave,
+    now_iso,
+)
 from app.schemas.employee import (
     ROLE_DEFAULTS,
     EmployeeCreate,
     EmployeeUpdate,
 )
+
+
+def month_key(year: int, month: int) -> str:
+    return f"{year:04d}-{month:02d}"
+
+
+def visible_in_month_clause(year: int, month: int):
+    """SQL filter：查詢該月份時可見的員工。
+
+    已離職員工（resign_date 有值）在「最後上班月」及之前仍可見，
+    該月之後不再出現。搭配 Employee.is_active == 1 使用。
+    """
+    return or_(
+        Employee.resign_date.is_(None),
+        func.substr(Employee.resign_date, 1, 7) >= month_key(year, month),
+    )
+
+
+def is_visible_in_month(emp: Employee, year: int, month: int) -> bool:
+    if not emp.resign_date:
+        return True
+    return emp.resign_date[:7] >= month_key(year, month)
+
+
+def is_schedulable_on(emp: Employee, year: int, month: int, day: int) -> bool:
+    if not emp.resign_date:
+        return True
+    return f"{month_key(year, month)}-{day:02d}" <= emp.resign_date
 
 
 def _to_json(shifts: list[str] | None) -> str:
@@ -70,6 +107,7 @@ def create_employee(db: Session, data: EmployeeCreate) -> Employee:
         name=data.name,
         nickname=data.nickname or None,
         tag=data.tag or None,
+        resign_date=data.resign_date or None,
         sort_order=sort_order,
         role=data.role,
         available_shifts=_to_json(shifts),
@@ -120,6 +158,12 @@ def update_employee(db: Session, employee: Employee, data: EmployeeUpdate) -> Em
         employee.nickname = payload["nickname"] or None
     if "tag" in payload:
         employee.tag = payload["tag"] or None
+    if "resign_date" in payload:
+        employee.resign_date = payload["resign_date"] or None
+        # 設定/取消離職即代表要保留並管理此員工；若之前是軟刪除狀態則一併復原，
+        # 讓歷史班表重新可見。
+        if "is_active" not in payload:
+            employee.is_active = 1
     if "sort_order" in payload and payload["sort_order"] is not None:
         employee.sort_order = payload["sort_order"]
     if "is_active" in payload:
@@ -152,12 +196,34 @@ def soft_delete_employee(db: Session, employee: Employee) -> Employee:
     return employee
 
 
+def has_history(db: Session, employee_id: int) -> bool:
+    """是否有任何班表/休假/跨月/大夜規則等歷史資料。"""
+    checks = [
+        select(ScheduleEntry.id).where(ScheduleEntry.employee_id == employee_id).limit(1),
+        select(DesignatedOffDay.id).where(DesignatedOffDay.employee_id == employee_id).limit(1),
+        select(SpecialLeave.id).where(SpecialLeave.employee_id == employee_id).limit(1),
+        select(PreviousMonthLink.id).where(PreviousMonthLink.employee_id == employee_id).limit(1),
+        select(NightRuleOverride.id).where(NightRuleOverride.employee_id == employee_id).limit(1),
+        select(DBackupRequest.id).where(DBackupRequest.assigned_employee_id == employee_id).limit(1),
+    ]
+    return any(db.scalars(stmt).first() is not None for stmt in checks)
+
+
+def hard_delete_employee(db: Session, employee: Employee) -> None:
+    """真正刪除員工。僅限沒有任何歷史資料者，避免砍掉歷史班表。"""
+    if has_history(db, employee.id):
+        raise ValueError("此員工已有班表/休假等歷史資料，請改用「設離職」保留歷史")
+    db.delete(employee)
+    db.commit()
+
+
 def to_out(employee: Employee) -> dict:
     return {
         "id": employee.id,
         "name": employee.name,
         "nickname": employee.nickname,
         "tag": employee.tag,
+        "resign_date": employee.resign_date,
         "sort_order": employee.sort_order,
         "role": employee.role,
         "available_shifts": _from_json(employee.available_shifts),

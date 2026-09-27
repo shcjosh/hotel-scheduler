@@ -23,6 +23,32 @@ opencode 每次開啟本專案時會自動載入本文件，作為開發與協�
 - `SCHEDULER_DISABLE_LIFECYCLE=1`：關閉「關瀏覽器分頁即自動結束」偵測（測試/開發時用，見 `run.py`）。
 - PyInstaller 不支援跨平台，需在目標平台執行；正式打包一律靠 CI（雙平台），本地打包僅作驗證。
 
+## 臨時對外測試（Cloudflare quick tunnel，外出無區網時用）
+本工作區容器已預裝 `cloudflared`（見 `setup.sh`）。外出測試時用單一後端模式 + 臨時網域，
+**不要**用 `run.py`（會啟用關分頁自動結束）；用 dev uvicorn 讓它常駐：
+```sh
+# 1) build 前端（要讓當前 branch 的修正生效）
+cd /data/opencode/hotel-scheduler/frontend && npm run build
+# 2) 啟動單一後端（dev uvicorn 會 mount frontend/dist，127.0.0.1:8765）
+mkdir -p /tmp/opencode/hs-test
+cd /data/opencode/hotel-scheduler/backend && \
+  setsid .venv/bin/python -m uvicorn app.api:app --host 127.0.0.1 --port 8765 \
+  </dev/null >/tmp/opencode/hs-test/backend.log 2>&1 &
+# 3) 開臨時 tunnel
+setsid cloudflared tunnel --url http://localhost:8765 --no-autoupdate \
+  </dev/null >/tmp/opencode/hs-test/cf.log 2>&1 &
+# 4) 抓網址 + 驗證
+sleep 12
+grep -oE "https://[a-z0-9-]+\.trycloudflare\.com" /tmp/opencode/hs-test/cf.log | head -1
+curl -s https://<剛抓到的網址>/api/v1/health   # 應回 {"status":"ok","version":...}
+```
+- 停止：`pkill -x cloudflared` 然後 `pkill -f "[u]vicorn app.api"`。
+  **勿用 `pkill -f "cloudflared"` 或 `pkill -f "uvicorn app.api"`**：pattern 會匹配到執行中的
+  shell 指令列本身，把 session 砍掉（`[u]vicorn` 的方括號寫法可避開自我匹配）。
+- 背景一定要用 `setsid ... &`：一般 `nohup ... &` 會在該次 tool 指令結束時被收掉。
+  （本容器為 BusyBox，`setsid` 不支援 `--fork`，直接 `setsid ... &` 即可。）
+- 臨時網址每次重開都會換；資料庫是**真實**的 `backend/data/scheduler.db`，測試請小心。
+
 ## 版本號規則（SemVer）
 - 正式版：`X.Y.Z`，單一來源在 `backend/app/version.py`
 - 測試版：`X.Y.Z-beta`
