@@ -76,7 +76,11 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1, employee_service.visible_in_month_clause(year, month))
+            .where(
+                Employee.is_active == 1,
+                employee_service.not_housekeeping_clause(),
+                employee_service.visible_in_month_clause(year, month),
+            )
             .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )

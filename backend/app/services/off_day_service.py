@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database.models import DesignatedOffDay, Employee, ScheduleEntry, SpecialLeave
 from app.scheduler.off_count import count_off_blocks
-from app.services.employee_service import visible_in_month_clause
+from app.services.employee_service import not_housekeeping_clause, visible_in_month_clause
 
 
 def _num_days(year: int, month: int) -> int:
@@ -108,7 +108,11 @@ def get_off_day_summary(db: Session, year: int, month: int) -> dict:
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1, visible_in_month_clause(year, month))
+            .where(
+                Employee.is_active == 1,
+                not_housekeeping_clause(),
+                visible_in_month_clause(year, month),
+            )
             .order_by(Employee.id)
         )
     )

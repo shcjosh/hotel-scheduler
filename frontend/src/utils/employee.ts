@@ -42,3 +42,8 @@ export function isVisibleInMonth(
   const key = `${year}-${String(month).padStart(2, '0')}`
   return e.resign_date.slice(0, 7) >= key
 }
+
+/** 是否為房務（與櫃台班表互不干涉，櫃台相關頁面需排除）。 */
+export function isHousekeeping(e: Pick<Employee, 'role'>): boolean {
+  return e.role === 'housekeeping'
+}

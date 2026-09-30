@@ -5,14 +5,21 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database.models import Employee, PreviousMonthLink, ScheduleEntry
-from app.services.employee_service import visible_in_month_clause
+from app.services.employee_service import (
+    HOUSEKEEPING_ROLE,
+    not_housekeeping_clause,
+    visible_in_month_clause,
+)
 
 VALID_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL", None}
 WORK_SHIFTS = {"A", "B", "C", "D", "M"}
 
 
 def _not_support():
-    """二館支援（帶 tag）為外部手動排班、豁免所有規則，不納入跨月銜接。"""
+    """二館支援（帶 tag）為外部手動排班、豁免所有規則，不納入跨月銜接。
+
+    房務與櫃台互不干涉，同樣不納入跨月銜接（另由 not_housekeeping_clause 排除）。
+    """
     return (Employee.tag.is_(None)) | (Employee.tag == "")
 
 
@@ -95,6 +102,7 @@ def auto_load_from_prev_month(db: Session, year: int, month: int) -> bool:
                 .where(
                     Employee.is_active == 1,
                     _not_support(),
+                    not_housekeeping_clause(),
                     visible_in_month_clause(year, month),
                 )
                 .order_by(Employee.id)
@@ -128,6 +136,8 @@ def save_cross_month_links(
         if emp is None:
             raise ValueError(f"員工不存在：{link['employee_id']}")
         if emp.tag:
+            continue
+        if emp.role == HOUSEKEEPING_ROLE:
             continue
         shifts = [
             link.get("day_5_shift"),
@@ -178,6 +188,7 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
             .where(
                 Employee.is_active == 1,
                 _not_support(),
+                not_housekeeping_clause(),
                 visible_in_month_clause(year, month),
             )
             .order_by(Employee.id)

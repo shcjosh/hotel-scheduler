@@ -11,9 +11,11 @@ interface ScheduleTableProps {
   leaveTypes?: LeaveType[]
   pendingChanges?: Record<string, { shift: string; leaveType?: string }>
   onCellClick?: (empName: string, day: number) => void
+  /** 是否顯示每日覆蓋列（房務頁不需要）。 */
+  showCoverage?: boolean
 }
 
-export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges = {}, onCellClick }: ScheduleTableProps) {
+export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges = {}, onCellClick, showCoverage = true }: ScheduleTableProps) {
   const { schedule, sources, leave_details: leaveDetails, num_days: numDays, year, month } = view
   const leaveSequence = view.leave_sequence ?? {}
   const leaveBase = view.leave_base ?? {}
@@ -144,7 +146,7 @@ export function ScheduleTable({ view, employees, leaveTypes = [], pendingChanges
             )
           })}
         </tbody>
-        <DailyCoverage view={view} />
+        {showCoverage && <DailyCoverage view={view} />}
       </table>
     </div>
   )

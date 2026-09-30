@@ -18,7 +18,7 @@ from app.database.models import (
     SupportRequest,
 )
 from app.scheduler.off_count import count_off_blocks
-from app.services.employee_service import _from_json, visible_in_month_clause
+from app.services.employee_service import _from_json, not_housekeeping_clause, visible_in_month_clause
 
 
 @dataclass
@@ -99,6 +99,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         .where(
             Employee.is_active == 1,
             (Employee.tag.is_(None)) | (Employee.tag == ""),
+            not_housekeeping_clause(),
             visible_in_month_clause(year, month),
         )
         .order_by(Employee.sort_order.asc(), Employee.id.asc())
@@ -240,6 +241,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 Employee.is_active == 1,
                 Employee.tag.is_not(None),
                 Employee.tag != "",
+                not_housekeeping_clause(),
                 visible_in_month_clause(year, month),
             )
         )

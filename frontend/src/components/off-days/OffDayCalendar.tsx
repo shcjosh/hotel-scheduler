@@ -33,7 +33,7 @@ export function OffDayCalendar({
   while (cells.length % 7 !== 0) cells.push(null)
 
   return (
-    <div className="overflow-auto rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+    <div className="max-w-3xl overflow-auto rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
       <div className="grid grid-cols-7 gap-1">
         {WEEKDAY_LABELS.map((w, i) => (
           <div

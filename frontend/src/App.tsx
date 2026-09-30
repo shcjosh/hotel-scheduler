@@ -6,6 +6,7 @@ import {
   OffDaysPage,
   CrossMonthPage,
   StatsPage,
+  HousekeepingPage,
 } from './pages'
 
 const TITLES: Record<string, string> = {
@@ -14,6 +15,7 @@ const TITLES: Record<string, string> = {
   '/off-days': '休假管理',
   '/cross-month': '跨月設定',
   '/stats': '統計報表',
+  '/housekeeping': '房務班表',
 }
 
 function CurrentTitle() {
@@ -27,6 +29,7 @@ export default function App() {
       <Routes>
         <Route element={<CurrentTitle />}>
           <Route path="/" element={<SchedulePage />} />
+          <Route path="/housekeeping" element={<HousekeepingPage />} />
           <Route path="/employees" element={<EmployeesPage />} />
           <Route path="/off-days" element={<OffDaysPage />} />
           <Route path="/cross-month" element={<CrossMonthPage />} />

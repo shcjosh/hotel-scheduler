@@ -11,7 +11,7 @@ import { useUIStore } from '../stores/uiStore'
 import { CrossMonthForm } from '../components/cross-month/CrossMonthForm'
 import { CrossMonthPreview } from '../components/cross-month/CrossMonthPreview'
 import { Button } from '../components/ui/button'
-import { isVisibleInMonth } from '../utils/employee'
+import { isHousekeeping, isVisibleInMonth } from '../utils/employee'
 
 export function CrossMonthPage() {
   const { currentYear: year, currentMonth: month } = useUIStore()
@@ -48,7 +48,9 @@ export function CrossMonthPage() {
   const links = cm?.previous_month_links ?? {}
   const hasAuto = Object.values(links).some((l) => l.source === 'auto')
   const hasData = Object.keys(links).length > 0
-  const scheduleEmployees = employees.filter((e) => !e.tag && isVisibleInMonth(e, year, month))
+  const scheduleEmployees = employees.filter(
+    (e) => !e.tag && !isHousekeeping(e) && isVisibleInMonth(e, year, month),
+  )
 
   return (
     <div className="space-y-4">

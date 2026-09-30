@@ -23,7 +23,7 @@ from app.database.models import (
     SpecialLeave,
     now_iso,
 )
-from app.services.employee_service import visible_in_month_clause
+from app.services.employee_service import not_housekeeping_clause, visible_in_month_clause
 
 SPECIAL_CODE = "SPECIAL"
 
@@ -223,7 +223,11 @@ def get_month_summary(db: Session, year: int, month: int) -> dict:
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1, visible_in_month_clause(year, month))
+            .where(
+                Employee.is_active == 1,
+                not_housekeeping_clause(),
+                visible_in_month_clause(year, month),
+            )
             .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )

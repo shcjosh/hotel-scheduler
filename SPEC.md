@@ -1,6 +1,6 @@
 # 飯店排班系統 (Hotel Shift Scheduler) — 規格書（現況）
 
-- 系統版本：`1.1.6`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
+- 系統版本：`1.2.0-beta`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
 - 本檔只描述**現況**（對應實際程式碼）。
 - 版本演進與歷史見 `RELEASE-NOTES.md`；未實作方向與備選方案見 `ROADMAP.md`。
 
@@ -38,6 +38,8 @@
 
 - `ALL_SHIFTS = [A,B,C,D,M,OFF,SPECIAL]`；`WORK_SHIFTS = [A,B,C,D,M]`；
   `COVERAGE_BACKUP_SHIFTS = [A,B,C,D]`（S8 用）；`REST_SHIFTS = [OFF,SPECIAL]`
+- **房務 A**：09:00–18:00（含 1 小時用餐），僅 `housekeeping` 角色使用，代碼沿用 `A`，
+  與櫃台班表互不干涉（見 §3）
 - 前端色盤（`utils/shift.ts`）：A 藍 / B 橙 / C 紫 / D 深藍(白字) / M teal /
   A1 sky / C1 fuchsia / D1 slate(白字) / 休 紅 / 特休 紫紅；指定休假酒紅；
   自訂假別用 `leave_types` 表的自訂色
@@ -51,6 +53,7 @@
 | C+D 備援 | `cd_backup` | 自動 | C/D（偏好 C） | D 備援日被指派時固定排 D |
 | 管理職 | `manager` | 自動 | M/ABCD（偏好 M） | S8 權重鼓勵上 M；覆蓋不足時可備援（受店長卡班上限約束，見 §4） |
 | 外部支援 | 任意 + `tag` | 完全手動 | A1/C1/D1 | 帶標籤（如「二館」）員工：豁免所有個人規則、不參與求解，其支援班次計入當日覆蓋 |
+| 房務 | `housekeeping` | 完全手動（畫筆） | A | 只上 A（09:00-18:00）／休；與櫃台互不干涉：不進求解/驗證/統計/休假/跨月/特休，分群查詢（見 §11） |
 
 - 員工欄位另含：`nickname`（暱稱，顯示與 PDF 用）、`sort_order`（自訂排序，
   排班表/統計/PDF 依序顯示）、`available_shifts`（JSON）、`preferred_shift`、
@@ -217,7 +220,7 @@
 
 | 表 | 用途 / 重點欄位 |
 |---|---|
-| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, hire_date（到職日，見 §7.1）, is_active（軟刪除，向後相容） |
+| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`\|`housekeeping`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, hire_date（到職日，見 §7.1）, is_active（軟刪除，向後相容） |
 | `schedule_entries` | employee_id, y/m/d, shift, source(`auto`\|`manual`\|`night_input`\|`backup`\|`designated`\|`special`)；UNIQUE(emp,y,m,d) |
 | `designated_off_days` | 指定休假；每人每月 ≤2（應用層驗證）；UNIQUE(emp,y,m,d) |
 | `special_leaves` | 請假；+ `leave_type`（預設 SPECIAL）；UNIQUE(emp,y,m,d) |
@@ -241,10 +244,11 @@
 - **員工** `employees`：GET/POST `/employees`（`?include_inactive=true` 含軟刪除者）、
   POST `/employees/reorder`、GET/PUT/DELETE `/employees/{id}`
   （PUT 可設 `resign_date` 設離職；DELETE 為真刪，僅限無班表/休假歷史者，否則 400）
-- **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+leave_sequence+leave_base+status）、
+- **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+leave_sequence+leave_base+status；
+  `?group=front`（預設，排除房務）|`housekeeping`（只看房務））、
   PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF、source 維持 night_input；
-  鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
-  DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input）、
+  房務只允許 A/OFF/空、source=manual、跳過規則；鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
+  DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input；`?group=housekeeping` 只清房務、不動櫃台）、
   POST `/schedules/validate-cell`（假設性格位檢查，含 H4 視窗/H5 前後銜接/H7/H12+S2/S3，
   尊重大夜規則開關）、GET `/schedules/{y}/{m}/validation`（整月規則驗證報告）、
   POST `/schedules/adjust/preview`、POST `/schedules/adjust/apply`（當月臨時異動，見 §13.4）、
@@ -278,11 +282,12 @@
 
 ## 12. 前端
 
-5 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁）：
+6 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁；房務班表頁 v1.2.0）：
 
 | 路由 | 頁面 | 重點 |
 |---|---|---|
-| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例） |
+| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例；選項：整週模式、顯示房務） |
+| `/housekeeping` | HousekeepingPage 房務班表 | 房務專屬月班表：畫筆（僅 A／休）連選後批次套用、**不做規則檢測**；無覆蓋列/假別/支援/大夜面板；清空當月房務（不動櫃台）；與櫃台共用月狀態 |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
 | `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）** |
 | `/cross-month` | CrossMonthPage | 上月末 5 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |

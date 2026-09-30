@@ -33,9 +33,11 @@ export interface ValidationReport {
 export async function getSchedule(
   year: number,
   month: number,
+  group: 'front' | 'housekeeping' = 'front',
 ): Promise<MonthScheduleView> {
   const { data } = await apiClient.get<MonthScheduleView>(
     `/schedules/${year}/${month}`,
+    { params: group === 'front' ? undefined : { group } },
   )
   return data
 }
@@ -89,9 +91,11 @@ export async function getValidationReport(
 export async function clearSchedule(
   year: number,
   month: number,
+  group: 'front' | 'housekeeping' = 'front',
 ): Promise<{ cleared: number }> {
   const { data } = await apiClient.delete<{ cleared: number }>(
     `/schedules/${year}/${month}`,
+    { params: group === 'front' ? undefined : { group } },
   )
   return data
 }

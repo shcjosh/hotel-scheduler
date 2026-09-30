@@ -7,7 +7,7 @@ import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
 import { getLeaveTypes } from '../api/leaveTypes'
 import { getSettings } from '../api/settings'
-import { printSchedule } from '../utils/printSchedule'
+import { ExportPdfModal } from '../components/schedule/ExportPdfModal'
 import {
   setScheduleStatus,
   getSnapshots,
@@ -60,6 +60,7 @@ export function SchedulePage() {
   const [editing, setEditing] = useState<{ empName: string; day: number } | null>(null)
   const [versionOpen, setVersionOpen] = useState(false)
   const [adjustOpen, setAdjustOpen] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   // 快速連選／畫筆模式
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
@@ -172,10 +173,6 @@ export function SchedulePage() {
     if (window.confirm(`確定要清空 ${currentYear} 年 ${currentMonth} 月的排班嗎？（保留大夜手動輸入）`)) {
       clearMut.mutate()
     }
-  }
-
-  function handlePrint() {
-    if (data) printSchedule(data, employees, leaveTypes, hotelName)
   }
 
   function handleSetStatus(status: ScheduleStatus) {
@@ -337,8 +334,8 @@ export function SchedulePage() {
             <History className="mr-2 h-4 w-4" />
             版本歷史
           </Button>
-          {!empty && data && (
-            <Button variant="outline" onClick={handlePrint} className="text-gray-700">
+          {data && (
+            <Button variant="outline" onClick={() => setExportOpen(true)} className="text-gray-700">
               <FileDown className="mr-2 h-4 w-4" />
               匯出 PDF
             </Button>
@@ -595,6 +592,19 @@ export function SchedulePage() {
           numDays={data.num_days}
           onClose={() => setAdjustOpen(false)}
           onApplied={() => invalidateAll()}
+        />
+      )}
+
+      {exportOpen && data && (
+        <ExportPdfModal
+          open={exportOpen}
+          year={currentYear}
+          month={currentMonth}
+          frontView={data}
+          employees={employees}
+          leaveTypes={leaveTypes}
+          hotelName={hotelName}
+          onClose={() => setExportOpen(false)}
         />
       )}
     </div>

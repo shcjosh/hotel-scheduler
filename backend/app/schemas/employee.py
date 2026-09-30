@@ -3,11 +3,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-Role = Literal["general", "night", "cd_backup", "manager"]
+Role = Literal["general", "night", "cd_backup", "manager", "housekeeping"]
 Shift = Literal["A", "B", "C", "D", "M"]
 SchedulingMode = Literal["auto", "manual"]
 
-ROLES = ("general", "night", "cd_backup", "manager")
+ROLES = ("general", "night", "cd_backup", "manager", "housekeeping")
 SHIFTS = ("A", "B", "C", "D", "M")
 
 ROLE_DEFAULTS: dict[str, dict] = {
@@ -30,6 +30,13 @@ ROLE_DEFAULTS: dict[str, dict] = {
         "available_shifts": ["M", "A", "B", "C", "D"],
         "preferred_shift": "M",
         "scheduling_mode": "auto",
+    },
+    # 房務：只上 A（09:00-18:00，含 1 小時用餐），完全手動、不進求解器，
+    # 與櫃台班表互不干涉（見 SPEC.md §3）。
+    "housekeeping": {
+        "available_shifts": ["A"],
+        "preferred_shift": "A",
+        "scheduling_mode": "manual",
     },
 }
 
