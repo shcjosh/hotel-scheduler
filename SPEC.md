@@ -1,6 +1,6 @@
 # 飯店排班系統 (Hotel Shift Scheduler) — 規格書（現況）
 
-- 系統版本：`1.1.5`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
+- 系統版本：`1.1.6-beta`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
 - 本檔只描述**現況**（對應實際程式碼）。
 - 版本演進與歷史見 `RELEASE-NOTES.md`；未實作方向與備選方案見 `ROADMAP.md`。
 
@@ -54,7 +54,8 @@
 
 - 員工欄位另含：`nickname`（暱稱，顯示與 PDF 用）、`sort_order`（自訂排序，
   排班表/統計/PDF 依序顯示）、`available_shifts`（JSON）、`preferred_shift`、
-  `resign_date`（最後上班日 YYYY-MM-DD，見 §3.1）
+  `resign_date`（最後上班日 YYYY-MM-DD，見 §3.1）、`hire_date`（到職日 YYYY-MM-DD，
+  供特休週年制計算，見 §7.1）
 - D 班備援指派鏈（求解前自動）：CD 備援（當日無請假者）→ 管理職 → 無法指派；
   無法指派時求解直接失敗並列出該日與原因，UI 可「略過該備援日並重排」
 
@@ -154,6 +155,26 @@
   - 求解時該格固定為 SPECIAL
 - 特休/請假在 UI 與一般休以顏色區分；統計報表分項列出各假別天數
 
+### 7.1 特休紀錄（週年制，v1.1.6）
+
+實作於 `backend/app/services/annual_leave_service.py`。
+
+- **週年制**：以到職日為週期。首段為到職 +6 個月 ~ +1 年（3 天），其後為各到職週年日。
+  額度依勞基法 §38：滿 1 年 7、滿 2 年 10、滿 3~4 年 14、滿 5~9 年 15、
+  滿 10 年起每滿 1 年 +1 日、上限 30。
+- **期間**：`period_start` = 到職 +6 個月或各到職週年日；`period_end` = 下一期首日。
+  同一日曆月可能跨兩個期間（到職日落在月中時），特休編號各自累計。
+- **額度覆寫**：`annual_leave_adjustments.entitlement_override`（NULL = 依勞基法）。
+- **已用** = 該期間 `leave_type='SPECIAL'` 的整天特休筆數 + `opening_used_days`
+  （系統外/期初已用，可含 0.5）+ 半天等手動紀錄天數。
+- **特 N 編號**：該期間內整天特休依日期排序累加，起算值 = `floor(opening_used_days)`；
+  半天紀錄不影響編號。班表格位顯示「特 N」，PDF 同步。
+- **半天/臨時紀錄**（`annual_leave_manual_entries`）：綁日期、可 0.5 天，
+  計入已用但不寫入班表、不影響排班。
+- **不阻擋**：額度僅顯示（超用標示），求解器、驗證器、`validate-cell` 完全不涉入。
+- 排班表回應另含 `leave_sequence`（整天特休編號）與 `leave_base`（各期間起始序號，
+  供前端畫筆暫存時即時累加）。
+
 ## 8. 連休判定（H12 / count_off_blocks）
 
 一段「連續非上班日」（OFF 或 SPECIAL）滿足以下條件才算 **1 次連休**：
@@ -188,7 +209,7 @@
 5. **跨月連休公平**：data_loader 自動由上月 ScheduleEntry 計算每人上月連休次數，
    餵給 S9 加權（見 §5）
 
-## 10. 資料庫 Schema（SQLite，13 張表）
+## 10. 資料庫 Schema（SQLite，15 張表）
 
 實作於 `backend/app/database/models.py`（SQLAlchemy 2.0 typed style）。
 `connection.init_db()` 於啟動時 create_all + 輕量 migration（ALTER TABLE 補欄位）
@@ -196,7 +217,7 @@
 
 | 表 | 用途 / 重點欄位 |
 |---|---|
-| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, is_active（軟刪除，向後相容） |
+| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, hire_date（到職日，見 §7.1）, is_active（軟刪除，向後相容） |
 | `schedule_entries` | employee_id, y/m/d, shift, source(`auto`\|`manual`\|`night_input`\|`backup`\|`designated`\|`special`)；UNIQUE(emp,y,m,d) |
 | `designated_off_days` | 指定休假；每人每月 ≤2（應用層驗證）；UNIQUE(emp,y,m,d) |
 | `special_leaves` | 請假；+ `leave_type`（預設 SPECIAL）；UNIQUE(emp,y,m,d) |
@@ -209,6 +230,8 @@
 | `night_rule_overrides` | PK 邏輯 (employee_id, rule_name)；rule_name=`H2`/`H3`/`H4`/`H12`/`ALL`（ALL=無視所有規則）, enabled |
 | `support_requests` | y/m/d, shift(`A`\|`C`), reason, status(`open`\|`resolved`\|`ignored`), resolution, source(`auto`\|`manual`)；day=0 表示「全月」（結構性缺人）；UNIQUE(y,m,d,shift) |
 | `settings` | key(PK)-value；預設 `hotel_name=清翼居府中館`、`user_name`；另存 solve meta：`solve:{y}:{m}` = JSON{status, objective_value, solve_time, soft_constraint_stats}、店長卡班上限 `manager_backup_cap:{y}:{m}`（留空 = 不限制） |
+| `annual_leave_adjustments` | 特休週年期間的期初已用與額度覆寫；employee_id, period_start, opening_used_days, entitlement_override(NULL=法定), note；UNIQUE(emp, period_start)（見 §7.1） |
+| `annual_leave_manual_entries` | 半天/臨時特休紀錄；employee_id, entry_date, days, note（不寫入班表，見 §7.1） |
 
 ## 11. API 端點（prefix `/api/v1`，共 ~55 個）
 
@@ -218,7 +241,7 @@
 - **員工** `employees`：GET/POST `/employees`（`?include_inactive=true` 含軟刪除者）、
   POST `/employees/reorder`、GET/PUT/DELETE `/employees/{id}`
   （PUT 可設 `resign_date` 設離職；DELETE 為真刪，僅限無班表/休假歷史者，否則 400）
-- **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+status）、
+- **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+leave_sequence+leave_base+status）、
   PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF、source 維持 night_input；
   鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
   DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input）、
@@ -229,6 +252,9 @@
 - **休假** `off_days`：GET `/off-days/{y}/{m}`、GET `/off-days/summary/{y}/{m}`（連休計數+run_days）、
   POST/DELETE `/off-days/designated/...`、POST/DELETE `/off-days/special/...`
 - **假別** `leave_types`：GET/POST `/leave-types`、PUT/DELETE `/leave-types/{code}`
+- **特休** `annual_leave`：GET `/annual-leave/{y}/{m}`（每人各週年期間額度/已用/剩餘
+  + 該月半天紀錄）、PUT `/annual-leave/adjustment`（期初已用/額度覆寫）、
+  POST/DELETE `/annual-leave/manual-entries`（半天等臨時紀錄）（見 §7.1）
 - **班表中繼** `schedule_meta`：GET/PUT `/schedule-status/{y}/{m}`（draft/published/locked，
   publish 會自動建快照）、GET/POST `/snapshots/{y}/{m}`、POST `/snapshots/{id}/restore`、
   GET `/snapshots/diff/{a}/{b}`、GET `/change-logs/{y}/{m}`
@@ -258,9 +284,9 @@
 |---|---|---|
 | `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例） |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
-| `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult） |
+| `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）** |
 | `/cross-month` | CrossMonthPage | 上月末 5 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
-| `/stats` | StatsPage | 每人班次/休假統計 + 公平性 + 每日覆蓋 + S1~S10 細項 + 上月連休「優先 2 次」標記 + 調班紀錄 + 求解時間上限設定 + CSV/JSON 匯出 |
+| `/stats` | StatsPage | 每人班次/休假統計 + 公平性 + 每日覆蓋 + S1~S10 細項 + 上月連休「優先 2 次」標記 + 調班紀錄 + **特休彙總（週年制）** + 求解時間上限設定 + CSV/JSON 匯出 |
 
 - 狀態管理：Zustand `uiStore`（currentYear/currentMonth）；資料：TanStack Query
 - Lifecycle：`lifecycle.ts` 僅於 PROD build 啟動（見 §15）
@@ -359,7 +385,7 @@ cd frontend && npm run dev
 # 單一後端模式（服務前端 build）
 cd frontend && npm run build && cd ../backend && .venv/bin/python run.py
 # 測試（逐檔執行，各自帶 assert 與 temp DB_PATH，非 pytest）
-cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign）
+cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign、test_annual_leave）
 # 測試資料
 cd backend && .venv/bin/python tests/seed_dev.py
 ```

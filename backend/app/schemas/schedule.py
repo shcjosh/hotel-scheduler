@@ -44,6 +44,10 @@ class MonthScheduleView(BaseModel):
     schedule: dict[str, list[str]]
     sources: dict[str, list[str]] = {}
     leave_details: dict[str, dict[int, str]] = {}
+    # 整天特休的「特 N」編號：{employee_name: {day: N}}
+    leave_sequence: dict[str, dict[int, int]] = {}
+    # 各週年期間的起始序號：{employee_name: [{period_start, period_end, base}]}
+    leave_base: dict[str, list[dict]] = {}
     status: str = "draft"
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 from app.api.routes import (
+    annual_leave,
     cross_month,
     employees,
     export,
@@ -42,6 +43,7 @@ app.include_router(employees.router, prefix=API_PREFIX, tags=["employees"])
 app.include_router(schedules.router, prefix=API_PREFIX, tags=["schedules"])
 app.include_router(off_days.router, prefix=API_PREFIX, tags=["off-days"])
 app.include_router(leave_types.router, prefix=API_PREFIX, tags=["leave-types"])
+app.include_router(annual_leave.router, prefix=API_PREFIX, tags=["annual-leave"])
 app.include_router(schedule_meta.router, prefix=API_PREFIX, tags=["schedule-meta"])
 app.include_router(cross_month.router, prefix=API_PREFIX, tags=["cross-month"])
 app.include_router(night.router, prefix=API_PREFIX, tags=["night"])

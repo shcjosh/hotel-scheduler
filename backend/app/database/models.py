@@ -23,6 +23,8 @@ class Employee(Base):
     tag: Mapped[str | None] = mapped_column(Text, nullable=True)
     # 最後上班日（YYYY-MM-DD）；有值 = 已離職。離職月之後不再顯示/排班。
     resign_date: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 到職日（YYYY-MM-DD）；用於計算特休週年期間與額度。
+    hire_date: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     role: Mapped[str] = mapped_column(Text, nullable=False)
     available_shifts: Mapped[str] = mapped_column(Text, nullable=False)
@@ -237,3 +239,47 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+
+
+class AnnualLeaveAdjustment(Base):
+    """特休週年期間的期初已用天數與額度覆寫（每員工每期間一筆）。
+
+    period_start = 該週年期間首日（YYYY-MM-DD）。首段為到職 +6 個月，
+    其後為各到職週年日（見 annual_leave_service）。
+    """
+
+    __tablename__ = "annual_leave_adjustments"
+    __table_args__ = (
+        UniqueConstraint(
+            "employee_id", "period_start", name="uq_annual_leave_adjustment"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id", ondelete="CASCADE"), nullable=False
+    )
+    period_start: Mapped[str] = mapped_column(Text, nullable=False)
+    # 系統外（導入前）已使用天數，可含 0.5。
+    opening_used_days: Mapped[float] = mapped_column(nullable=False, default=0.0)
+    # 手動覆寫的額度天數；NULL = 依勞基法階梯自動計算。
+    entitlement_override: Mapped[float | None] = mapped_column(nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+    updated_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)
+
+
+class AnnualLeaveManualEntry(Base):
+    """半天等手動補登的特休紀錄（不寫入班表、不影響排班）。"""
+
+    __tablename__ = "annual_leave_manual_entries"
+    __table_args__ = (Index("idx_annual_leave_manual_emp", "employee_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    employee_id: Mapped[int] = mapped_column(
+        ForeignKey("employees.id", ondelete="CASCADE"), nullable=False
+    )
+    entry_date: Mapped[str] = mapped_column(Text, nullable=False)
+    days: Mapped[float] = mapped_column(nullable=False, default=0.5)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, default=now_iso)

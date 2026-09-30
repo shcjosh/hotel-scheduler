@@ -10,6 +10,7 @@ import { DailyCoverageTable } from '../components/stats/DailyCoverageTable'
 import { WeekendSummaryTable } from '../components/stats/WeekendSummaryTable'
 import { SoftConstraintTable } from '../components/stats/SoftConstraintTable'
 import { ChangeLogPanel } from '../components/stats/ChangeLogPanel'
+import { AnnualLeaveSummaryTable } from '../components/stats/AnnualLeaveSummaryTable'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -87,6 +88,10 @@ export function StatsPage() {
 
           <Section title="軟性約束達成">
             <SoftConstraintTable stats={data.soft_constraint_stats} />
+          </Section>
+
+          <Section title="特休彙總（週年制）">
+            <AnnualLeaveSummaryTable />
           </Section>
         </>
       )}

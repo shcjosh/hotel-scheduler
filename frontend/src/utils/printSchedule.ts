@@ -36,6 +36,7 @@ export function printSchedule(
   hotelName: string,
 ): void {
   const { schedule, sources, leave_details: leaveDetails, num_days: numDays, year, month } = view
+  const leaveSequence = view.leave_sequence ?? {}
   const nickByName = new Map(employees.map((e) => [e.name, e.nickname || e.name]))
   const leaveNameByCode = new Map(leaveTypes.map((lt) => [lt.code, lt.name]))
 
@@ -66,7 +67,10 @@ export function printSchedule(
       const shift = row[d] ?? ''
       const source = sources?.[name]?.[d] ?? ''
       const leaveCode = leaveDetails?.[name]?.[String(day)]
-      const text = cellText(shift, source, leaveCode ? leaveNameByCode.get(leaveCode) : undefined)
+      const seq = leaveCode === 'SPECIAL' ? leaveSequence?.[name]?.[String(day)] : undefined
+      const text = seq != null
+        ? `特${seq}`
+        : cellText(shift, source, leaveCode ? leaveNameByCode.get(leaveCode) : undefined)
       cells.push(`<td class="${cls}">${esc(text)}</td>`)
     }
     rows.push(`<tr>${cells.join('')}</tr>`)

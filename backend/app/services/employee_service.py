@@ -4,6 +4,8 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database.models import (
+    AnnualLeaveAdjustment,
+    AnnualLeaveManualEntry,
     DBackupRequest,
     DesignatedOffDay,
     Employee,
@@ -108,6 +110,7 @@ def create_employee(db: Session, data: EmployeeCreate) -> Employee:
         nickname=data.nickname or None,
         tag=data.tag or None,
         resign_date=data.resign_date or None,
+        hire_date=data.hire_date or None,
         sort_order=sort_order,
         role=data.role,
         available_shifts=_to_json(shifts),
@@ -158,6 +161,8 @@ def update_employee(db: Session, employee: Employee, data: EmployeeUpdate) -> Em
         employee.nickname = payload["nickname"] or None
     if "tag" in payload:
         employee.tag = payload["tag"] or None
+    if "hire_date" in payload:
+        employee.hire_date = payload["hire_date"] or None
     if "resign_date" in payload:
         employee.resign_date = payload["resign_date"] or None
         # 設定/取消離職即代表要保留並管理此員工；若之前是軟刪除狀態則一併復原，
@@ -205,6 +210,8 @@ def has_history(db: Session, employee_id: int) -> bool:
         select(PreviousMonthLink.id).where(PreviousMonthLink.employee_id == employee_id).limit(1),
         select(NightRuleOverride.id).where(NightRuleOverride.employee_id == employee_id).limit(1),
         select(DBackupRequest.id).where(DBackupRequest.assigned_employee_id == employee_id).limit(1),
+        select(AnnualLeaveAdjustment.id).where(AnnualLeaveAdjustment.employee_id == employee_id).limit(1),
+        select(AnnualLeaveManualEntry.id).where(AnnualLeaveManualEntry.employee_id == employee_id).limit(1),
     ]
     return any(db.scalars(stmt).first() is not None for stmt in checks)
 
@@ -224,6 +231,7 @@ def to_out(employee: Employee) -> dict:
         "nickname": employee.nickname,
         "tag": employee.tag,
         "resign_date": employee.resign_date,
+        "hire_date": employee.hire_date,
         "sort_order": employee.sort_order,
         "role": employee.role,
         "available_shifts": _from_json(employee.available_shifts),

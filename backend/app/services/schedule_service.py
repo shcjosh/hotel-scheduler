@@ -76,7 +76,21 @@ def get_month_view(
         schedule[emp.name] = [by_emp[emp.id].get(d, "EMPTY") for d in range(1, num_days + 1)]
         sources[emp.name] = [src_by_emp[emp.id].get(d, "auto") for d in range(1, num_days + 1)]
         leave_details[emp.name] = leave_by_emp.get(emp.id, {})
-    return {"schedule": schedule, "sources": sources, "leave_details": leave_details}
+
+    from app.services import annual_leave_service
+
+    leave_info = annual_leave_service.month_leave_info(
+        db, employees, year, month, num_days
+    )
+    leave_sequence = {name: info["sequence"] for name, info in leave_info.items()}
+    leave_base = {name: info["base"] for name, info in leave_info.items()}
+    return {
+        "schedule": schedule,
+        "sources": sources,
+        "leave_details": leave_details,
+        "leave_sequence": leave_sequence,
+        "leave_base": leave_base,
+    }
 
 
 def replace_month_schedule(
