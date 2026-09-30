@@ -59,8 +59,8 @@ export function CrossMonthPage() {
           <h2 className="text-xl font-semibold text-gray-800">跨月設定</h2>
           <p className="text-sm text-gray-500">
             排班月份：{year}年{month}月 · 上月：{cm?.prev_month_name ?? '—'}
-            ，最後 5 天：{cm?.prev_last_5_dates?.[0] ?? '—'}~
-            {cm?.prev_last_5_dates?.[4] ?? '—'}
+            ，最後 6 天：{cm?.prev_last_dates?.[0] ?? '—'}~
+            {cm?.prev_last_dates?.[5] ?? '—'}
           </p>
         </div>
         <Button
@@ -97,7 +97,7 @@ export function CrossMonthPage() {
         <CrossMonthForm
           employees={scheduleEmployees}
           links={links}
-          dates={cm?.prev_last_5_dates ?? []}
+          dates={cm?.prev_last_dates ?? []}
           onSave={(l) => saveMut.mutateAsync(l)}
         />
       )}

@@ -171,7 +171,7 @@ def add_h9_cross_month_week(model, x, data, fixed):
         return
     idx = data.emp_index()
     w0 = data.weeks[0]
-    weekday_day1 = data.dates[0].weekday()
+    weekday_day1 = data.dates[0].weekday()  # 0=週一 .. 6=週日
     for emp in data.employees:
         i = idx[emp.id]
         if not _rule_enabled(data, emp, "H2"):
@@ -179,17 +179,24 @@ def add_h9_cross_month_week(model, x, data, fixed):
         prev = data.previous_month.get(emp.id)
         off_sum = sum(x[i][d]["OFF"] for d in w0)
         if prev and weekday_day1 > 0:
+            # 跨月週（週一制）屬於上月的天數 = weekday_day1，最多 6 天。
+            # 「本月 1 日為週日」時需要第 6 天（上月的週一）；缺資料則退回 H2 式判斷。
             prev_off = 0
-            for j in range(1, min(weekday_day1, 5) + 1):
-                if _prev_shift(prev, j) == "OFF":
+            unknown = False
+            for j in range(1, min(weekday_day1, 6) + 1):
+                s = _prev_shift(prev, j)
+                if s is None:
+                    unknown = True
+                    break
+                if s == "OFF":
                     prev_off += 1
-            target = max(0, 2 - prev_off)
-            model.Add(off_sum == target)
+            if not unknown:
+                model.Add(off_sum == max(0, 2 - prev_off))
+                continue
+        if len(w0) >= 5:
+            model.Add(off_sum == 2)
         else:
-            if len(w0) >= 5:
-                model.Add(off_sum == 2)
-            else:
-                model.Add(off_sum <= 2)
+            model.Add(off_sum <= 2)
 
 
 def add_h10_one_shift_per_day(model, x, data, fixed):

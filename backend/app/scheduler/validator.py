@@ -79,15 +79,23 @@ def validate(data, schedule):
             if w_i == 0:
                 prev = prev_cache[emp.id]
                 weekday_day1 = data.dates[0].weekday()
+                handled = False
                 if prev and weekday_day1 > 0:
                     prev_off = 0
-                    for j in range(1, min(weekday_day1, 5) + 1):
-                        if prev[-j] == "OFF":
+                    unknown = False
+                    for j in range(1, min(weekday_day1, 6) + 1):
+                        s = prev[-j] if j <= len(prev) else None
+                        if s is None:
+                            unknown = True
+                            break
+                        if s == "OFF":
                             prev_off += 1
-                    total = prev_off + curr_off
-                    if total != 2:
-                        violations.append(_v("H9", emp, None, f"跨月週休假共 {total} 天（應為 2）"))
-                else:
+                    if not unknown:
+                        total = prev_off + curr_off
+                        if total != 2:
+                            violations.append(_v("H9", emp, None, f"跨月週休假共 {total} 天（應為 2）"))
+                        handled = True
+                if not handled:
                     if len(w) >= 5 and curr_off != 2:
                         violations.append(_v("H2", emp, None, f"第 {w_i+1} 週休 {curr_off} 天（應為 2）"))
                     if len(w) < 5 and curr_off > 2:

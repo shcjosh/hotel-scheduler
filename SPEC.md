@@ -92,8 +92,8 @@
 - **H7 可用班次**：只能排 `available_shifts ∪ OFF`。
 - **H8 跨月銜接**：載入上月最後 5 天。①上月末日班次 → 本月首日套用 H5；
   ②跨月連續上班視窗（上月尾段無休 → 本月開頭 6 天視窗內至少 1 天休/特休）。
-- **H9 跨月週**：本月首週 = 上月部分（previous_month_links 的 OFF 天數）+
-  本月部分合計恰好 2 天 OFF。
+- **H9 跨月週**：本月首週 = 上月部分（previous_month_links 的 OFF 天數，最多 6 天）+
+  本月部分合計恰好 2 天 OFF。上月部分缺資料時退回 H2 式判斷（不誤加休假）。
 - **H10 一人一天一班**：每人每天恰好 1 個班次（含 OFF）。
 - **H11 D 班備援**：備援日被指派者固定排 D，且當日 C 班由他人遞補
   （無人可遞補 → 求解失敗）。
@@ -202,7 +202,7 @@
 
 ## 9. 跨月銜接
 
-`previous_month_links` 表儲存每人上月最後 5 天班次：
+`previous_month_links` 表儲存每人上月最後 6 天班次（day_6~day_1；v1.2.0 起由 5 天擴為 6 天）：
 
 1. **資料來源**：`GET /cross-month/{y}/{m}?reload=true` 自動讀上月排班結果；
    無上月資料時可手動輸入（POST）
@@ -229,7 +229,7 @@
 | `schedule_snapshots` | version_number(v1,v2...), name, schedule_data(完整班表 JSON), created_at |
 | `schedule_change_logs` | y/m, employee_id, day, old_shift, new_shift, reason, created_at |
 | `d_backup_requests` | y/m/d（UNIQUE）, assigned_employee_id, status(`pending`\|`assigned`\|`failed`), note |
-| `previous_month_links` | 每人上月末 5 天班次（day_5~day_1_shift）, source(`auto`\|`manual`)；UNIQUE(emp,y,m) |
+| `previous_month_links` | 每人上月末 6 天班次（day_6~day_1_shift；v1.2.0 起由 5 天擴為 6 天，供 1 日為週日時跨月週計數）, source(`auto`\|`manual`)；UNIQUE(emp,y,m) |
 | `night_rule_overrides` | PK 邏輯 (employee_id, rule_name)；rule_name=`H2`/`H3`/`H4`/`H12`/`ALL`（ALL=無視所有規則）, enabled |
 | `support_requests` | y/m/d, shift(`A`\|`C`), reason, status(`open`\|`resolved`\|`ignored`), resolution, source(`auto`\|`manual`)；day=0 表示「全月」（結構性缺人）；UNIQUE(y,m,d,shift) |
 | `settings` | key(PK)-value；預設 `hotel_name=清翼居府中館`、`user_name`；另存 solve meta：`solve:{y}:{m}` = JSON{status, objective_value, solve_time, soft_constraint_stats}、店長卡班上限 `manager_backup_cap:{y}:{m}`（留空 = 不限制） |
@@ -403,7 +403,8 @@ cd backend && .venv/bin/python tests/seed_dev.py
    （D 歸大夜、M 不計），每人每週 5 工天 → 每週 35 工班 ÷ 5 = 7 人。
    超過會 INFEASIBLE，診斷報 `over_capacity`。
 2. M 班無每日上限（管理職通常 0~1 人）；多管理職需自行評估。
-3. `previous_month_links` 只存 5 天：月初為週日時跨月 H4 視窗需 6 天，
-   最舊 1 天缺 → 該視窗以「資料不足」跳過（少見邊界）。
+3. `previous_month_links` 存 6 天（v1.2.0）：解決「本月 1 日為週日」時跨月週（週一制）
+   含上月 6 天、舊版只存 5 天會漏算上月週一休假的問題（H9 計數）。舊資料缺 `day_6`
+   時視為資料不足，H9 退回 H2 式判斷（不誤加休假）；可於跨月設定頁重新「自動載入」補齊。
 4. 員工人數 >7 或規則組合極端時可能無解；診斷會給出可能原因與建議。
 5. `updates/check` 依賴 GitHub Releases 的公開 API（離線環境僅回 error 欄位）。

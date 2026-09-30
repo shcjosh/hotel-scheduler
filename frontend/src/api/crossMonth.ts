@@ -2,6 +2,7 @@ import { apiClient } from './client'
 
 export interface CrossMonthLink {
   employee_id: number
+  day_6_shift: string | null
   day_5_shift: string | null
   day_4_shift: string | null
   day_3_shift: string | null
@@ -13,7 +14,7 @@ export interface CrossMonthLink {
 export interface CrossMonthData {
   previous_month_links: Record<string, CrossMonthLink>
   prev_month_name: string
-  prev_last_5_dates: string[]
+  prev_last_dates: string[]
 }
 
 export interface CrossMonthViolation {
@@ -29,7 +30,7 @@ export interface CrossMonthWeekSummary {
   employee_name: string
   prev_week_off_count: number
   curr_week_off_count: number | null
-  remaining_off: number
+  remaining_off: number | null
   at_limit: boolean
 }
 

@@ -58,6 +58,15 @@ def _run_migrations() -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE employees ADD COLUMN hire_date TEXT"
             )
+        link_cols = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(previous_month_links)")
+        }
+        if link_cols and "day_6_shift" not in link_cols:
+            # v1.2.0：跨月銜接由 5 天擴充為 6 天（1 日為週日時跨月週需 6 天）。
+            conn.exec_driver_sql(
+                "ALTER TABLE previous_month_links ADD COLUMN day_6_shift TEXT"
+            )
 
 
 def init_db() -> None:

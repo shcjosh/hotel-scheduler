@@ -147,6 +147,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         )
     ):
         previous_month[row.employee_id] = [
+            row.day_6_shift,
             row.day_5_shift,
             row.day_4_shift,
             row.day_3_shift,
