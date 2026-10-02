@@ -256,13 +256,18 @@ def diagnose_support_needs(data: ShiftScheduleData, max_time: float = 15.0):
     """Find the minimum set of (day, shift) needing external A/C support.
 
     Adds a boolean "external support" variable per (day, A/C) that can satisfy
-    the H1 coverage minimum, then MINIMIZES the total number of external slots.
-    This pinpoints exactly which days/shifts are short, whether the root cause
-    is coverage (H1), weekly rest (H2), or consecutive-work (H4) capacity.
+    the H1 coverage minimum, then MINIMIZES the number of external **days**
+    (one day = at most one support slot, per H14). This pinpoints exactly which
+    days/shifts are short, whether the root cause is coverage (H1), weekly rest
+    (H2), or consecutive-work (H4) capacity.
 
     Returns (days_needing_A, days_needing_C) as sets of 1-based days, or None
     if the model is infeasible even with unlimited support (non-coverage cause
-    such as H6/H8/H11/H13).
+    such as H6/H8/H11/H13). One day appears in at most one of the two sets
+    (H14: external staff can only cover one shift per day; the tie-break favors
+    A for external support). Days where A and C cannot both be covered with
+    internal staff + 1 external slot stay INFEASIBLE, which callers must
+    surface as a solve failure.
     """
     model = cp_model.CpModel()
     n = len(data.employees)
@@ -289,6 +294,7 @@ def diagnose_support_needs(data: ShiftScheduleData, max_time: float = 15.0):
 
     ext_a: dict[int, cp_model.BoolVar] = {}
     ext_c: dict[int, cp_model.BoolVar] = {}
+    day_used: list[cp_model.BoolVar] = []
     for d in range(data.num_days):
         day = d + 1
         a = [x[i][d]["A"] for i in range(n)]
@@ -319,7 +325,18 @@ def diagnose_support_needs(data: ShiftScheduleData, max_time: float = 15.0):
         if dd:
             model.Add(sum(dd) <= 1)
 
-    model.Minimize(sum(ext_a.values()) + sum(ext_c.values()))
+        # H14：一天最多一個支援名額 → 目標改為最小化「需要支援的天數」。
+        # 外部人力一天只能上「一個」班：ea 與 ec 不可同時為 1。
+        used = model.NewBoolVar(f"du_{d}")
+        model.Add(used >= ea)
+        model.Add(used >= ec)
+        model.Add(ea + ec <= 1)
+        day_used.append(used)
+
+    # 主目標：最少支援天數（×100 遠大於次要）。
+    # 次目標（決勝）：同天數下優先讓外部支援上 A（他們比較喜歡上 A 班；
+    # C 班缺得較多，由店長等內部人力優先補）。
+    model.Minimize(sum(day_used) * 100 - sum(ext_a.values()))
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = max_time

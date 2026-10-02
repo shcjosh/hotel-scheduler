@@ -1,7 +1,7 @@
 import type { EmployeeRole, SchedulingMode } from '../types'
 
 export const ROLE_LABELS: Record<EmployeeRole, string> = {
-  general: '一般員工',
+  general: '日班櫃台',
   night: '大夜專職',
   cd_backup: 'C+D 備援',
   manager: '管理職',

@@ -2,8 +2,8 @@
 
 - 角色預設：只上 A、手動。
 - 房務格位（schedule_entries）與櫃台互不干涉：分群查詢、求解/驗證排除。
-- 房務手動排班只允許 A / 休（OFF）/ 空，且完全跳過規則檢測。
-- 統計 / 休假日曆 / 跨月 / 特休 等櫃台功能排除房務。
+- 房務手動排班允許 A / 假別（SPECIAL＋leave_type）/ 休（OFF）/ 空，且完全跳過規則檢測。
+- 房務支援特休（僅 SPECIAL 計入週年制/統計）；統計 / 休假日曆 / 跨月 仍排除房務。
 """
 
 import calendar
@@ -17,11 +17,14 @@ os.environ["DATA_DIR"] = tmp
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from sqlalchemy import select
+
 from app.database.connection import SessionLocal, init_db
-from app.database.models import Employee, ScheduleEntry
+from app.database.models import Employee, ScheduleEntry, SpecialLeave
 from app.scheduler import data_loader
 from app.schemas.employee import EmployeeCreate, ROLE_DEFAULTS
 from app.services import (
+    annual_leave_service,
     cross_month_service,
     employee_service,
     off_day_service,
@@ -48,7 +51,9 @@ NUM_DAYS = calendar.monthrange(Y, M)[1]
 check(ROLE_DEFAULTS["housekeeping"]["available_shifts"] == ["A"], "房務預設班次只有 A")
 check(ROLE_DEFAULTS["housekeeping"]["scheduling_mode"] == "manual", "房務預設為手動")
 
-hk = employee_service.create_employee(db, EmployeeCreate(name="房務甲", role="housekeeping"))
+hk = employee_service.create_employee(
+    db, EmployeeCreate(name="房務甲", role="housekeeping", hire_date="2020-01-15")
+)
 check(hk.available_shifts == '["A"]', "建立房務後 available_shifts = A")
 check(hk.scheduling_mode == "manual", "建立房務後為手動")
 
@@ -59,7 +64,7 @@ front = employee_service.create_employee(
 # 2. 分群查詢
 view_front = schedule_service.get_month_view(db, Y, M, NUM_DAYS)
 check("房務甲" not in view_front["schedule"], "櫃台分群不含房務")
-check("櫃台甲" in view_front["schedule"], "櫃台分群含一般員工")
+check("櫃台甲" in view_front["schedule"], "櫃台分群含日班櫃台")
 
 view_hk = schedule_service.get_month_view(db, Y, M, NUM_DAYS, group="housekeeping")
 check("房務甲" in view_hk["schedule"], "房務分群含房務")
@@ -91,6 +96,26 @@ except ValueError:
     rejected = True
 check(rejected, "房務不可排 D")
 
+# 3b. 房務可排假別（SPECIAL 對應各 leave_type）
+schedule_service.upsert_cell(db, hk.id, Y, M, 3, "SPECIAL", leave_type="SPECIAL")
+day3 = schedule_service.list_entries(db, employee_id=hk.id, year=Y, month=M, day=3)
+check(bool(day3) and day3[0].shift == "SPECIAL", "房務可排特休（SPECIAL）")
+check(day3[0].source == "manual", "房務假別格位來源為 manual")
+sl3 = db.scalars(
+    select(SpecialLeave).where(
+        SpecialLeave.employee_id == hk.id, SpecialLeave.day == 3
+    )
+).first()
+check(sl3 is not None and sl3.leave_type == "SPECIAL", "房務特休寫入 special_leaves")
+
+schedule_service.upsert_cell(db, hk.id, Y, M, 4, "SPECIAL", leave_type="PERSONAL")
+sl4 = db.scalars(
+    select(SpecialLeave).where(
+        SpecialLeave.employee_id == hk.id, SpecialLeave.day == 4
+    )
+).first()
+check(sl4 is not None and sl4.leave_type == "PERSONAL", "房務可排其他假別（事假）")
+
 # 4. validate_cell 完全跳過檢測
 vr = schedule_service.validate_cell(db, hk.id, Y, M, 5, "A")
 check(vr["violations"] == [] and vr["warnings"] == [], "房務格位驗證不報任何規則")
@@ -99,7 +124,7 @@ check(vr["violations"] == [] and vr["warnings"] == [], "房務格位驗證不報
 data = data_loader.load(db, Y, M)
 check("房務甲" not in {e.name for e in data.employees}, "求解名單排除房務")
 
-# 6. 統計 / 休假日曆 / 跨月 / 特休 排除房務
+# 6. 統計 / 休假日曆 / 跨月 排除房務；但特休彙總納入房務
 stats = stats_service.get_month_stats(db, Y, M)
 check(
     all(row["employee_name"] != "房務甲" for row in stats["per_employee"]),
@@ -110,6 +135,13 @@ check(str(hk.id) not in summary, "休假日曆摘要排除房務")
 preview = cross_month_service.get_cross_month_preview(db, Y, M)
 names = {e["name"] for e in preview.get("employees", [])}
 check("房務甲" not in names, "跨月預覽排除房務")
+al = annual_leave_service.get_month_summary(db, Y, M)
+check(str(hk.id) in al["employees"], "特休彙總納入房務")
+hk_info = al["employees"].get(str(hk.id))
+check(
+    hk_info is not None and any(p["system_days"] == 1 for p in hk_info["periods"]),
+    "房務特休天數計入週年制（system_days）",
+)
 
 # 7. 前端櫃台班表若仍用預設分群，房務格位不會出現
 view_hk2 = schedule_service.get_month_view(db, Y, M, NUM_DAYS, group="housekeeping")
@@ -128,6 +160,14 @@ check(
     schedule_service.list_entries(db, employee_id=hk.id, year=Y, month=M) == [],
     "房務格位已清空",
 )
+remaining_sl = db.scalars(
+    select(SpecialLeave).where(
+        SpecialLeave.employee_id == hk.id,
+        SpecialLeave.year == Y,
+        SpecialLeave.month == M,
+    )
+).all()
+check(remaining_sl == [], "清空房務一併清除房務假別紀錄")
 
 print("=" * 70)
 if fails:

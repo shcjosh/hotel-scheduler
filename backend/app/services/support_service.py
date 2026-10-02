@@ -15,6 +15,22 @@ def get_support_requests(db: Session, year: int, month: int) -> list[SupportRequ
     )
 
 
+def _has_day_request(db: Session, year: int, month: int, day: int) -> bool:
+    """H14：一天（day>0）最多一個支援名額（A/C 合計）。"""
+    if day == 0:
+        return False
+    return (
+        db.scalars(
+            select(SupportRequest.id).where(
+                SupportRequest.year == year,
+                SupportRequest.month == month,
+                SupportRequest.day == day,
+            ).limit(1)
+        ).first()
+        is not None
+    )
+
+
 def create_support_request(
     db: Session,
     year: int,
@@ -26,6 +42,8 @@ def create_support_request(
 ) -> SupportRequest:
     if shift not in ("A", "C"):
         raise ValueError("支援請求班次只能為 A 或 C")
+    if _has_day_request(db, year, month, day):
+        raise ValueError("該日已有支援請求（一天最多一個）")
     rec = SupportRequest(
         year=year, month=month, day=day, shift=shift,
         reason=reason, source=source,
@@ -114,6 +132,8 @@ def create_auto_support(
 ) -> SupportRequest:
     if shift not in ("A", "C"):
         raise ValueError("支援請求班次只能為 A 或 C")
+    if _has_day_request(db, year, month, day):
+        raise ValueError("該日已有支援請求（一天最多一個）")
     rec = SupportRequest(
         year=year,
         month=month,

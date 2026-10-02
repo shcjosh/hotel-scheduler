@@ -23,7 +23,7 @@ from app.database.models import (
     SpecialLeave,
     now_iso,
 )
-from app.services.employee_service import not_housekeeping_clause, visible_in_month_clause
+from app.services.employee_service import visible_in_month_clause
 
 SPECIAL_CODE = "SPECIAL"
 
@@ -220,12 +220,12 @@ def employee_periods(db: Session, emp: Employee, year: int, month: int) -> dict 
 
 
 def get_month_summary(db: Session, year: int, month: int) -> dict:
+    # 含房務：房務也支援特休（僅 SPECIAL 計入），統計特休彙總一併納入。
     employees = list(
         db.scalars(
             select(Employee)
             .where(
                 Employee.is_active == 1,
-                not_housekeeping_clause(),
                 visible_in_month_clause(year, month),
             )
             .order_by(Employee.sort_order.asc(), Employee.id.asc())

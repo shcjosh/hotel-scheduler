@@ -77,11 +77,11 @@ def diagnose_detailed(data):
     if len(a_capable) < 1:
         causes.append(_cause("coverage_gap", "critical",
             "無員工可上 A 班，每日 A 班覆蓋不可能",
-            "新增可上 A 班的一般員工"))
+            "新增可上 A 班的日班櫃台"))
     if len(c_capable) < 1:
         causes.append(_cause("coverage_gap", "critical",
             "無員工可上 C 班，每日 C 班覆蓋不可能",
-            "新增可上 C 班的員工（一般或 C+D 備援）"))
+            "新增可上 C 班的員工（日班櫃台或 C+D 備援）"))
 
     # capacity: non-night work slots per week <= 35 (5/day * 7); each works 5/week
     max_non_night = 7

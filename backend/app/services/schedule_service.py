@@ -148,6 +148,16 @@ def clear_month_schedule(db: Session, year: int, month: int, group: str = "front
     if group != "housekeeping":
         stmt = stmt.where(ScheduleEntry.source != "night_input")
     result = db.execute(stmt)
+    # 房務的假別只透過房務班表格位建立，清空房務班表時一併清除，
+    # 避免留下孤兒特休紀錄持續計入特休已用。
+    if group == "housekeeping":
+        db.execute(
+            delete(SpecialLeave).where(
+                SpecialLeave.year == year,
+                SpecialLeave.month == month,
+                SpecialLeave.employee_id.in_(emp_ids),
+            )
+        )
     db.commit()
     return result.rowcount or 0
 
@@ -218,9 +228,10 @@ def upsert_cell(
     elif shift in ("A1", "C1", "D1"):
         raise ValueError("A1 / C1 / D1 僅限二館支援人員")
     elif is_housekeeping:
-        # 房務：只上 A（09:00-18:00）或休，完全手動，不做任何規則檢測。
-        if shift not in ("A", "OFF", "EMPTY"):
-            raise ValueError("房務人員只能排 A 或休")
+        # 房務：只上 A（09:00-18:00）、假別（SPECIAL＋leave_type）或休，完全手動，
+        # 不做任何規則檢測。
+        if shift not in ("A", "OFF", "SPECIAL", "EMPTY"):
+            raise ValueError("房務人員只能排 A、假別或休")
     elif is_night:
         # 大夜專職只能排 D / OFF / 空（原大夜班表頁的規則，來源一律 night_input）
         if shift not in ("D", "OFF", "EMPTY"):

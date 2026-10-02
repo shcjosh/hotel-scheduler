@@ -235,6 +235,18 @@ def validate(data, schedule):
             if actual != expected:
                 violations.append(_v("H13", emp, d + 1, f"大夜應為 {expected} 實為 {actual}"))
 
+    # H14：一天最多一個支援名額（A/C 合計）
+    for day, shifts in sorted(getattr(data, "support_requests", {}).items()):
+        if len(shifts) > 1:
+            violations.append(
+                _v(
+                    "H14",
+                    None,
+                    day,
+                    f"{data.month}/{day} 有 {len(shifts)} 個支援請求（{'/'.join(sorted(shifts))}），一天最多 1 個",
+                )
+            )
+
     return violations
 
 
@@ -362,7 +374,7 @@ RULE_DESCRIPTIONS = {
     "H4": "連續上班上限", "H5": "班次銜接禁止", "H6": "指定休假",
     "H7": "可用班次限制", "H8": "跨月班次銜接", "H9": "跨月週連續性",
     "H10": "一天一班", "H11": "D 班備援邏輯", "H12": "連休 1~2 次",
-    "H13": "大夜專職手動",
+    "H13": "大夜專職手動", "H14": "一天最多一個支援請求",
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",

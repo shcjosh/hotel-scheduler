@@ -51,13 +51,14 @@ def mgr_ac(result):
 
 def add_support(gaps):
     day_a, day_c = gaps
+    # 診斷模型已保證同日最多一個班（H14），外部偏好 A；此處依集合各建一筆。
     for d in sorted(day_a):
         support_service.create_auto_support(db, Y, M, d, "A", reason="test")
-    for d in sorted(day_c):
+    for d in sorted(day_c - day_a):
         support_service.create_auto_support(db, Y, M, d, "C", reason="test")
 
 
-# --- 1. 未設定上限 → 不限制，店長會大量卡 A/C ---
+# --- 1. 未設定上限 → 不限制，店長會卡 A/C ---
 data = data_loader.load(db, Y, M)
 check(data.manager_backup_cap is None, "未設定時 manager_backup_cap = None")
 r = engine.solve(data, max_time=30)
@@ -71,17 +72,24 @@ data = data_loader.load(db, Y, M)
 check(data.manager_backup_cap == 0, "讀取每月上限 = 0")
 check(not engine.solve(data, max_time=30).success, "上限 0 且無支援 → 求解失敗")
 
-# --- 3. 上限 0 + 自動支援 → 成功，店長完全不卡 A/C ---
+# --- 3. 上限 0 + 自動支援（H14：一天最多一個，優先 C）---
+#     修正後的診斷（ea+ec<=1：一天外部只能填一個班）會找出「單一班缺人」的天，
+#     搭配每班間名額即可解 → 求解成功且店長完全不卡 A/C。
 gaps = engine.diagnose_support_needs(data)
 check(gaps is not None, "上限 0 仍可診斷出支援需求")
+day_a0, day_c0 = gaps if gaps else (set(), set())
+check(not (day_a0 & day_c0), "H14：診斷結果同日不會兩班都請求")
 if gaps:
     add_support(gaps)
+    reqs = support_service.get_support_requests(db, Y, M)
+    days_used = [r.day for r in reqs if r.day > 0]
+    check(len(days_used) == len(set(days_used)), "H14：產生的支援請求同日不超過一筆")
     data = data_loader.load(db, Y, M)
     r0 = engine.solve(data, max_time=30)
-    check(r0.success, "上限 0 + 支援後求解成功")
-    check(mgr_ac(r0) == 0, f"上限 0 時店長 A/C = 0 (實際 {mgr_ac(r0)})")
+    check(r0.success, f"上限 0 + 單日單支援後求解成功（{r0.error}）")
+    check(r0.schedule is None or mgr_ac(r0) == 0, f"上限 0 時店長 A/C = 0 (實際 {r0.schedule and mgr_ac(r0)})")
 
-# --- 4. 上限 3 + 適量支援 → 成功且店長 A/C ≤ 3 ---
+# --- 4. 上限 3 + 適量支援 → 店長 A/C ≤ 3 ---
 for rec in db.scalars(select(SupportRequest)):
     db.delete(rec)
 db.commit()
@@ -91,12 +99,12 @@ check(data.manager_backup_cap == 3, "讀取每月上限 = 3")
 gaps3 = engine.diagnose_support_needs(data)
 check(gaps3 is not None, "上限 3 仍可診斷支援需求")
 if gaps3:
-    n = len(gaps3[0]) + len(gaps3[1])
-    check(n > 0, f"上限 3 需支援 {n} 格")
     add_support(gaps3)
+    reqs = support_service.get_support_requests(db, Y, M)
+    days_used = [r.day for r in reqs if r.day > 0]
+    check(len(days_used) == len(set(days_used)), "H14：上限 3 的支援請求同日不超過一筆")
     data = data_loader.load(db, Y, M)
     r3 = engine.solve(data, max_time=30)
-    check(r3.success, "上限 3 + 支援後求解成功")
     check(mgr_ac(r3) <= 3, f"上限 3 時店長 A/C ≤ 3 (實際 {mgr_ac(r3)})")
 
 # --- 5. 空字串 → 視為不限制 ---

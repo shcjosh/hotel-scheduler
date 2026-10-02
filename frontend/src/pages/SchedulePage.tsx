@@ -430,7 +430,7 @@ export function SchedulePage() {
                 </button>
               )
             })}
-            {leaveTypes.slice(0, 3).map((lt) => {
+            {leaveTypes.map((lt) => {
               const active = selectedTool === `${LT_PREFIX}${lt.code}`
               return (
                 <button
