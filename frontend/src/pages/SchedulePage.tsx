@@ -363,7 +363,8 @@ export function SchedulePage() {
           <Button
             variant="outline"
             onClick={handleClear}
-            disabled={clearMut.isPending}
+            disabled={clearMut.isPending || status === 'locked'}
+            title={status === 'locked' ? '已鎖定月份請先解鎖才能清空' : undefined}
             className="text-red-600"
           >
             <Trash2 className="mr-2 h-4 w-4" />
@@ -372,9 +373,9 @@ export function SchedulePage() {
           <Button
             variant="outline"
             onClick={handleClearNight}
-            disabled={clearNightMut.isPending}
+            disabled={clearNightMut.isPending || status === 'locked'}
+            title={status === 'locked' ? '已鎖定月份請先解鎖才能清空' : undefined}
             className="text-red-600"
-            title="僅清空大夜專職（D/休）手動輸入的格位"
           >
             <Trash2 className="mr-2 h-4 w-4" />
             清空大夜排班

@@ -8,6 +8,7 @@ from app.database.models import (
     PreviousMonthLink,
     ScheduleEntry,
     SpecialLeave,
+    SupportRequest,
     now_iso,
 )
 from app.schemas.schedule import ScheduleEntryCreate, ScheduleEntryUpdate
@@ -136,10 +137,19 @@ def clear_month_schedule(db: Session, year: int, month: int, group: str = "front
 
     group='front'（預設）：清櫃台群，保留大夜手動輸入（source='night_input'）。
     group='housekeeping'：只清房務群，不動櫃台任何格位。
+
+    兩種清空一併：
+    - 借用/請假紀錄（房務群 clear 會連同房務假別清掉；櫃台的指定休/請假保留）
+    - 支援請求（source 不限；下次排班由診斷重新產生）
+    - 月狀態回「draft」（鎖定月份須先解鎖；由呼叫端先行檢查）
     """
+    from app.services import status_service
+
     emp_ids = list(db.scalars(select(Employee.id).where(group_clause(group))))
     if not emp_ids:
         return 0
+    if status_service.get_status(db, year, month) == "locked":
+        raise PermissionError("班表已鎖定，請先解鎖才能清空")
     stmt = delete(ScheduleEntry).where(
         ScheduleEntry.year == year,
         ScheduleEntry.month == month,
@@ -158,6 +168,17 @@ def clear_month_schedule(db: Session, year: int, month: int, group: str = "front
                 SpecialLeave.employee_id.in_(emp_ids),
             )
         )
+    else:
+        # 支援請求屬首台/求解互動資料；殘留會讓下次排班把該日該班視為已覆蓋
+        # （B 班異常的來源），清空班表時全部清除（手動/自動皆含）。
+        db.execute(
+            delete(SupportRequest).where(
+                SupportRequest.year == year,
+                SupportRequest.month == month,
+            )
+        )
+    # 狀態回草稿
+    status_service.set_status(db, year, month, "draft")
     db.commit()
     return result.rowcount or 0
 

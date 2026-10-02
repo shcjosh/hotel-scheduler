@@ -132,7 +132,10 @@ def clear_month_schedule(
     group: str = Query("front"),
     db: Session = Depends(get_db),
 ):
-    cleared = schedule_service.clear_month_schedule(db, year, month, group=group)
+    try:
+        cleared = schedule_service.clear_month_schedule(db, year, month, group=group)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     return {"cleared": cleared}
 
 

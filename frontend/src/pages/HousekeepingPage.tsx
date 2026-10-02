@@ -171,7 +171,13 @@ export function HousekeepingPage() {
               <Unlock className="mr-2 h-4 w-4" /> 解鎖
             </Button>
           )}
-          <Button variant="outline" onClick={handleClear} className="text-red-600">
+          <Button
+            variant="outline"
+            onClick={handleClear}
+            disabled={status === 'locked'}
+            title={status === 'locked' ? '已鎖定月份請先解鎖才能清空' : undefined}
+            className="text-red-600"
+          >
             <Trash2 className="mr-2 h-4 w-4" /> 清空當月房務
           </Button>
         </div>

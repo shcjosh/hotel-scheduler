@@ -257,7 +257,9 @@
   `?group=front`（預設，排除房務）|`housekeeping`（只看房務））、
   PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF、source 維持 night_input；
   房務只允許 A/OFF/空、source=manual、跳過規則；鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
-  DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input；`?group=housekeeping` 只清房務、不動櫃台）、
+  DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input；`?group=housekeeping` 只清房務、
+  不動櫃台、並清除房務假別紀錄；兩種清空**連同該月支援請求（手動/自動）全清**、
+  月狀態回 draft；鎖定月份 403、須先解鎖）、
   POST `/schedules/validate-cell`（假設性格位檢查，含 H4 視窗/H5 前後銜接/H7/H12+S2/S3，
   尊重大夜規則開關）、GET `/schedules/{y}/{m}/validation`（整月規則驗證報告）、
   POST `/schedules/adjust/preview`、POST `/schedules/adjust/apply`（當月臨時異動，見 §13.4）、

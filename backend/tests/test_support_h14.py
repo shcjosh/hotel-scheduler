@@ -121,6 +121,26 @@ check(len(g20) == 1 and g20[0]["shift"] == "A", "H14：外部人力優先上 A")
 created = support_service.generate_from_gaps(db, g20, Y, M)
 check(len(created) == 1, "只補 1 筆支援請求")
 
+# --- 8. 「清空班表」副作用：支援請求全清 + 狀態回草稿；鎖定月份須先解鎖 ---
+from app.services import schedule_service, status_service as _ss
+
+# 8a. 鎖定 → 清空被拒
+_ss.set_status(db, Y, M, "locked")
+try:
+    schedule_service.clear_month_schedule(db, Y, M)
+    check(False, "鎖定時清空應被拒")
+except PermissionError:
+    check(True, "鎖定時清空被拒（請先解鎖）")
+
+# 8b. 解鎖後清空：schedule_entries（含 night_input? front 保留）、支援請求、狀態
+_ss.set_status(db, Y, M, "draft")
+schedule_service.upsert_cell(db, g1.id, Y, M, 10, "A")
+cleared = schedule_service.clear_month_schedule(db, Y, M)
+check(cleared >= 1, "清空班表有刪到格位")
+reqs_after = support_service.get_support_requests(db, Y, M)
+check(reqs_after == [], "清空班表連同支援請求（手動/自動）一併清除")
+check(_ss.get_status(db, Y, M) == "draft", "清空班表後狀態為草稿")
+
 db.close()
 print("=" * 70)
 if fails:
