@@ -1,6 +1,6 @@
 # 飯店排班系統 (Hotel Shift Scheduler) — 規格書（現況）
 
-- 系統版本：`1.2.0-beta`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
+- 系統版本：`1.2.0`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
 - 本檔只描述**現況**（對應實際程式碼）。
 - 版本演進與歷史見 `RELEASE-NOTES.md`；未實作方向與備選方案見 `ROADMAP.md`。
 
