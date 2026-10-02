@@ -6,12 +6,14 @@ import {
   CalendarOff,
   CalendarRange,
   BarChart3,
+  Sparkles,
 } from 'lucide-react'
 import { cn } from '../../utils/cn'
 import { getHealth } from '../../api/health'
 
 const navItems = [
   { to: '/', label: '排班表', icon: CalendarDays },
+  { to: '/housekeeping', label: '房務班表', icon: Sparkles },
   { to: '/off-days', label: '休假管理', icon: CalendarOff },
   { to: '/cross-month', label: '跨月設定', icon: CalendarRange },
   { to: '/employees', label: '員工管理', icon: Users },

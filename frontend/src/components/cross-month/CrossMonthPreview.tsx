@@ -71,9 +71,13 @@ export function CrossMonthPreview({ preview, employees }: CrossMonthPreviewProps
                     {names.get(s.employee_name) ?? s.employee_name}
                   </td>
                   <td className="px-4 py-2 text-right">{s.prev_week_off_count}</td>
-                  <td className="px-4 py-2 text-right">{s.remaining_off}</td>
+                  <td className="px-4 py-2 text-right">{s.remaining_off ?? '—'}</td>
                   <td className="px-4 py-2 text-gray-600">
-                    {s.at_limit ? '已達 2 天上限（本月不可再休）' : '正常'}
+                    {s.remaining_off == null
+                      ? '上月資料不足（無法判定）'
+                      : s.at_limit
+                        ? '已達 2 天上限（本月不可再休）'
+                        : '正常'}
                   </td>
                 </tr>
               ))}

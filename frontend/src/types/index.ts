@@ -1,5 +1,5 @@
 export type ShiftType = 'A' | 'B' | 'C' | 'D' | 'M' | 'OFF' | 'SPECIAL'
-export type EmployeeRole = 'general' | 'night' | 'cd_backup' | 'manager'
+export type EmployeeRole = 'general' | 'night' | 'cd_backup' | 'manager' | 'housekeeping'
 export type SchedulingMode = 'auto' | 'manual'
 export type ScheduleStatus = 'draft' | 'published' | 'locked'
 

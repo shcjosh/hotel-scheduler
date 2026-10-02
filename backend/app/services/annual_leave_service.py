@@ -220,10 +220,14 @@ def employee_periods(db: Session, emp: Employee, year: int, month: int) -> dict 
 
 
 def get_month_summary(db: Session, year: int, month: int) -> dict:
+    # 含房務：房務也支援特休（僅 SPECIAL 計入），統計特休彙總一併納入。
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1, visible_in_month_clause(year, month))
+            .where(
+                Employee.is_active == 1,
+                visible_in_month_clause(year, month),
+            )
             .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )

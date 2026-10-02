@@ -130,6 +130,10 @@ def delete_night_entry(
 
 def clear_night_schedule(db: Session, year: int, month: int) -> int:
     """Delete all night_input entries for the month (night staff D/OFF)."""
+    from app.services import status_service
+
+    if status_service.get_status(db, year, month) == "locked":
+        raise PermissionError("班表已鎖定，請先解鎖才能清空")
     result = db.execute(
         delete(ScheduleEntry).where(
             ScheduleEntry.year == year,

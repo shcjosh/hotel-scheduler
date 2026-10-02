@@ -18,7 +18,7 @@ from app.database.models import (
     SupportRequest,
 )
 from app.scheduler.off_count import count_off_blocks
-from app.services.employee_service import _from_json, visible_in_month_clause
+from app.services.employee_service import _from_json, not_housekeeping_clause, visible_in_month_clause
 
 
 @dataclass
@@ -53,6 +53,8 @@ class ShiftScheduleData:
     night_ignore_all: set[int] = field(default_factory=set)
     external_support: dict[int, set[str]] = field(default_factory=dict)
     external_support_all: set[str] = field(default_factory=set)
+    # H14 驗證用：該月「非 ignored」支援請求的每日班次集合（day -> {shift}）。
+    support_requests: dict[int, set[str]] = field(default_factory=dict)
     last_month_consecutive_off: dict[int, int] = field(default_factory=dict)
     # 店長（管理職）每月可被排 A/C 的格數上限；None = 不限制（現況）。
     # 由每月設定 manager_backup_cap:{y}:{m} 讀入，每位管理職各自計算。
@@ -99,6 +101,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         .where(
             Employee.is_active == 1,
             (Employee.tag.is_(None)) | (Employee.tag == ""),
+            not_housekeeping_clause(),
             visible_in_month_clause(year, month),
         )
         .order_by(Employee.sort_order.asc(), Employee.id.asc())
@@ -146,6 +149,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         )
     ):
         previous_month[row.employee_id] = [
+            row.day_6_shift,
             row.day_5_shift,
             row.day_4_shift,
             row.day_3_shift,
@@ -220,6 +224,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
 
     external_support: dict[int, set[str]] = {}
     external_support_all: set[str] = set()
+    support_requests: dict[int, set[str]] = {}
     for row in db.scalars(
         select(SupportRequest).where(
             SupportRequest.year == year, SupportRequest.month == month
@@ -231,6 +236,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             external_support_all.add(row.shift)
         else:
             external_support.setdefault(row.day, set()).add(row.shift)
+            support_requests.setdefault(row.day, set()).add(row.shift)
 
     # 二館支援：帶 tag 的員工為外部支援，手動排的 A1/C1/D1 計入該日該班覆蓋
     support_ids = [
@@ -240,6 +246,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 Employee.is_active == 1,
                 Employee.tag.is_not(None),
                 Employee.tag != "",
+                not_housekeeping_clause(),
                 visible_in_month_clause(year, month),
             )
         )
@@ -312,6 +319,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         night_ignore_all=night_ignore_all,
         external_support=external_support,
         external_support_all=external_support_all,
+        support_requests=support_requests,
         last_month_consecutive_off=last_month_off,
         manager_backup_cap=manager_backup_cap,
         resign_cutoff=resign_cutoff,

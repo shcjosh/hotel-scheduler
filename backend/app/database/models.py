@@ -187,6 +187,9 @@ class PreviousMonthLink(Base):
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
+    # 上月最後 6 天（day_6 = 最舊）。需要 6 天才能在「本月 1 日為週日」時，
+    # 正確計算跨月週（週一制）屬於上月的 6 天休假狀況（見 §4 H9）。
+    day_6_shift: Mapped[str | None] = mapped_column(Text, nullable=True)
     day_5_shift: Mapped[str | None] = mapped_column(Text, nullable=True)
     day_4_shift: Mapped[str | None] = mapped_column(Text, nullable=True)
     day_3_shift: Mapped[str | None] = mapped_column(Text, nullable=True)

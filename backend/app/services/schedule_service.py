@@ -8,11 +8,17 @@ from app.database.models import (
     PreviousMonthLink,
     ScheduleEntry,
     SpecialLeave,
+    SupportRequest,
     now_iso,
 )
 from app.schemas.schedule import ScheduleEntryCreate, ScheduleEntryUpdate
 from app.scheduler.off_count import count_off_blocks
-from app.services.employee_service import is_schedulable_on, visible_in_month_clause
+from app.services.employee_service import (
+    HOUSEKEEPING_ROLE,
+    group_clause,
+    is_schedulable_on,
+    visible_in_month_clause,
+)
 
 import calendar
 import json
@@ -42,13 +48,20 @@ def list_entries(
 
 
 def get_month_view(
-    db: Session, year: int, month: int, num_days: int
+    db: Session, year: int, month: int, num_days: int, group: str = "front"
 ) -> dict[str, list[str]]:
-    """Return {employee_name: [shift per day]} for the month (empty days -> 'OFF')."""
+    """Return {employee_name: [shift per day]} for the month (empty days -> 'OFF').
+
+    group='front'（預設）只回櫃台群（排除房務）；group='housekeeping' 只回房務。
+    """
     employees = list(
         db.scalars(
             select(Employee)
-            .where(Employee.is_active == 1, visible_in_month_clause(year, month))
+            .where(
+                Employee.is_active == 1,
+                group_clause(group),
+                visible_in_month_clause(year, month),
+            )
             .order_by(Employee.sort_order.asc(), Employee.id.asc())
         )
     )
@@ -119,19 +132,53 @@ def replace_month_schedule(
     db.commit()
 
 
-def clear_month_schedule(db: Session, year: int, month: int) -> int:
-    """Delete all non-night manual/auto schedule entries for the month.
+def clear_month_schedule(db: Session, year: int, month: int, group: str = "front") -> int:
+    """Delete schedule entries for the month.
 
-    Night staff (source='night_input') entries are kept — those are cleared
-    separately via night_service.clear_night_schedule.
+    group='front'（預設）：清櫃台群，保留大夜手動輸入（source='night_input'）。
+    group='housekeeping'：只清房務群，不動櫃台任何格位。
+
+    兩種清空一併：
+    - 借用/請假紀錄（房務群 clear 會連同房務假別清掉；櫃台的指定休/請假保留）
+    - 支援請求（source 不限；下次排班由診斷重新產生）
+    - 月狀態回「draft」（鎖定月份須先解鎖；由呼叫端先行檢查）
     """
-    result = db.execute(
-        delete(ScheduleEntry).where(
-            ScheduleEntry.year == year,
-            ScheduleEntry.month == month,
-            ScheduleEntry.source != "night_input",
-        )
+    from app.services import status_service
+
+    emp_ids = list(db.scalars(select(Employee.id).where(group_clause(group))))
+    if not emp_ids:
+        return 0
+    if status_service.get_status(db, year, month) == "locked":
+        raise PermissionError("班表已鎖定，請先解鎖才能清空")
+    stmt = delete(ScheduleEntry).where(
+        ScheduleEntry.year == year,
+        ScheduleEntry.month == month,
+        ScheduleEntry.employee_id.in_(emp_ids),
     )
+    if group != "housekeeping":
+        stmt = stmt.where(ScheduleEntry.source != "night_input")
+    result = db.execute(stmt)
+    # 房務的假別只透過房務班表格位建立，清空房務班表時一併清除，
+    # 避免留下孤兒特休紀錄持續計入特休已用。
+    if group == "housekeeping":
+        db.execute(
+            delete(SpecialLeave).where(
+                SpecialLeave.year == year,
+                SpecialLeave.month == month,
+                SpecialLeave.employee_id.in_(emp_ids),
+            )
+        )
+    else:
+        # 支援請求屬首台/求解互動資料；殘留會讓下次排班把該日該班視為已覆蓋
+        # （B 班異常的來源），清空班表時全部清除（手動/自動皆含）。
+        db.execute(
+            delete(SupportRequest).where(
+                SupportRequest.year == year,
+                SupportRequest.month == month,
+            )
+        )
+    # 狀態回草稿
+    status_service.set_status(db, year, month, "draft")
     db.commit()
     return result.rowcount or 0
 
@@ -194,12 +241,18 @@ def upsert_cell(
 
     is_support = bool(emp.tag)
     is_night = emp.role == "night"
+    is_housekeeping = emp.role == HOUSEKEEPING_ROLE
     if is_support:
         # 二館支援人員只能排 A1/C1/D1 或空（tag 優先於角色，如大夜專職的二館支援）
         if shift not in ("A1", "C1", "D1", "EMPTY"):
             raise ValueError("二館支援人員只能排 A1 / C1 / D1 / 空")
     elif shift in ("A1", "C1", "D1"):
         raise ValueError("A1 / C1 / D1 僅限二館支援人員")
+    elif is_housekeeping:
+        # 房務：只上 A（09:00-18:00）、假別（SPECIAL＋leave_type）或休，完全手動，
+        # 不做任何規則檢測。
+        if shift not in ("A", "OFF", "SPECIAL", "EMPTY"):
+            raise ValueError("房務人員只能排 A、假別或休")
     elif is_night:
         # 大夜專職只能排 D / OFF / 空（原大夜班表頁的規則，來源一律 night_input）
         if shift not in ("D", "OFF", "EMPTY"):
@@ -304,6 +357,10 @@ def validate_cell(
 
     # 二館支援人員完全豁免規則檢驗
     if emp.tag:
+        return {"violations": [], "warnings": []}
+
+    # 房務完全豁免規則檢驗（純手動、與櫃台互不干涉）
+    if emp.role == HOUSEKEEPING_ROLE:
         return {"violations": [], "warnings": []}
 
     # 大夜專職：尊重逐人規則開關（無視所有規則 → 不檢查；H4/H12 可關閉）

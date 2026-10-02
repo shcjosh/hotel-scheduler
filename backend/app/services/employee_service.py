@@ -22,8 +22,26 @@ from app.schemas.employee import (
 )
 
 
+HOUSEKEEPING_ROLE = "housekeeping"
+
+
 def month_key(year: int, month: int) -> str:
     return f"{year:04d}-{month:02d}"
+
+
+def not_housekeeping_clause():
+    """SQL filter：排除房務員工（櫃台班表/求解/統計/休假等預設只看櫃台群）。"""
+    return Employee.role != HOUSEKEEPING_ROLE
+
+
+def housekeeping_clause():
+    """SQL filter：只取房務員工。"""
+    return Employee.role == HOUSEKEEPING_ROLE
+
+
+def group_clause(group: str):
+    """依群組回傳員工 SQL filter。group='housekeeping' → 只看房務；其餘 → 排除房務。"""
+    return housekeeping_clause() if group == "housekeeping" else not_housekeeping_clause()
 
 
 def visible_in_month_clause(year: int, month: int):

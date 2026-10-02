@@ -37,6 +37,7 @@ export function AnnualLeavePanel({ employee }: { employee: Employee | null }) {
       queryClient.invalidateQueries({ queryKey: ['annual-leave', year, month] }),
       queryClient.invalidateQueries({ queryKey: ['off-days', year, month] }),
       queryClient.invalidateQueries({ queryKey: ['schedule', year, month] }),
+      queryClient.invalidateQueries({ queryKey: ['housekeeping-schedule', year, month] }),
       queryClient.invalidateQueries({ queryKey: ['off-day-summary', year, month] }),
     ])
   }

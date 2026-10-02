@@ -70,7 +70,7 @@ export function AdjustScheduleModal({
     <Modal open title="臨時異動排班" onClose={onClose}>
       <div className="space-y-4">
         {nonNight.length === 0 ? (
-          <div className="text-sm text-gray-500">沒有可調整的一般員工</div>
+          <div className="text-sm text-gray-500">沒有可調整的員工</div>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">

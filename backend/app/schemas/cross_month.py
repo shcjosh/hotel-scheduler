@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 
 class CrossMonthLinkData(BaseModel):
     employee_id: int
+    day_6_shift: str | None = None
     day_5_shift: str | None = None
     day_4_shift: str | None = None
     day_3_shift: str | None = None
@@ -14,11 +15,13 @@ class CrossMonthLinkData(BaseModel):
 class CrossMonthResponse(BaseModel):
     previous_month_links: dict[str, CrossMonthLinkData]
     prev_month_name: str
-    prev_last_5_dates: list[str]
+    # 上月最後 6 天（舊→新）
+    prev_last_dates: list[str]
 
 
 class CrossMonthLinkInput(BaseModel):
     employee_id: int
+    day_6_shift: str | None = None
     day_5_shift: str | None = None
     day_4_shift: str | None = None
     day_3_shift: str | None = None
@@ -43,7 +46,8 @@ class CrossMonthWeekSummary(BaseModel):
     employee_name: str
     prev_week_off_count: int
     curr_week_off_count: int | None
-    remaining_off: int
+    # None = 上月資料不足（例如舊資料缺第 6 天），無法判定本月可休天數
+    remaining_off: int | None
     at_limit: bool
 
 

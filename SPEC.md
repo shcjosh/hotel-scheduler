@@ -1,6 +1,6 @@
 # 飯店排班系統 (Hotel Shift Scheduler) — 規格書（現況）
 
-- 系統版本：`1.1.6`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
+- 系統版本：`1.2.0-beta`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
 - 本檔只描述**現況**（對應實際程式碼）。
 - 版本演進與歷史見 `RELEASE-NOTES.md`；未實作方向與備選方案見 `ROADMAP.md`。
 
@@ -38,6 +38,8 @@
 
 - `ALL_SHIFTS = [A,B,C,D,M,OFF,SPECIAL]`；`WORK_SHIFTS = [A,B,C,D,M]`；
   `COVERAGE_BACKUP_SHIFTS = [A,B,C,D]`（S8 用）；`REST_SHIFTS = [OFF,SPECIAL]`
+- **房務 A**：09:00–18:00（含 1 小時用餐），僅 `housekeeping` 角色使用，代碼沿用 `A`，
+  與櫃台班表互不干涉（見 §3）
 - 前端色盤（`utils/shift.ts`）：A 藍 / B 橙 / C 紫 / D 深藍(白字) / M teal /
   A1 sky / C1 fuchsia / D1 slate(白字) / 休 紅 / 特休 紫紅；指定休假酒紅；
   自訂假別用 `leave_types` 表的自訂色
@@ -46,11 +48,12 @@
 
 | 角色 | role 值 | 排班方式 | 可上班班次 | 說明 |
 |---|---|---|---|---|
-| 一般員工 | `general` | 自動 | A/B/C | 主要排班對象 |
+| 日班櫃台 | `general` | 自動 | A/B/C | 主要排班對象 |
 | 大夜專職 | `night` | 手動（格位輸入，source=night_input） | D/OFF | 班表上直接輸入；求解器豁免 H2/H3/H4/H8/H9/H12（格位固定，見 §4 末） |
 | C+D 備援 | `cd_backup` | 自動 | C/D（偏好 C） | D 備援日被指派時固定排 D |
 | 管理職 | `manager` | 自動 | M/ABCD（偏好 M） | S8 權重鼓勵上 M；覆蓋不足時可備援（受店長卡班上限約束，見 §4） |
 | 外部支援 | 任意 + `tag` | 完全手動 | A1/C1/D1 | 帶標籤（如「二館」）員工：豁免所有個人規則、不參與求解，其支援班次計入當日覆蓋 |
+| 房務 | `housekeeping` | 完全手動（畫筆） | A | 只上 A（09:00-18:00）／假別（SPECIAL）／休；與櫃台互不干涉：不進求解/驗證/統計/休假/跨月，分群查詢（見 §11）；支援假別，現階段僅特休（SPECIAL）計入週年制/統計（見 §7.1） |
 
 - 員工欄位另含：`nickname`（暱稱，顯示與 PDF 用）、`sort_order`（自訂排序，
   排班表/統計/PDF 依序顯示）、`available_shifts`（JSON）、`preferred_shift`、
@@ -72,7 +75,7 @@
   軟刪除（`is_active=0`）的員工復原為可見，讓歷史班表回來。
 - `is_active` 保留為軟刪除欄位（向後相容），新流程不再使用。
 
-## 4. 硬性約束（H1~H13，必須滿足）
+## 4. 硬性約束（H1~H14，必須滿足）
 
 實作於 `backend/app/scheduler/constraints/hard.py`。
 
@@ -89,18 +92,24 @@
 - **H7 可用班次**：只能排 `available_shifts ∪ OFF`。
 - **H8 跨月銜接**：載入上月最後 5 天。①上月末日班次 → 本月首日套用 H5；
   ②跨月連續上班視窗（上月尾段無休 → 本月開頭 6 天視窗內至少 1 天休/特休）。
-- **H9 跨月週**：本月首週 = 上月部分（previous_month_links 的 OFF 天數）+
-  本月部分合計恰好 2 天 OFF。
+- **H9 跨月週**：本月首週 = 上月部分（previous_month_links 的 OFF 天數，最多 6 天）+
+  本月部分合計恰好 2 天 OFF。上月部分缺資料時退回 H2 式判斷（不誤加休假）。
 - **H10 一人一天一班**：每人每天恰好 1 個班次（含 OFF）。
 - **H11 D 班備援**：備援日被指派者固定排 D，且當日 C 班由他人遞補
   （無人可遞補 → 求解失敗）。
 - **H12 連休**：每人每月 1~2 次「連休」（定義見 §8）。
 - **H13 大夜固定**：大夜專職班次 = 班表上手動輸入值（source=night_input），
   無輸入的日子視為 OFF。
+- **H14 一天最多一個支援請求**：同日（day>0）最多只能有一筆支援請求（A/C 合計）。
+  自動偵測缺班（`diagnose_support_needs` / `_coverage_gaps`）以「最小化需要支援的天數」
+  為目標，同日 A、C 都缺時只產生一筆、**外部優先 A**（他們比較喜歡上 A 班）；
+  另一班（店長等內部人力優先補 C）必須由求解器在日內自行吸收，
+  真的排不出就求解失敗並在診斷/驗證中呈現。手動/自動建立請求皆受此限制（同日已有請求 → 擋下）；
+  全月請求（day=0）不受限。驗證報告以 H14 列出違規。
 - **店長卡班上限（MCAP；非 H 編號）**：每月設定 `manager_backup_cap:{y}:{m}` =
   每位管理職（店長）可被排 A/C 的格數上限，留空 = 不限制。求解時為硬性上限；
   超過上限的缺口由 solve 流程自動轉為支援請求（見 §13.3）。僅約束求解，
-  不列入驗證報告（validator 的 H1~H13）。
+  不列入驗證報告（validator 的 H1~H14）。
 
 **大夜規則開關**（`night_rule_overrides` 表，UI 在員工管理編輯表單）：
 - 逐人逐條 H2/H3/H4/H12 開關 + 「無視所有規則」（rule_name='ALL'）
@@ -174,6 +183,9 @@
 - **不阻擋**：額度僅顯示（超用標示），求解器、驗證器、`validate-cell` 完全不涉入。
 - 排班表回應另含 `leave_sequence`（整天特休編號）與 `leave_base`（各期間起始序號，
   供前端畫筆暫存時即時累加）。
+- **房務**：房務班表亦支援假別（畫筆可標特休/事假/病假/自訂）；只有
+  `leave_type='SPECIAL'` 計入特休週年制，其餘假別僅標記。房務的系統外特休
+  （期初已用/覆寫額度/半天補登）於房務班表頁的「特休紀錄」面板維護。
 
 ## 8. 連休判定（H12 / count_off_blocks）
 
@@ -199,7 +211,7 @@
 
 ## 9. 跨月銜接
 
-`previous_month_links` 表儲存每人上月最後 5 天班次：
+`previous_month_links` 表儲存每人上月最後 6 天班次（day_6~day_1；v1.2.0 起由 5 天擴為 6 天）：
 
 1. **資料來源**：`GET /cross-month/{y}/{m}?reload=true` 自動讀上月排班結果；
    無上月資料時可手動輸入（POST）
@@ -217,7 +229,7 @@
 
 | 表 | 用途 / 重點欄位 |
 |---|---|
-| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, hire_date（到職日，見 §7.1）, is_active（軟刪除，向後相容） |
+| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`\|`housekeeping`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, hire_date（到職日，見 §7.1）, is_active（軟刪除，向後相容） |
 | `schedule_entries` | employee_id, y/m/d, shift, source(`auto`\|`manual`\|`night_input`\|`backup`\|`designated`\|`special`)；UNIQUE(emp,y,m,d) |
 | `designated_off_days` | 指定休假；每人每月 ≤2（應用層驗證）；UNIQUE(emp,y,m,d) |
 | `special_leaves` | 請假；+ `leave_type`（預設 SPECIAL）；UNIQUE(emp,y,m,d) |
@@ -226,9 +238,9 @@
 | `schedule_snapshots` | version_number(v1,v2...), name, schedule_data(完整班表 JSON), created_at |
 | `schedule_change_logs` | y/m, employee_id, day, old_shift, new_shift, reason, created_at |
 | `d_backup_requests` | y/m/d（UNIQUE）, assigned_employee_id, status(`pending`\|`assigned`\|`failed`), note |
-| `previous_month_links` | 每人上月末 5 天班次（day_5~day_1_shift）, source(`auto`\|`manual`)；UNIQUE(emp,y,m) |
+| `previous_month_links` | 每人上月末 6 天班次（day_6~day_1_shift；v1.2.0 起由 5 天擴為 6 天，供 1 日為週日時跨月週計數）, source(`auto`\|`manual`)；UNIQUE(emp,y,m) |
 | `night_rule_overrides` | PK 邏輯 (employee_id, rule_name)；rule_name=`H2`/`H3`/`H4`/`H12`/`ALL`（ALL=無視所有規則）, enabled |
-| `support_requests` | y/m/d, shift(`A`\|`C`), reason, status(`open`\|`resolved`\|`ignored`), resolution, source(`auto`\|`manual`)；day=0 表示「全月」（結構性缺人）；UNIQUE(y,m,d,shift) |
+| `support_requests` | y/m/d, shift(`A`\|`C`), reason, status(`open`\|`resolved`\|`ignored`), resolution, source(`auto`\|`manual`)；day=0 表示「全月」（結構性缺人）；**H14：同日（day>0）最多一筆（UNIQUE(y,m,day) 由服務層保證）**；UNIQUE(y,m,d,shift) |
 | `settings` | key(PK)-value；預設 `hotel_name=清翼居府中館`、`user_name`；另存 solve meta：`solve:{y}:{m}` = JSON{status, objective_value, solve_time, soft_constraint_stats}、店長卡班上限 `manager_backup_cap:{y}:{m}`（留空 = 不限制） |
 | `annual_leave_adjustments` | 特休週年期間的期初已用與額度覆寫；employee_id, period_start, opening_used_days, entitlement_override(NULL=法定), note；UNIQUE(emp, period_start)（見 §7.1） |
 | `annual_leave_manual_entries` | 半天/臨時特休紀錄；employee_id, entry_date, days, note（不寫入班表，見 §7.1） |
@@ -241,10 +253,13 @@
 - **員工** `employees`：GET/POST `/employees`（`?include_inactive=true` 含軟刪除者）、
   POST `/employees/reorder`、GET/PUT/DELETE `/employees/{id}`
   （PUT 可設 `resign_date` 設離職；DELETE 為真刪，僅限無班表/休假歷史者，否則 400）
-- **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+leave_sequence+leave_base+status）、
+- **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+leave_sequence+leave_base+status；
+  `?group=front`（預設，排除房務）|`housekeeping`（只看房務））、
   PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF、source 維持 night_input；
-  鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
-  DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input）、
+  房務只允許 A/OFF/空、source=manual、跳過規則；鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
+  DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input；`?group=housekeeping` 只清房務、
+  不動櫃台、並清除房務假別紀錄；兩種清空**連同該月支援請求（手動/自動）全清**、
+  月狀態回 draft；鎖定月份 403、須先解鎖）、
   POST `/schedules/validate-cell`（假設性格位檢查，含 H4 視窗/H5 前後銜接/H7/H12+S2/S3，
   尊重大夜規則開關）、GET `/schedules/{y}/{m}/validation`（整月規則驗證報告）、
   POST `/schedules/adjust/preview`、POST `/schedules/adjust/apply`（當月臨時異動，見 §13.4）、
@@ -253,7 +268,7 @@
   POST/DELETE `/off-days/designated/...`、POST/DELETE `/off-days/special/...`
 - **假別** `leave_types`：GET/POST `/leave-types`、PUT/DELETE `/leave-types/{code}`
 - **特休** `annual_leave`：GET `/annual-leave/{y}/{m}`（每人各週年期間額度/已用/剩餘
-  + 該月半天紀錄）、PUT `/annual-leave/adjustment`（期初已用/額度覆寫）、
+  + 該月半天紀錄；含房務）、PUT `/annual-leave/adjustment`（期初已用/額度覆寫）、
   POST/DELETE `/annual-leave/manual-entries`（半天等臨時紀錄）（見 §7.1）
 - **班表中繼** `schedule_meta`：GET/PUT `/schedule-status/{y}/{m}`（draft/published/locked，
   publish 會自動建快照）、GET/POST `/snapshots/{y}/{m}`、POST `/snapshots/{id}/restore`、
@@ -278,11 +293,12 @@
 
 ## 12. 前端
 
-5 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁）：
+6 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁；房務班表頁 v1.2.0）：
 
 | 路由 | 頁面 | 重點 |
 |---|---|---|
-| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例） |
+| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例；選項：整週模式、顯示房務） |
+| `/housekeeping` | HousekeepingPage 房務班表 | 房務專屬月班表：畫筆（A／假別／休）連選後批次套用、**不做規則檢測**；無覆蓋列/支援/大夜面板；下方房務人員選人 + **特休紀錄面板（週年制，系統外特休維護）**；清空當月房務（不動櫃台，並清除房務假別紀錄）；與櫃台共用月狀態 |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
 | `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）** |
 | `/cross-month` | CrossMonthPage | 上月末 5 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
@@ -322,10 +338,12 @@ API：`/schedules/adjust/preview`（dry-run diff）→
 `solve` 失敗且非「備援無法指派」時：
 
 1. 結構性檢查（無人可上 A/C → 產生 day=0 的全月支援請求）
-2. `engine.diagnose_support_needs`：加「外部支援」布林變數並 Minimize 支援槽數，
-   精準找出最少缺班的 (日, 班)，產生對應支援請求（也套用店長卡班上限 §4，
-   因此店長超限的缺口會一併轉為支援）
-3. 重新載入資料再解一次（支援請求視為有人 → 放寬當日 H1）
+2. `engine.diagnose_support_needs`：加「外部支援」布林變數，模型內即注入
+   `ea + ec ≤ 1`（一天外部人力只能上「一個」班），主目標 **Minimize 需要支援的天數**，
+   次目標決勝為「同天數下多請求 C」。精準找出最少缺班的天（同日只取一個班、
+   **外部優先 A**），由 `_coverage_gaps` 產生請求；也套用店長卡班上限 §4
+3. 重新載入資料再解一次（支援請求視為有人 → 放寬當日 H1）。若某日 A、C 同時缺且
+   無人可吸收（连 1 個支援都補不完），診斷回 None、求解直接失敗（H14 硬性，屬預期）
 4. 仍失敗 → `auto_generate_from_diagnostics` 依診斷產生支援請求
 
 ### 13.4 失敗診斷（`diagnostics.py`）
@@ -339,10 +357,11 @@ cause 類型：`coverage_gap`（無人可上 A/C）、`over_capacity`（非大�
 
 ### 13.5 規則驗證器（`validator.py`）
 
-`validate()`（H1~H13 結構化違規）+ `validate_soft()`（S1/S2/S3/S7/S8/S9/S10 警告；
+`validate()`（H1~H14 結構化違規）+ `validate_soft()`（S1/S2/S3/S7/S8/S9/S10 警告；
 S5/S6 由 `count_preferred_unsatisfied` / `compute_fairness_spread` 另算）+
-`RULE_DESCRIPTIONS`（H1~H13 + S1~S3、S5~S10 共 22 條）。用於整月驗證報告、
+`RULE_DESCRIPTIONS`（H1~H14 + S1~S3、S5~S10 共 23 條）。用於整月驗證報告、
 大夜驗證、validate-cell、診斷。全部尊重「無視所有規則」的排除。
+H14 由 `data.support_requests`（非 ignored 的每日班次集合）判定同日 ≥2 班。
 
 ## 14. 啟動與生命週期
 
@@ -398,7 +417,8 @@ cd backend && .venv/bin/python tests/seed_dev.py
    （D 歸大夜、M 不計），每人每週 5 工天 → 每週 35 工班 ÷ 5 = 7 人。
    超過會 INFEASIBLE，診斷報 `over_capacity`。
 2. M 班無每日上限（管理職通常 0~1 人）；多管理職需自行評估。
-3. `previous_month_links` 只存 5 天：月初為週日時跨月 H4 視窗需 6 天，
-   最舊 1 天缺 → 該視窗以「資料不足」跳過（少見邊界）。
+3. `previous_month_links` 存 6 天（v1.2.0）：解決「本月 1 日為週日」時跨月週（週一制）
+   含上月 6 天、舊版只存 5 天會漏算上月週一休假的問題（H9 計數）。舊資料缺 `day_6`
+   時視為資料不足，H9 退回 H2 式判斷（不誤加休假）；可於跨月設定頁重新「自動載入」補齊。
 4. 員工人數 >7 或規則組合極端時可能無解；診斷會給出可能原因與建議。
 5. `updates/check` 依賴 GitHub Releases 的公開 API（離線環境僅回 error 欄位）。

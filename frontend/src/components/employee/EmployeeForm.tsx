@@ -214,7 +214,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
 
         <Field label="可上班班次">
           <div className="flex gap-2">
-            {ALL_SHIFTS.map((s) => {
+            {(role === 'housekeeping' ? ['A'] : ALL_SHIFTS).map((s) => {
               const on = shifts.includes(s)
               const style = getShiftStyle(s)
               return (

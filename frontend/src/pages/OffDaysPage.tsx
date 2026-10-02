@@ -22,7 +22,7 @@ import { getScheduleStatus } from '../api/scheduleMeta'
 import { useUIStore } from '../stores/uiStore'
 import { getMonthDays } from '../utils/date'
 import { ROLE_LABELS } from '../utils/roles'
-import { displayName, avatarText, avatarColor, isVisibleInMonth } from '../utils/employee'
+import { displayName, avatarText, avatarColor, isHousekeeping, isVisibleInMonth } from '../utils/employee'
 import { OffDayCalendar } from '../components/off-days/OffDayCalendar'
 import { ConsecutiveOffCounter } from '../components/off-days/ConsecutiveOffCounter'
 import { LeaveTypeManager } from '../components/off-days/LeaveTypeManager'
@@ -79,7 +79,7 @@ export function OffDaysPage() {
   })
 
   const visibleEmployees = useMemo(
-    () => employees.filter((e) => isVisibleInMonth(e, year, month)),
+    () => employees.filter((e) => isVisibleInMonth(e, year, month) && !isHousekeeping(e)),
     [employees, year, month],
   )
   const empId = selectedId ?? visibleEmployees[0]?.id ?? null

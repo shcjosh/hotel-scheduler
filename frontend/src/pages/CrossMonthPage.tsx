@@ -11,7 +11,7 @@ import { useUIStore } from '../stores/uiStore'
 import { CrossMonthForm } from '../components/cross-month/CrossMonthForm'
 import { CrossMonthPreview } from '../components/cross-month/CrossMonthPreview'
 import { Button } from '../components/ui/button'
-import { isVisibleInMonth } from '../utils/employee'
+import { isHousekeeping, isVisibleInMonth } from '../utils/employee'
 
 export function CrossMonthPage() {
   const { currentYear: year, currentMonth: month } = useUIStore()
@@ -48,7 +48,9 @@ export function CrossMonthPage() {
   const links = cm?.previous_month_links ?? {}
   const hasAuto = Object.values(links).some((l) => l.source === 'auto')
   const hasData = Object.keys(links).length > 0
-  const scheduleEmployees = employees.filter((e) => !e.tag && isVisibleInMonth(e, year, month))
+  const scheduleEmployees = employees.filter(
+    (e) => !e.tag && !isHousekeeping(e) && isVisibleInMonth(e, year, month),
+  )
 
   return (
     <div className="space-y-4">
@@ -57,8 +59,8 @@ export function CrossMonthPage() {
           <h2 className="text-xl font-semibold text-gray-800">跨月設定</h2>
           <p className="text-sm text-gray-500">
             排班月份：{year}年{month}月 · 上月：{cm?.prev_month_name ?? '—'}
-            ，最後 5 天：{cm?.prev_last_5_dates?.[0] ?? '—'}~
-            {cm?.prev_last_5_dates?.[4] ?? '—'}
+            ，最後 6 天：{cm?.prev_last_dates?.[0] ?? '—'}~
+            {cm?.prev_last_dates?.[5] ?? '—'}
           </p>
         </div>
         <Button
@@ -95,7 +97,7 @@ export function CrossMonthPage() {
         <CrossMonthForm
           employees={scheduleEmployees}
           links={links}
-          dates={cm?.prev_last_5_dates ?? []}
+          dates={cm?.prev_last_dates ?? []}
           onSave={(l) => saveMut.mutateAsync(l)}
         />
       )}

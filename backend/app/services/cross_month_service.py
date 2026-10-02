@@ -5,14 +5,38 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database.models import Employee, PreviousMonthLink, ScheduleEntry
-from app.services.employee_service import visible_in_month_clause
+from app.services.employee_service import (
+    HOUSEKEEPING_ROLE,
+    not_housekeeping_clause,
+    visible_in_month_clause,
+)
 
 VALID_SHIFTS = {"A", "B", "C", "D", "M", "OFF", "SPECIAL", None}
 WORK_SHIFTS = {"A", "B", "C", "D", "M"}
 
+# 跨月銜接儲存上月最後 N 天。需要 6 天：本月 1 日為週日時，
+# 跨月週（週一制）含上月 6 天（週一~週六），第 6 天即上月的週一。
+PREV_DAYS = 6
+SHIFT_KEYS = [
+    "day_6_shift",
+    "day_5_shift",
+    "day_4_shift",
+    "day_3_shift",
+    "day_2_shift",
+    "day_1_shift",
+]  # 舊→新
+
+
+def _prev_day_numbers(prev_num_days: int) -> list[int]:
+    """上月最後 PREV_DAYS 天（舊→新）。"""
+    return list(range(prev_num_days - PREV_DAYS + 1, prev_num_days + 1))
+
 
 def _not_support():
-    """二館支援（帶 tag）為外部手動排班、豁免所有規則，不納入跨月銜接。"""
+    """二館支援（帶 tag）為外部手動排班、豁免所有規則，不納入跨月銜接。
+
+    房務與櫃台互不干涉，同樣不納入跨月銜接（另由 not_housekeeping_clause 排除）。
+    """
     return (Employee.tag.is_(None)) | (Employee.tag == "")
 
 
@@ -43,6 +67,7 @@ def get_cross_month_links(
     for link in links:
         result[str(link.employee_id)] = {
             "employee_id": link.employee_id,
+            "day_6_shift": link.day_6_shift,
             "day_5_shift": link.day_5_shift,
             "day_4_shift": link.day_4_shift,
             "day_3_shift": link.day_3_shift,
@@ -53,27 +78,27 @@ def get_cross_month_links(
 
     prev_year, prev_month = _prev_month(year, month)
     prev_num_days = calendar.monthrange(prev_year, prev_month)[1]
-    last5 = list(range(prev_num_days - 4, prev_num_days + 1))
-    dates = [f"{prev_month}/{d}" for d in last5]
+    last_days = _prev_day_numbers(prev_num_days)
+    dates = [f"{prev_month}/{d}" for d in last_days]
 
     return {
         "previous_month_links": result,
         "prev_month_name": f"{prev_year}年{prev_month}月",
-        "prev_last_5_dates": dates,
+        "prev_last_dates": dates,
     }
 
 
 def auto_load_from_prev_month(db: Session, year: int, month: int) -> bool:
     prev_year, prev_month = _prev_month(year, month)
     prev_num_days = calendar.monthrange(prev_year, prev_month)[1]
-    last5 = list(range(prev_num_days - 4, prev_num_days + 1))
+    last_days = _prev_day_numbers(prev_num_days)
 
     entries = list(
         db.scalars(
             select(ScheduleEntry).where(
                 ScheduleEntry.year == prev_year,
                 ScheduleEntry.month == prev_month,
-                ScheduleEntry.day.in_(last5),
+                ScheduleEntry.day.in_(last_days),
             )
         )
     )
@@ -95,23 +120,25 @@ def auto_load_from_prev_month(db: Session, year: int, month: int) -> bool:
                 .where(
                     Employee.is_active == 1,
                     _not_support(),
+                    not_housekeeping_clause(),
                     visible_in_month_clause(year, month),
                 )
                 .order_by(Employee.id)
             )
         )
         for emp in employees:
-            shifts = [by_emp_day.get((emp.id, d)) for d in last5]
+            shifts = [by_emp_day.get((emp.id, d)) for d in last_days]
             db.add(
                 PreviousMonthLink(
                     employee_id=emp.id,
                     year=year,
                     month=month,
-                    day_5_shift=shifts[0],
-                    day_4_shift=shifts[1],
-                    day_3_shift=shifts[2],
-                    day_2_shift=shifts[3],
-                    day_1_shift=shifts[4],
+                    day_6_shift=shifts[0],
+                    day_5_shift=shifts[1],
+                    day_4_shift=shifts[2],
+                    day_3_shift=shifts[3],
+                    day_2_shift=shifts[4],
+                    day_1_shift=shifts[5],
                     source="auto",
                 )
             )
@@ -129,13 +156,9 @@ def save_cross_month_links(
             raise ValueError(f"員工不存在：{link['employee_id']}")
         if emp.tag:
             continue
-        shifts = [
-            link.get("day_5_shift"),
-            link.get("day_4_shift"),
-            link.get("day_3_shift"),
-            link.get("day_2_shift"),
-            link.get("day_1_shift"),
-        ]
+        if emp.role == HOUSEKEEPING_ROLE:
+            continue
+        shifts = [link.get(k) for k in SHIFT_KEYS]
         for s in shifts:
             if s not in VALID_SHIFTS:
                 raise ValueError(f"無效班次：{s}")
@@ -152,6 +175,7 @@ def save_cross_month_links(
                 employee_id=link["employee_id"],
                 year=year,
                 month=month,
+                day_6_shift=link.get("day_6_shift"),
                 day_5_shift=link.get("day_5_shift"),
                 day_4_shift=link.get("day_4_shift"),
                 day_3_shift=link.get("day_3_shift"),
@@ -178,6 +202,7 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
             .where(
                 Employee.is_active == 1,
                 _not_support(),
+                not_housekeeping_clause(),
                 visible_in_month_clause(year, month),
             )
             .order_by(Employee.id)
@@ -208,6 +233,7 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
         if link is None:
             continue
         prev_shifts = [
+            link.day_6_shift,
             link.day_5_shift,
             link.day_4_shift,
             link.day_3_shift,
@@ -248,16 +274,21 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
         if not is_night and consec >= 5:
             if c1 in WORK_SHIFTS:
                 violations.append(_v(emp, "consecutive_work", "H4",
-                    f"上月最後 5 天連續上班，{month}/1 必須休假"))
+                    f"上月最後 {consec} 天連續上班，{month}/1 必須休假"))
             elif c1 is None:
                 violations.append(_v(emp, "consecutive_work", "H4",
-                    f"上月最後 5 天連續上班，{month}/1 必須休假"))
+                    f"上月最後 {consec} 天連續上班，{month}/1 必須休假"))
 
         prev_off = 0
-        for j in range(1, min(weekday_day1, 5) + 1):
-            if prev_shifts[-j] == "OFF":
+        unknown = False
+        for j in range(1, min(weekday_day1, PREV_DAYS) + 1):
+            s = prev_shifts[-j]
+            if s is None:
+                unknown = True
+                break
+            if s == "OFF":
                 prev_off += 1
-        remaining = max(0, 2 - prev_off)
+        remaining = max(0, 2 - prev_off) if not unknown else None
         week_summary.append(
             {
                 "employee_id": emp.id,
@@ -265,7 +296,7 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
                 "prev_week_off_count": prev_off,
                 "curr_week_off_count": None,
                 "remaining_off": remaining,
-                "at_limit": prev_off >= 2,
+                "at_limit": (not unknown) and prev_off >= 2,
             }
         )
 

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db
 from app.database.models import Employee
+from app.services.employee_service import HOUSEKEEPING_ROLE
 from app.schemas.schedule import (
     AdjustApplyRequest,
     AdjustPreviewRequest,
@@ -24,9 +25,9 @@ from app.services import adjust_service, schedule_service, status_service
 router = APIRouter()
 
 
-def _month_view(db: Session, year: int, month: int) -> MonthScheduleView:
+def _month_view(db: Session, year: int, month: int, group: str = "front") -> MonthScheduleView:
     num_days = calendar.monthrange(year, month)[1]
-    view = schedule_service.get_month_view(db, year, month, num_days)
+    view = schedule_service.get_month_view(db, year, month, num_days, group=group)
     return MonthScheduleView(
         year=year,
         month=month,
@@ -109,17 +110,32 @@ def update_schedule_cell(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
-    return _month_view(db, year, month)
+    emp = db.get(Employee, employee_id)
+    group = "housekeeping" if emp is not None and emp.role == HOUSEKEEPING_ROLE else "front"
+    return _month_view(db, year, month, group=group)
 
 
 @router.get("/schedules/{year}/{month}", response_model=MonthScheduleView)
-def get_month_schedule(year: int, month: int, db: Session = Depends(get_db)):
-    return _month_view(db, year, month)
+def get_month_schedule(
+    year: int,
+    month: int,
+    group: str = Query("front"),
+    db: Session = Depends(get_db),
+):
+    return _month_view(db, year, month, group=group)
 
 
 @router.delete("/schedules/{year}/{month}", status_code=status.HTTP_200_OK)
-def clear_month_schedule(year: int, month: int, db: Session = Depends(get_db)):
-    cleared = schedule_service.clear_month_schedule(db, year, month)
+def clear_month_schedule(
+    year: int,
+    month: int,
+    group: str = Query("front"),
+    db: Session = Depends(get_db),
+):
+    try:
+        cleared = schedule_service.clear_month_schedule(db, year, month, group=group)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     return {"cleared": cleared}
 
 

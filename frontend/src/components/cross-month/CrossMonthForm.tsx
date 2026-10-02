@@ -25,7 +25,7 @@ const OPTIONS: { value: string; label: string }[] = [
   { value: 'SPECIAL', label: '特休' },
 ]
 
-const SHIFT_KEYS = ['day_5_shift', 'day_4_shift', 'day_3_shift', 'day_2_shift', 'day_1_shift'] as const
+const SHIFT_KEYS = ['day_6_shift', 'day_5_shift', 'day_4_shift', 'day_3_shift', 'day_2_shift', 'day_1_shift'] as const
 
 export function CrossMonthForm({ employees, links, dates, onSave }: CrossMonthFormProps) {
   const [draft, setDraft] = useState<Record<string, CrossMonthLink>>({})
@@ -39,7 +39,7 @@ export function CrossMonthForm({ employees, links, dates, onSave }: CrossMonthFo
     const keyStr = String(empId)
     const cur = draft[keyStr] ?? {
       employee_id: empId,
-      day_5_shift: null, day_4_shift: null, day_3_shift: null,
+      day_6_shift: null, day_5_shift: null, day_4_shift: null, day_3_shift: null,
       day_2_shift: null, day_1_shift: null, source: 'manual',
     }
     setDraft({ ...draft, [keyStr]: { ...cur, [key]: value || null, source: 'manual' } })
@@ -64,7 +64,7 @@ export function CrossMonthForm({ employees, links, dates, onSave }: CrossMonthFo
               {dates.map((d, i) => (
                 <th key={d} className="w-20 border-l border-gray-200 px-2 py-2 text-center text-xs">
                   <div>{d}</div>
-                  <div className="text-gray-400">倒數第 {5 - i} 天</div>
+                  <div className="text-gray-400">倒數第 {6 - i} 天</div>
                 </th>
               ))}
             </tr>

@@ -79,15 +79,23 @@ def validate(data, schedule):
             if w_i == 0:
                 prev = prev_cache[emp.id]
                 weekday_day1 = data.dates[0].weekday()
+                handled = False
                 if prev and weekday_day1 > 0:
                     prev_off = 0
-                    for j in range(1, min(weekday_day1, 5) + 1):
-                        if prev[-j] == "OFF":
+                    unknown = False
+                    for j in range(1, min(weekday_day1, 6) + 1):
+                        s = prev[-j] if j <= len(prev) else None
+                        if s is None:
+                            unknown = True
+                            break
+                        if s == "OFF":
                             prev_off += 1
-                    total = prev_off + curr_off
-                    if total != 2:
-                        violations.append(_v("H9", emp, None, f"跨月週休假共 {total} 天（應為 2）"))
-                else:
+                    if not unknown:
+                        total = prev_off + curr_off
+                        if total != 2:
+                            violations.append(_v("H9", emp, None, f"跨月週休假共 {total} 天（應為 2）"))
+                        handled = True
+                if not handled:
                     if len(w) >= 5 and curr_off != 2:
                         violations.append(_v("H2", emp, None, f"第 {w_i+1} 週休 {curr_off} 天（應為 2）"))
                     if len(w) < 5 and curr_off > 2:
@@ -227,6 +235,18 @@ def validate(data, schedule):
             if actual != expected:
                 violations.append(_v("H13", emp, d + 1, f"大夜應為 {expected} 實為 {actual}"))
 
+    # H14：一天最多一個支援名額（A/C 合計）
+    for day, shifts in sorted(getattr(data, "support_requests", {}).items()):
+        if len(shifts) > 1:
+            violations.append(
+                _v(
+                    "H14",
+                    None,
+                    day,
+                    f"{data.month}/{day} 有 {len(shifts)} 個支援請求（{'/'.join(sorted(shifts))}），一天最多 1 個",
+                )
+            )
+
     return violations
 
 
@@ -354,7 +374,7 @@ RULE_DESCRIPTIONS = {
     "H4": "連續上班上限", "H5": "班次銜接禁止", "H6": "指定休假",
     "H7": "可用班次限制", "H8": "跨月班次銜接", "H9": "跨月週連續性",
     "H10": "一天一班", "H11": "D 班備援邏輯", "H12": "連休 1~2 次",
-    "H13": "大夜專職手動",
+    "H13": "大夜專職手動", "H14": "一天最多一個支援請求",
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",

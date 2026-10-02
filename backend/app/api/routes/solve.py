@@ -22,7 +22,12 @@ def _source_for(emp, day, shift, data) -> str:
 
 
 def _coverage_gaps(data) -> list[dict]:
-    """Build support-request gaps: structural (day=0) + solver-identified days."""
+    """Build support-request gaps: structural (day=0) + solver-identified days.
+
+    H14：一天最多一個支援名額。診斷模型已注入 ea+ec≤1，同日只會標一個班
+    （外部人力偏好上 A）。此處依診斷結果逐日轉為請求（同日 A、C 皆缺時
+    由內部人力吸收另一班）。
+    """
     gaps: list[dict] = []
     capable_a = any("A" in e.available_shifts and e.role != "night" for e in data.employees)
     capable_c = any("C" in e.available_shifts and e.role != "night" for e in data.employees)
@@ -35,14 +40,13 @@ def _coverage_gaps(data) -> list[dict]:
         diag = engine.diagnose_support_needs(data)
         if diag is not None:
             days_no_a, days_no_c = diag
-            if capable_a:
-                for day in sorted(days_no_a):
-                    if not data.is_external(day, "A"):
-                        gaps.append({"day": day, "shift": "A", "reason": f"{day} 日 A 班人力不足"})
-            if capable_c:
-                for day in sorted(days_no_c):
-                    if not data.is_external(day, "C"):
-                        gaps.append({"day": day, "shift": "C", "reason": f"{day} 日 C 班人力不足"})
+            all_days = sorted(days_no_a | days_no_c)
+            for day in all_days:
+                # 外部偏好 A；同日另一班由內部人力吸收。
+                if day in days_no_a and capable_a and not data.is_external(day, "A"):
+                    gaps.append({"day": day, "shift": "A", "reason": f"{day} 日 A 班人力不足"})
+                elif day in days_no_c and capable_c and not data.is_external(day, "C"):
+                    gaps.append({"day": day, "shift": "C", "reason": f"{day} 日 C 班人力不足"})
     return gaps
 
 

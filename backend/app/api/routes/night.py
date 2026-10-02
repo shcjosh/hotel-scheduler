@@ -98,7 +98,10 @@ def save_night_entry(
 
 @router.delete("/night/{year}/{month}", status_code=status.HTTP_200_OK)
 def clear_night_schedule(year: int, month: int, db: Session = Depends(get_db)):
-    cleared = night_service.clear_night_schedule(db, year, month)
+    try:
+        cleared = night_service.clear_night_schedule(db, year, month)
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     return {"cleared": cleared}
 
 

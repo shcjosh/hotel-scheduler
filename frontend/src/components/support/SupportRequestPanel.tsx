@@ -29,6 +29,11 @@ export function SupportRequestPanel({
 
   async function handleAdd() {
     setError(null)
+    const sameDay = requests.find((r) => r.day === day)
+    if (sameDay) {
+      setError(`${month}/${day} 已有支援請求（${sameDay.shift} 班），一天最多一個`)
+      return
+    }
     try {
       await onAdd(day, shift, reason)
       setAdding(false)
