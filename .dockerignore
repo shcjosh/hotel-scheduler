@@ -1,0 +1,12 @@
+# Docker build 時不需要的東西（減體積、避汙染）
+.git/
+.opencode/
+backend/.venv/
+backend/data/
+backend/dist/
+backend/build/
+backend/__pycache__/
+frontend/node_modules/
+frontend/dist/
+*.md
+!README.md

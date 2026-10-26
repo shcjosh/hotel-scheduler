@@ -9,8 +9,11 @@
 排定 A/B/C/M 班次的自動排班系統。D 班（大夜）由另一館負責人排定後手動輸入；
 系統依據硬性/軟性約束以 OR-Tools (CP-SAT) 求解最佳班表。
 
-- 部署形式：Portable 桌面應用（瀏覽器介面 + 本機後端），單一資料夾免安裝，
-  Windows / Linux 雙平台；雙擊啟動 → 自動開瀏覽器 → `http://localhost:8765`
+- 部署形式：Portable 桌面應用（瀏覽器介面 + 本機後端）＋ Docker image
+  雙軌：Windows 桌面版雙擊啟動 → 自動開瀏覽器 → `http://localhost:8765`；
+  Docker 版（`ghcr.io/shcjosh/hotel-scheduler:<版本>`）跑於 Unraid/Tower，
+  經 SWAG＋Cloudflare Access 對外。v1.2.1 起 CI 不再產 Linux portable
+ （店內幾無 Linux 排班需求，Linux 改走 Docker）
 - 資料儲存：與執行檔同層的 `data/scheduler.db`（SQLite），整個資料夾可複製攜帶
 - 單一後端同時服務 API 與前端靜態檔（`frontend/dist` mount 於 `/`）
 
@@ -245,7 +248,7 @@
 | `annual_leave_adjustments` | 特休週年期間的期初已用與額度覆寫；employee_id, period_start, opening_used_days, entitlement_override(NULL=法定), note；UNIQUE(emp, period_start)（見 §7.1） |
 | `annual_leave_manual_entries` | 半天/臨時特休紀錄；employee_id, entry_date, days, note（不寫入班表，見 §7.1） |
 
-## 11. API 端點（prefix `/api/v1`，共 ~55 個）
+## 11. API 端點（prefix `/api/v1`，共 ~57 個）
 
 路由定義在 `backend/app/api/routes/`（FastAPI app 於 `app/api/__init__.py`，
 靜態檔 mount 在路由註冊之後，`/api/*` 優先匹配）。
@@ -286,7 +289,10 @@
   店長卡班上限由每月設定 `manager_backup_cap:{y}:{m}` 讀入）
 - **設定** `settings`：GET `/settings`、GET/PUT `/settings/{key}`
 - **統計/匯出**：GET `/stats/{y}/{m}`（含上月連休次數與 S1~S10 細項）、
-  GET `/export/{y}/{m}/csv`、GET `/export/{y}/{m}/json`
+  GET `/export/{y}/{m}/csv`、GET `/export/{y}/{m}/json`、
+  GET `/database/info`（整庫大小/筆數/更新時間）、
+  GET `/database/export`（整庫 SQLite 下載，`VACUUM INTO` 一致性快照）、
+  POST `/database/import`（octet-stream 整庫覆蓋匯入：驗檔＋自動備份最近 5 份＋原子換檔；離線版↔Docker 版同步用）
 - **系統**：GET `/health`（含版本號）、GET `/updates/check`（比對 GitHub 最新 Release，
   6 小時快取；前端有新版時顯示 UpdateBanner）、
   GET `/lifecycle/heartbeat`、POST `/lifecycle/shutdown-signal`、POST `/lifecycle/shutdown`
@@ -388,8 +394,10 @@ H14 由 `data.support_requests`（非 ignored 的每日班次集合）判定同�
   → `dist/hotel-scheduler/` + `hotel-scheduler-{version}-{platform}-{arch}.zip|.tar.gz`
 - **PyInstaller 不支援跨平台**：正式打包一律走 CI
 - `.github/workflows/build.yml`：push 到 `main` 或 `*-beta`（或手動）→
-  雙平台 matrix（windows-latest / ubuntu-latest，Python 3.12 + Node 22）→
-  只上傳 artifact，**不建 Release**
+  Windows（windows-latest，Python 3.12 + Node 22；v1.2.1 起拿掉 linux-x64，
+  Linux 需求改走 Docker image）→ 只上傳 artifact，**不建 Release**；
+  同一 workflow 另有 `docker` job（ubuntu-latest）→ 讀 `version.py` 版號，
+  建 image 推 `ghcr.io/shcjosh/hotel-scheduler:<版本>`（Unraid 可直接 pull）
 - `.github/workflows/release.yml`：僅 `v[0-9]+.[0-9]+.[0-9]+` tag 觸發
   （beta tag 不觸發）→ artifact + 正式 GitHub Release
 - 版本號單一來源：`backend/app/version.py`；SemVer，測試版為 `X.Y.Z-beta`
@@ -404,7 +412,7 @@ cd frontend && npm run dev
 # 單一後端模式（服務前端 build）
 cd frontend && npm run build && cd ../backend && .venv/bin/python run.py
 # 測試（逐檔執行，各自帶 assert 與 temp DB_PATH，非 pytest）
-cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign、test_annual_leave）
+cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign、test_annual_leave、test_database_export、test_database_import）
 # 測試資料
 cd backend && .venv/bin/python tests/seed_dev.py
 ```

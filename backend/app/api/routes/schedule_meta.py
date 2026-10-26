@@ -41,6 +41,18 @@ def list_snapshots(year: int, month: int, db: Session = Depends(get_db)):
     return snapshot_service.list_snapshots(db, year, month)
 
 
+@router.post("/snapshots/{snapshot_id}/restore", response_model=SnapshotOut)
+def restore_snapshot(snapshot_id: int, db: Session = Depends(get_db)):
+    try:
+        return snapshot_service.restore_snapshot(db, snapshot_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+# 注意：POST /snapshots/{year}/{month}（建快照）必須註冊在 restore 之後，
+# 否則 /snapshots/{id}/restore 會先被它吃掉（同為 POST + 兩段路徑），還原永遠 422。
+
+
 @router.post(
     "/snapshots/{year}/{month}",
     response_model=SnapshotOut,
@@ -50,14 +62,6 @@ def create_snapshot(
     year: int, month: int, req: SnapshotCreateRequest, db: Session = Depends(get_db)
 ):
     return snapshot_service.create_snapshot(db, year, month, name=req.name)
-
-
-@router.post("/snapshots/{snapshot_id}/restore", response_model=SnapshotOut)
-def restore_snapshot(snapshot_id: int, db: Session = Depends(get_db)):
-    try:
-        return snapshot_service.restore_snapshot(db, snapshot_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
 
 
 @router.get("/snapshots/diff/{snapshot_id_a}/{snapshot_id_b}")

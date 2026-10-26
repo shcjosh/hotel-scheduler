@@ -16,9 +16,7 @@ jobs:
           - os: windows-latest
             tag: windows-x64
             artifact_glob: "backend/dist/*.zip"
-          - os: ubuntu-latest
-            tag: linux-x64
-            artifact_glob: "backend/dist/*.tar.gz"
+          # v1.2.1 起拿掉 linux-x64：店內幾乎不用 Linux 排班，Linux 需求改走 Docker image
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -55,3 +53,40 @@ jobs:
           name: hotel-scheduler-${{ matrix.tag }}
           path: ${{ matrix.artifact_glob }}
           if-no-files-found: error
+
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          VER=$(python -c "import sys; sys.path.insert(0, 'backend'); from app.version import __version__; print(__version__)")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/shcjosh/hotel-scheduler" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            APP_REVISION=${{ github.sha }}
