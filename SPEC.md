@@ -392,7 +392,9 @@ H14 由 `data.support_requests`（非 ignored 的每日班次集合）判定同�
 - **PyInstaller 不支援跨平台**：正式打包一律走 CI
 - `.github/workflows/build.yml`：push 到 `main` 或 `*-beta`（或手動）→
   雙平台 matrix（windows-latest / ubuntu-latest，Python 3.12 + Node 22）→
-  只上傳 artifact，**不建 Release**
+  只上傳 artifact，**不建 Release**；
+  同一 workflow 另有 `docker` job（ubuntu-latest）→ 讀 `version.py` 版號，
+  建 image 推 `ghcr.io/shcjosh/hotel-scheduler:<版本>`（Unraid 可直接 pull）
 - `.github/workflows/release.yml`：僅 `v[0-9]+.[0-9]+.[0-9]+` tag 觸發
   （beta tag 不觸發）→ artifact + 正式 GitHub Release
 - 版本號單一來源：`backend/app/version.py`；SemVer，測試版為 `X.Y.Z-beta`
