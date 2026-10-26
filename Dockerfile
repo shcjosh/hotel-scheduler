@@ -26,6 +26,12 @@ RUN npm run build
 
 # ---- Stage 2: 後端 runtime ----
 FROM python:3.12-slim-bookworm
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+LABEL org.opencontainers.image.title="hotel-scheduler" \
+      org.opencontainers.image.source="https://github.com/shcjosh/hotel-scheduler" \
+      org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.revision=$APP_REVISION
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOST=0.0.0.0 \

@@ -9,8 +9,11 @@
 排定 A/B/C/M 班次的自動排班系統。D 班（大夜）由另一館負責人排定後手動輸入；
 系統依據硬性/軟性約束以 OR-Tools (CP-SAT) 求解最佳班表。
 
-- 部署形式：Portable 桌面應用（瀏覽器介面 + 本機後端），單一資料夾免安裝，
-  Windows / Linux 雙平台；雙擊啟動 → 自動開瀏覽器 → `http://localhost:8765`
+- 部署形式：Portable 桌面應用（瀏覽器介面 + 本機後端）＋ Docker image
+  雙軌：Windows 桌面版雙擊啟動 → 自動開瀏覽器 → `http://localhost:8765`；
+  Docker 版（`ghcr.io/shcjosh/hotel-scheduler:<版本>`）跑於 Unraid/Tower，
+  經 SWAG＋Cloudflare Access 對外。v1.2.1 起 CI 不再產 Linux portable
+ （店內幾無 Linux 排班需求，Linux 改走 Docker）
 - 資料儲存：與執行檔同層的 `data/scheduler.db`（SQLite），整個資料夾可複製攜帶
 - 單一後端同時服務 API 與前端靜態檔（`frontend/dist` mount 於 `/`）
 
@@ -391,8 +394,8 @@ H14 由 `data.support_requests`（非 ignored 的每日班次集合）判定同�
   → `dist/hotel-scheduler/` + `hotel-scheduler-{version}-{platform}-{arch}.zip|.tar.gz`
 - **PyInstaller 不支援跨平台**：正式打包一律走 CI
 - `.github/workflows/build.yml`：push 到 `main` 或 `*-beta`（或手動）→
-  雙平台 matrix（windows-latest / ubuntu-latest，Python 3.12 + Node 22）→
-  只上傳 artifact，**不建 Release**；
+  Windows（windows-latest，Python 3.12 + Node 22；v1.2.1 起拿掉 linux-x64，
+  Linux 需求改走 Docker image）→ 只上傳 artifact，**不建 Release**；
   同一 workflow 另有 `docker` job（ubuntu-latest）→ 讀 `version.py` 版號，
   建 image 推 `ghcr.io/shcjosh/hotel-scheduler:<版本>`（Unraid 可直接 pull）
 - `.github/workflows/release.yml`：僅 `v[0-9]+.[0-9]+.[0-9]+` tag 觸發

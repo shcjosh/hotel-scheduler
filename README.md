@@ -3,13 +3,11 @@
 目前版本：1.2.1-beta
 
 ## 系統需求
-- Windows 10/11（64 位元）
-- Linux（64 位元）
-- 不需安裝任何其他軟體（打包版）
+- Windows 10/11（64 位元，不需安裝任何其他軟體，打包版）
+- 或 Docker（`ghcr.io/shcjosh/hotel-scheduler:<版本>`，Unraid/Tower 部署用）
 
 ## 使用方式（打包版）
 - Windows：解壓縮 `hotel-scheduler-*-windows-x64.zip`，雙擊 `hotel-scheduler.exe`
-- Linux：解壓縮 `hotel-scheduler-*-linux-x64.tar.gz`，執行 `./hotel-scheduler`
 - 啟動後瀏覽器自動開啟 http://localhost:8765
 - 關閉瀏覽器分頁或點右上角「關閉系統」按鈕，程式即自動結束
 

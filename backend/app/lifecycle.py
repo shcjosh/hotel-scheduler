@@ -33,6 +33,12 @@ class LifecycleManager:
             self._server = server
             self._enabled = True
 
+    def is_enabled(self) -> bool:
+        """是否接管生命週期。Docker/server 模式沒呼叫 enable() → False，
+        前端據此決定要不要送 heartbeat（省 log 噪音，2026-10-26）。"""
+        with self._lock:
+            return self._enabled
+
     def heartbeat(self) -> None:
         """前端心跳。僅取消「beacon 型」待處理關閉（refresh 情境），不觸發關閉。"""
         with self._lock:

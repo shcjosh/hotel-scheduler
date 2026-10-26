@@ -105,6 +105,12 @@ def _validate_import_file(path: str) -> dict:
 
 @router.post("/database/import")
 async def import_database(request: Request):
+    ct = request.headers.get("content-type", "")
+    if ct.startswith("multipart/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="請以 application/octet-stream 直接送檔案內容（不支援 multipart 表單）",
+        )
     body = await request.body()
     if not body:
         raise HTTPException(
@@ -141,6 +147,8 @@ async def import_database(request: Request):
         else:
             backup = None
         Path(tmp.name).replace(DB_PATH)
+        # 暫存檔預設 600，換入後補 644，避免之後非 root 讀取（備份/FileBrowser）踩到
+        DB_PATH.chmod(0o644)
         engine.dispose()
     finally:
         Path(tmp.name).unlink(missing_ok=True)

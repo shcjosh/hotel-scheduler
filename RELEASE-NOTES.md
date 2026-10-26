@@ -20,6 +20,15 @@
     `/snapshots/{id}/restore` 每次被它吃掉（`month="restore"` 轉 int 失敗＋缺 body，
     422 帶 2 個 detail 物件）。還原路由現移到建快照之前＋留註解，離線／Docker 版皆有此 bug
   - 前端 `apiClient` 非字串 detail 改 `JSON.stringify`，以後 422 顯示可讀訊息
+- Docker 模式前端不再送 heartbeat（省 log 噪音，實測佔 `docker logs` 86%）：
+  新增 `GET /lifecycle/status`（回 `enabled`；`/health` 格式不動），
+  前端啟動時查一次，`enabled=false` 就不送 heartbeat、不掛 beacon；
+  查不到就照舊（離線版行為不變）
+- 匯入改進：multipart 誤送時回「請以 application/octet-stream 直接送檔案內容」；
+  換檔後 `chmod 644`（暫存檔預設 600，避免之後非 root 讀取踩到）
+- Dockerfile 加 OCI labels（version／source／revision，CI 從 `version.py`＋commit SHA 傳入）
+- CI 拿掉 linux-x64（Windows portable＋Docker image 維持；舊 Linux 包停更）
+- 註：側欄底部本來就有版號顯示（`GET /health`），驗收直接看左下角，不用 curl
 
 ## v1.2.0
 

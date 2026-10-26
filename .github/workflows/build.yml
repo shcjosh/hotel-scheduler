@@ -16,9 +16,7 @@ jobs:
           - os: windows-latest
             tag: windows-x64
             artifact_glob: "backend/dist/*.zip"
-          - os: ubuntu-latest
-            tag: linux-x64
-            artifact_glob: "backend/dist/*.tar.gz"
+          # v1.2.1 起拿掉 linux-x64：店內幾乎不用 Linux 排班，Linux 需求改走 Docker image
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -89,3 +87,6 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ${{ steps.version.outputs.image }}:${{ steps.version.outputs.version }}
+          build-args: |
+            APP_VERSION=${{ steps.version.outputs.version }}
+            APP_REVISION=${{ github.sha }}
