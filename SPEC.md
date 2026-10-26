@@ -245,7 +245,7 @@
 | `annual_leave_adjustments` | 特休週年期間的期初已用與額度覆寫；employee_id, period_start, opening_used_days, entitlement_override(NULL=法定), note；UNIQUE(emp, period_start)（見 §7.1） |
 | `annual_leave_manual_entries` | 半天/臨時特休紀錄；employee_id, entry_date, days, note（不寫入班表，見 §7.1） |
 
-## 11. API 端點（prefix `/api/v1`，共 ~55 個）
+## 11. API 端點（prefix `/api/v1`，共 ~57 個）
 
 路由定義在 `backend/app/api/routes/`（FastAPI app 於 `app/api/__init__.py`，
 靜態檔 mount 在路由註冊之後，`/api/*` 優先匹配）。
@@ -286,7 +286,10 @@
   店長卡班上限由每月設定 `manager_backup_cap:{y}:{m}` 讀入）
 - **設定** `settings`：GET `/settings`、GET/PUT `/settings/{key}`
 - **統計/匯出**：GET `/stats/{y}/{m}`（含上月連休次數與 S1~S10 細項）、
-  GET `/export/{y}/{m}/csv`、GET `/export/{y}/{m}/json`
+  GET `/export/{y}/{m}/csv`、GET `/export/{y}/{m}/json`、
+  GET `/database/info`（整庫大小/筆數/更新時間）、
+  GET `/database/export`（整庫 SQLite 下載，`VACUUM INTO` 一致性快照）、
+  POST `/database/import`（octet-stream 整庫覆蓋匯入：驗檔＋自動備份最近 5 份＋原子換檔；離線版↔Docker 版同步用）
 - **系統**：GET `/health`（含版本號）、GET `/updates/check`（比對 GitHub 最新 Release，
   6 小時快取；前端有新版時顯示 UpdateBanner）、
   GET `/lifecycle/heartbeat`、POST `/lifecycle/shutdown-signal`、POST `/lifecycle/shutdown`
@@ -404,7 +407,7 @@ cd frontend && npm run dev
 # 單一後端模式（服務前端 build）
 cd frontend && npm run build && cd ../backend && .venv/bin/python run.py
 # 測試（逐檔執行，各自帶 assert 與 temp DB_PATH，非 pytest）
-cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign、test_annual_leave）
+cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign、test_annual_leave、test_database_export、test_database_import）
 # 測試資料
 cd backend && .venv/bin/python tests/seed_dev.py
 ```

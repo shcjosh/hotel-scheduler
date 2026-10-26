@@ -3,6 +3,7 @@ import { useUIStore } from '../stores/uiStore'
 import { getMonthStats } from '../api/stats'
 import { getChangeLogs } from '../api/scheduleMeta'
 import { ExportButtons } from '../components/stats/ExportButtons'
+import { DatabaseBackupSection } from '../components/stats/DatabaseBackupSection'
 import { MonthSummaryCard } from '../components/stats/MonthSummaryCard'
 import { EmployeeStatsTable } from '../components/stats/EmployeeStatsTable'
 import { ShiftDistributionTable } from '../components/stats/ShiftDistributionTable'
@@ -92,6 +93,10 @@ export function StatsPage() {
 
           <Section title="特休彙總（週年制）">
             <AnnualLeaveSummaryTable />
+          </Section>
+
+          <Section title="資料庫備份（整庫同步用）">
+            <DatabaseBackupSection />
           </Section>
         </>
       )}

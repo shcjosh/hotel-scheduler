@@ -1,5 +1,26 @@
 # 飯店排班系統 — Release Notes
 
+## v1.2.1-beta
+
+### 本版更新
+- 新增整庫備份與匯入（離線版 ↔ Docker 版同步用，統計報表頁「資料庫備份」區）：
+  - `GET /database/info`：版本、檔案大小、更新時間、員工／班表格／快照筆數
+  - `GET /database/export`：`VACUUM INTO` 一致性快照下載（不斷開線上庫直接讀檔）
+  - `POST /database/import`（octet-stream，不新增 multipart 依賴）：驗魔術 header＋
+    必要表＋integrity_check，不合一律 400；通過後自動備份當前庫（`data/` 留最近 5 份）、
+    原子換檔（暫存檔與 DB 同目錄，避免跨檔案系統 EXDEV）、`engine.dispose()` 重連
+  - 整庫覆蓋、非合併；匯入成功後前端顯示筆數與備份檔名，2 秒後自動重整
+- Docker 試作版（同專案多一種打包，離線版不動）：
+  - 新增 `Dockerfile`（node:22 建前端 → python:3.12-slim 跑 uvicorn，不走 `run.py`，
+    lifecycle 永遠 no-op）＋`.dockerignore`＋SWAG 範本 `docker/scheduler.subdomain.conf.sample`
+  - 靜態檔掛載改候選清單（`BASE_DIR/frontend/dist`→`BASE_DIR.parent/frontend/dist`→
+    `STATIC_DIR`，另判 `index.html`）＋Dockerfile 補 `STATIC_DIR`，修 image 內 `/` 404
+- 修復：版本快照「還原」永遠失敗（還原按鈕按下去顯示 `[object Object],[object Object]`）：
+  - 根因為路由遮蔽——`POST /snapshots/{year}/{month}`（建快照）註冊在前，
+    `/snapshots/{id}/restore` 每次被它吃掉（`month="restore"` 轉 int 失敗＋缺 body，
+    422 帶 2 個 detail 物件）。還原路由現移到建快照之前＋留註解，離線／Docker 版皆有此 bug
+  - 前端 `apiClient` 非字串 detail 改 `JSON.stringify`，以後 422 顯示可讀訊息
+
 ## v1.2.0
 
 ### 本版更新

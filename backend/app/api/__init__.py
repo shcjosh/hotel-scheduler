@@ -7,6 +7,7 @@ import sys
 from app.api.routes import (
     annual_leave,
     cross_month,
+    database,
     employees,
     export,
     leave_types,
@@ -21,7 +22,7 @@ from app.api.routes import (
     support,
     updates,
 )
-from app.config import STATIC_DIR
+from app.config import BASE_DIR, STATIC_DIR
 from app.database.connection import init_db
 from app.version import __version__
 
@@ -48,6 +49,7 @@ app.include_router(schedule_meta.router, prefix=API_PREFIX, tags=["schedule-meta
 app.include_router(cross_month.router, prefix=API_PREFIX, tags=["cross-month"])
 app.include_router(night.router, prefix=API_PREFIX, tags=["night"])
 app.include_router(support.router, prefix=API_PREFIX, tags=["support"])
+app.include_router(database.router, prefix=API_PREFIX, tags=["database"])
 app.include_router(settings.router, prefix=API_PREFIX, tags=["settings"])
 app.include_router(stats.router, prefix=API_PREFIX, tags=["stats"])
 app.include_router(export.router, prefix=API_PREFIX, tags=["export"])
@@ -62,11 +64,19 @@ def health():
 
 
 def _frontend_dist() -> Path | None:
+    # 三種佈局：PyInstaller（frozen）/ Docker（BASE_DIR=/app）/ repo（BASE_DIR=backend/）
+    candidates: list[Path] = []
     if getattr(sys, "frozen", False):
-        p = Path(sys._MEIPASS) / "frontend" / "dist"
-    else:
-        p = Path(__file__).resolve().parent.parent.parent.parent / "frontend" / "dist"
-    return p if p.is_dir() else None
+        candidates.append(Path(sys._MEIPASS) / "frontend" / "dist")
+    candidates += [
+        BASE_DIR / "frontend" / "dist",
+        BASE_DIR.parent / "frontend" / "dist",
+        STATIC_DIR,
+    ]
+    for p in candidates:
+        if p.is_dir() and (p / "index.html").is_file():
+            return p
+    return None
 
 
 _frontend = _frontend_dist()
