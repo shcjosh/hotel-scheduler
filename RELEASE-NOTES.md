@@ -39,9 +39,35 @@
 
 ### 尚未開始
 
-- Phase 2：班表／房務合併、右側抽屜（驗證/支援/大夜/版本）、`⋯` 收納破壞性動作
 - Phase 3：休假頁兩欄 + 求解抽屜、`/settings`（假別/跨月/求解參數/列印）、統計 KPI + tabs
 - Phase 4：無障礙、回歸、文件同步
+
+### Phase 2：班表／房務合併 + 右側抽屜（已完成）
+
+- **班表頁合併**：`/` 用 `?group=front|housekeeping` 切換「櫃台／房務」分頁，
+  `/housekeeping` 以 `<Navigate replace>` 轉到 `/?group=housekeeping`；`HousekeepingPage` 移除
+- **版面重組**
+  - `PageHeader` 只留一個主要動作：草稿→「發布班表」、已發布→「列印 / PDF」、鎖定→「解鎖」
+  - `MonthStatusBar`：狀態｜違規/警告｜待處理支援｜目前版本，點擊開對應抽屜分頁
+  - `ScheduleToolbar`：櫃台／房務分頁、畫筆 popover、列高切換、全螢幕
+  - `ScheduleSidePanel`（右側抽屜）：驗證／支援／大夜／版本，房務只顯示版本
+  - 表格下方不再堆疊驗證、支援、大夜、版本面板
+- **互動**
+  - `ScheduleGrid` 由 `ScheduleTable` 改寫：表頭與姓名欄黏著、週一粗線、週末底色、
+    今天加圈、整欄 hover 高亮、列高 comfortable/compact
+  - 共用 `useScheduleBrush`（櫃台／房務同一套畫筆規則）：單擊、拖曳連塗、
+    依角色限制（二館 A1/C1/D1、大夜 D/OFF/假別、房務 A/OFF/假別）
+  - `usePendingChanges`：暫存修改支援復原／重做（Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z）、放棄
+  - `useGridSelection`：方向鍵移動、Shift+方向鍵範圍選取、Home/End、Enter 編輯、Esc 取消
+  - 破壞性操作收進 `ScheduleActionsMenu`（⋯）：清空當月、清空大夜、鎖定/解鎖，
+    一律走 `ConfirmDialog`
+  - 房務分頁「套用」直接寫入（不做規則檢測），櫃台分頁仍先逐格驗證再開確認視窗
+- **後端小改**：`app/api/__init__.py` 的靜態檔 mount 改為 `_SpaStaticFiles`，
+  無副檔名的未知路徑回 `index.html`（`/api/*` 仍維持 404），讓舊書籤與深層連結可用
+- **移除**：`pages/HousekeepingPage.tsx`、`components/schedule/ScheduleTable.tsx`、
+  `components/schedule/VersionHistoryDrawer.tsx`（改為 `VersionHistoryPanel` + 抽屜）
+
+### 尚未開始（續）
 
 ### 相容性
 

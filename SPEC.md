@@ -303,18 +303,25 @@
 
 ## 12. 前端
 
-6 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁；房務班表頁 v1.2.0）：
+6 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁；
+v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書籤）：
 
 | 路由 | 頁面 | 重點 |
 |---|---|---|
-| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休/假別 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 列印預覽（見 §12.1） |
-| `/housekeeping` | HousekeepingPage 房務班表 | 房務專屬月班表：畫筆（A／假別／休）連選後批次套用、**不做規則檢測**；無覆蓋列/支援/大夜面板；下方房務人員選人 + **特休紀錄面板（週年制，系統外特休維護）**；清空當月房務（不動櫃台，並清除房務假別紀錄）；與櫃台共用月狀態 |
+| `/` | SchedulePage 班表 | `?group=front`（預設）／`?group=housekeeping` 切換櫃台／房務分頁。櫃台：月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 畫筆（單擊／拖曳連塗、角色限制）+ 暫存修改（復原/重做、放棄、檢查並套用）+ 格位編輯 modal + 大夜格位輸入 + 本月狀態列 + 右側抽屜（驗證／支援／大夜／版本）+ `⋯` 選單（清空班表、清空大夜、鎖定/解鎖，皆需確認）+ PDF 列印預覽（見 §12.1）。房務：A／假別／休手動排班，不做規則檢測，抽屜只有版本分頁，下方特休紀錄面板 |
+| `/housekeeping` | redirect | `<Navigate replace>` → `/?group=housekeeping` |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
 | `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）**；大夜假別新增/移除會同步排班表格位 |
-| `/cross-month` | CrossMonthPage | 上月末 5 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
+| `/cross-month` | CrossMonthPage | 上月末 6 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
 | `/stats` | StatsPage | 每人班次/休假統計 + 公平性 + 每日覆蓋 + S1~S10 細項 + 上月連休「優先 2 次」標記 + 調班紀錄 + **特休彙總（週年制）** + 求解時間上限設定 + CSV/JSON 匯出 |
 
-- 狀態管理：Zustand `uiStore`（currentYear/currentMonth）；資料：TanStack Query
+- 共用 UI：`components/ui/`（PageHeader、Card、Section、Toolbar、StatusPill、Badge、
+  EmptyState、LoadingState、Drawer、ConfirmDialog、Toast、Field、Button、Modal）；
+  破壞性操作一律 `ConfirmDialog`，Modal/Drawer 具 Esc、focus trap、`aria-modal`
+- 狀態管理：Zustand `uiStore`（currentYear/currentMonth、側欄收合、求解參數）；
+  資料：TanStack Query
+- 靜態檔：後端以 SPA fallback 服務（無副檔名且非 `/api/*` 的路徑回 `index.html`），
+  深層連結重新整理可用
 - Lifecycle：`lifecycle.ts` 僅於 PROD build 啟動（見 §15）
 - `UpdateBanner`：`/updates/check` 有新版時顯示提示橫幅
 

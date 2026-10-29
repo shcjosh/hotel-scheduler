@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import sys
 
 from app.api.routes import (
@@ -82,5 +83,25 @@ def _frontend_dist() -> Path | None:
 _frontend = _frontend_dist()
 if _frontend is None and STATIC_DIR.is_dir():
     _frontend = STATIC_DIR
+
+
+class _SpaStaticFiles(StaticFiles):
+    """BrowserRouter 的深連結支援（v1.3.0）。
+
+    StaticFiles(html=True) 只對「目錄」回 index.html，像 /housekeeping、/stats
+    直接重新整理會 404。這裡在找不到檔案且路徑沒有副檔名時回 index.html，
+    讓前端路由接手（/api/* 已在 mount 之前註冊，不受影響）。
+    """
+
+    async def get_response(self, path, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            is_api = path == "api" or path.startswith("api/")
+            if exc.status_code == 404 and not is_api and not Path(path).suffix:
+                return await super().get_response("index.html", scope)
+            raise
+
+
 if _frontend is not None:
-    app.mount("/", StaticFiles(directory=str(_frontend), html=True), name="frontend")
+    app.mount("/", _SpaStaticFiles(directory=str(_frontend), html=True), name="frontend")

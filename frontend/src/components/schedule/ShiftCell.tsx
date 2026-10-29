@@ -4,15 +4,31 @@ import { cn } from '../../utils/cn'
 interface ShiftCellProps {
   shift: string
   source?: string
-  compact?: boolean
+  dense?: boolean
   pending?: boolean
+  selected?: boolean
+  disabled?: boolean
   leaveType?: { name?: string; color_bg?: string; color_text?: string } | null
   /** 整天特休的「特 N」編號（僅 leave_type=SPECIAL 時傳入） */
   sequence?: number | null
   onClick?: () => void
+  onPointerDown?: () => void
+  onPointerEnter?: () => void
 }
 
-export function ShiftCell({ shift, source, compact, pending, leaveType, sequence, onClick }: ShiftCellProps) {
+export function ShiftCell({
+  shift,
+  source,
+  dense,
+  pending,
+  selected,
+  disabled,
+  leaveType,
+  sequence,
+  onClick,
+  onPointerDown,
+  onPointerEnter,
+}: ShiftCellProps) {
   const leaveStyle = shift === 'SPECIAL' ? getLeaveTypeStyle(leaveType) : null
   const designatedStyle = shift === 'OFF' && source === 'designated' ? getDesignatedOffStyle() : null
   const style = leaveStyle ?? designatedStyle ?? getShiftStyle(shift)
@@ -23,16 +39,26 @@ export function ShiftCell({ shift, source, compact, pending, leaveType, sequence
     <button
       type="button"
       onClick={onClick}
+      onPointerDown={onPointerDown}
+      onPointerEnter={onPointerEnter}
+      disabled={disabled}
       className={cn(
         'relative flex items-center justify-center rounded text-xs font-semibold transition',
         !inline && style.bg,
         !inline && style.text,
-        compact ? 'h-7 w-9' : 'h-8 w-10',
-        'cursor-pointer hover:ring-2 hover:ring-indigo-400',
-        pending && 'ring-2 ring-blue-600 ring-offset-1 scale-105 z-10 shadow-sm',
+        dense ? 'h-6 w-9' : 'h-7 w-9',
+        disabled ? 'cursor-default' : 'cursor-pointer hover:ring-2 hover:ring-brand-400',
+        selected && 'ring-2 ring-brand-500 ring-offset-1',
+        pending && 'z-10 scale-105 shadow-sm ring-2 ring-blue-600 ring-offset-1',
       )}
       style={inline ? { backgroundColor: style.bg, color: style.text } : undefined}
-      title={pending ? `${label}（尚未儲存變更）` : `${label}（點擊修改）`}
+      title={
+        pending
+          ? `${label}（尚未儲存變更）`
+          : disabled
+            ? `${label}（本月已鎖定）`
+            : `${label}（點擊修改）`
+      }
     >
       {label}
       {pending && (

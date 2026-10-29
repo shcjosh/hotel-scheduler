@@ -1,4 +1,4 @@
-import { BarChart3, CalendarDays, CalendarOff, CalendarRange, Sparkles, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, CalendarDays, CalendarOff, CalendarRange, Users, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   path: string
@@ -26,8 +26,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: '本月作業',
     items: [
-      { path: '/', label: '排班表', icon: CalendarDays, badge: 'schedule-status' },
-      { path: '/housekeeping', label: '房務班表', icon: Sparkles },
+      { path: '/', label: '班表', icon: CalendarDays, badge: 'schedule-status' },
       { path: '/off-days', label: '休假管理', icon: CalendarOff },
     ],
   },
