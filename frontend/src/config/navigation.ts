@@ -1,4 +1,4 @@
-import { BarChart3, CalendarDays, CalendarOff, CalendarRange, Users, type LucideIcon } from 'lucide-react'
+import { BarChart3, CalendarDays, CalendarOff, Settings2, Users, type LucideIcon } from 'lucide-react'
 
 export interface NavItem {
   path: string
@@ -34,7 +34,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: '資料設定',
     items: [
       { path: '/employees', label: '員工管理', icon: Users },
-      { path: '/cross-month', label: '跨月設定', icon: CalendarRange },
+      { path: '/settings', label: '排班規則', icon: Settings2 },
     ],
   },
   {

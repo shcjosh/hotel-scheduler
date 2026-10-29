@@ -311,11 +311,12 @@ v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書
 | `/` | SchedulePage 班表 | `?group=front`（預設）／`?group=housekeeping` 切換櫃台／房務分頁。櫃台：月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 畫筆（單擊／拖曳連塗、角色限制）+ 暫存修改（復原/重做、放棄、檢查並套用）+ 格位編輯 modal + 大夜格位輸入 + 本月狀態列 + 右側抽屜（驗證／支援／大夜／版本）+ `⋯` 選單（清空班表、清空大夜、鎖定/解鎖，皆需確認）+ PDF 列印預覽（見 §12.1）。房務：A／假別／休手動排班，不做規則檢測，抽屜只有版本分頁，下方特休紀錄面板 |
 | `/housekeeping` | redirect | `<Navigate replace>` → `/?group=housekeeping` |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
-| `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）**；大夜假別新增/移除會同步排班表格位 |
-| `/cross-month` | CrossMonthPage | 上月末 6 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
-| `/stats` | StatsPage | 每人班次/休假統計 + 公平性 + 每日覆蓋 + S1~S10 細項 + 上月連休「優先 2 次」標記 + 調班紀錄 + **特休彙總（週年制）** + 求解時間上限設定 + CSV/JSON 匯出 |
+| `/off-days` | OffDaysPage 休假與排班 | 兩欄：左側員工清單（指定休假 n/2、請假、連休）＋右側月曆；工具列指定休假／特休／事假／病假／自訂假別（管理假別連到排班規則）；「開始排班」為主要動作，結果以 Toast + 右側抽屜（SolveResult：班次統計/軟性約束/診斷）呈現；下方分頁「本月休假統計／特休紀錄（週年制）」；大夜假別新增/移除會同步班表格位；鎖定月份唯讀 |
+| `/settings` | SettingsPage 排班規則（v1.3.0 新） | 分頁（`?tab=`）：假別管理（CRUD，內建不可刪）／跨月銜接（上月末 6 天自動載入/手動輸入 + 銜接預覽）／求解參數（求解秒數、D 班備援、每月店長卡班上限）／列印設定（`branch_name`、`print_notes`） |
+| `/cross-month` | redirect | `<Navigate replace>` → `/settings?tab=cross-month` |
+| `/stats` | StatsPage 統計報表 | 4 張 KPI（總班次、每人平均上班天數、週末平均上班人數、違規/警告）＋分頁：總覽／每人統計／每日覆蓋／公平性與軟性約束／休假與特休／變更紀錄／備份；CSV/JSON 匯出在頁首；整庫備份/匯入在「備份」分頁 |
 
-- 共用 UI：`components/ui/`（PageHeader、Card、Section、Toolbar、StatusPill、Badge、
+- 共用 UI：`components/ui/`（PageHeader、Card、Section、Toolbar、Tabs、StatusPill、Badge、
   EmptyState、LoadingState、Drawer、ConfirmDialog、Toast、Field、Button、Modal）；
   破壞性操作一律 `ConfirmDialog`，Modal/Drawer 具 Esc、focus trap、`aria-modal`
 - 狀態管理：Zustand `uiStore`（currentYear/currentMonth、側欄收合、求解參數）；
