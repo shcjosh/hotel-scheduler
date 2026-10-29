@@ -132,6 +132,9 @@ export function OffDaysPage() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['off-days', year, month] }),
       queryClient.invalidateQueries({ queryKey: ['off-day-summary', year, month] }),
+      queryClient.invalidateQueries({ queryKey: ['schedule', year, month] }),
+      queryClient.invalidateQueries({ queryKey: ['validation', year, month] }),
+      queryClient.invalidateQueries({ queryKey: ['night', year, month] }),
     ])
   }
 

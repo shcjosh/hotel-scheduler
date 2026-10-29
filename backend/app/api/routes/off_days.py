@@ -67,6 +67,9 @@ def add_special_leave(req: OffDayRequest, db: Session = Depends(get_db)):
         off_day_service.add_special_leave(
             db, req.employee_id, req.year, req.month, req.day, req.leave_type
         )
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
@@ -88,6 +91,9 @@ def remove_special_leave(
 ):
     try:
         off_day_service.remove_special_leave(db, employee_id, year, month, day)
+    except PermissionError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc))
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))

@@ -1,28 +1,69 @@
 import type { Employee, LeaveType, MonthScheduleView } from '../types'
 import { getMonthDays, getWeekday, getWeekdayLabel } from './date'
-import { SHIFT_ORDER, SHIFT_DESCRIPTIONS, getDesignatedOffStyle } from './shift'
+import { buildOffIndexByEmployee, isoDate, type OffDate } from './offDayMarks'
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function cellText(shift: string, source: string, leaveName?: string): string {
-  if (shift === 'EMPTY' || !shift) return ''
-  if (shift === 'OFF') return source === 'designated' ? '指定' : '休'
-  if (shift === 'SPECIAL') {
-    if (!leaveName) return '假'
-    return leaveName.length > 2 ? leaveName.slice(0, 2) : leaveName
+function cellText(
+  shift: string,
+  leaveCode: string | null,
+  leaveName?: string,
+  sequence?: number,
+): string {
+  if (!shift || shift === 'EMPTY' || shift === 'OFF') return ''
+  if (shift !== 'SPECIAL') return shift
+  if (sequence != null) return `特${sequence}`
+  switch (leaveCode) {
+    case 'SPECIAL':
+      return '特'
+    case 'PERSONAL':
+      return '事'
+    case 'SICK':
+      return '病'
   }
-  return shift
+  if (!leaveName) return '假'
+  return leaveName.length > 2 ? leaveName.slice(0, 2) : leaveName
 }
 
-const PRINT_SHIFT_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  A: { bg: '#e3f2fd', text: '#1e40af', label: 'A' },
-  B: { bg: '#fff3e0', text: '#9a3412', label: 'B' },
-  C: { bg: '#f3e5f5', text: '#6b21a8', label: 'C' },
-  D: { bg: '#1a237e', text: '#ffffff', label: 'D' },
-  M: { bg: '#ccfbf1', text: '#115e59', label: 'M' },
-  OFF: { bg: '#ffcdd2', text: '#991b1b', label: '休' },
+function printName(employee: Employee | undefined, fallback: string): string {
+  if (!employee) return fallback
+  return employee.nickname ? `${employee.name} ${employee.nickname}` : employee.name
+}
+
+function roleTag(employee: Employee | undefined): string {
+  if (!employee) return ''
+  if (employee.tag) return employee.tag
+  switch (employee.role) {
+    case 'manager':
+      return '店長'
+    case 'night':
+      return '大夜'
+    case 'cd_backup':
+      return 'C+D'
+    default:
+      return ''
+  }
+}
+
+function shortLeaveLabel(code: string, name: string): string {
+  if (code === 'SPECIAL') return '特N'
+  if (code === 'PERSONAL') return '事'
+  if (code === 'SICK') return '病'
+  return name.length > 2 ? name.slice(0, 2) : name
+}
+
+function safeColor(value: string | undefined, fallback: string): string {
+  return value && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : fallback
+}
+
+const SHIFT_TIMES: Record<string, string> = {
+  A: '07:30-15:30',
+  B: '11:30-19:30',
+  C: '15:30-23:30',
+  D: '23:30-07:30',
+  M: '09:00-17:00',
 }
 
 export interface PrintColumn {
@@ -38,22 +79,37 @@ export interface PrintScheduleOptions {
   frontView: MonthScheduleView
   /** 顯示房務時，主月份房務班表。 */
   housekeepingView?: MonthScheduleView | null
-  /** 整週模式下，前後月份（櫃台）班表；未提供則跨月格子留白。 */
+  /** 前後月份（櫃台）班表；用來判斷跨月週的休假日順序。 */
   frontNeighborViews?: MonthScheduleView[]
-  /** 整週模式下，前後月份（房務）班表。 */
+  /** 前後月份（房務）班表。 */
   housekeepingNeighborViews?: MonthScheduleView[]
+  /** 上月班表缺失時，用跨月設定的上月末休假補足第一週順序（name -> OFF 日期）。 */
+  previousMonthOffDates?: Record<string, OffDate[]>
   employees: Employee[]
   leaveTypes: LeaveType[]
   hotelName: string
+  /** 抬頭第二行，例如「板橋府中店(一館)」。 */
+  branchName?: string
+  /** 製表人。 */
+  userName?: string
   wholeWeek: boolean
   includeHousekeeping: boolean
+  /** 主管班（M／空白）是否留白。預設 true＝留白。 */
+  managerBlank?: boolean
+  /** 節日／備註：day -> 文字。 */
+  holidayNotes?: Record<number, string>
+  /** 頁尾注意事項，一行一條。 */
+  notesText?: string
+  /** 週末是否加淺灰底（xlsx 預設無）。 */
+  showWeekendTint?: boolean
+  /** 是否加印「新訂加續住」手寫列。 */
+  includeOccupancyRow?: boolean
 }
 
-function legendItem(label: string, bg: string, text: string, desc: string): string {
-  return `<span class="lg"><span class="sw" style="background:${bg};color:${text}">${esc(label)}</span>${esc(desc)}</span>`
-}
-
-export function buildPrintColumns(primary: MonthScheduleView, wholeWeek: boolean): PrintColumn[] {
+export function buildPrintColumns(
+  primary: MonthScheduleView,
+  wholeWeek: boolean,
+): PrintColumn[] {
   const { year, month, num_days: nd } = primary
   if (!wholeWeek) {
     return Array.from({ length: nd }, (_, i) => {
@@ -86,58 +142,162 @@ function buildViewMap(views: MonthScheduleView[]): Map<string, MonthScheduleView
   return new Map(views.map((v) => [`${v.year}-${v.month}`, v]))
 }
 
-function renderHeaderRow(cols: PrintColumn[]): string {
-  const cells = cols.map((col, idx) => {
-    const weekend = col.weekday === 0 || col.weekday === 6
-    const weekStart = col.weekday === 1 || idx === 0
-    const weekEnd = col.weekday === 0 || idx === cols.length - 1
-    const cls = [
-      weekend && 'weekend',
-      weekStart && 'week-start',
-      weekEnd && 'week-end',
-      !col.inMonth && 'other-month',
-    ].filter(Boolean).join(' ')
-    const dayLabel = col.inMonth ? `${col.day}` : `${col.month}/${col.day}`
-    return `<th class="${cls}"><div class="day">${dayLabel}</div><div class="wk">${getWeekdayLabel(col.weekday)}</div></th>`
-  })
-  return `<thead><tr><th class="name">員工</th>${cells.join('')}</tr></thead>`
+function dayClass(
+  col: PrintColumn,
+  index: number,
+  cols: PrintColumn[],
+  showWeekendTint: boolean,
+): string {
+  const cls: string[] = []
+  if (col.weekday === 1 || index === 0) cls.push('week-start')
+  if (col.weekday === 0 || index === cols.length - 1) cls.push('week-end')
+  if (showWeekendTint && (col.weekday === 0 || col.weekday === 6)) cls.push('weekend')
+  if (!col.inMonth) cls.push('other-month')
+  return cls.join(' ')
 }
 
-function renderRows(
+function renderHeaderRows(
   cols: PrintColumn[],
-  names: string[],
-  viewMap: Map<string, MonthScheduleView>,
-  nickByName: Map<string, string>,
-  leaveNameByCode: Map<string, string>,
-): string {
+  holidayNotes: Record<number, string>,
+  showWeekendTint: boolean,
+): { html: string; hasHoliday: boolean } {
+  const hasHoliday = cols.some(
+    (col) => col.inMonth && (holidayNotes[col.day] ?? '').trim() !== '',
+  )
+
   const rows: string[] = []
-  for (const name of names) {
-    const label = nickByName.get(name) ?? name
-    const cells = cols.map((col, idx) => {
-      const weekend = col.weekday === 0 || col.weekday === 6
-      const weekStart = col.weekday === 1 || idx === 0
-      const weekEnd = col.weekday === 0 || idx === cols.length - 1
-      const cls = [
-        weekend && 'weekend',
-        weekStart && 'week-start',
-        weekEnd && 'week-end',
-        !col.inMonth && 'other-month',
-      ].filter(Boolean).join(' ')
-      const view = viewMap.get(`${col.year}-${col.month}`)
-      const row = view?.schedule?.[name]
-      if (!view || !row) return `<td class="${cls}"></td>`
-      const shift = row[col.day - 1] ?? ''
-      const source = view.sources?.[name]?.[col.day - 1] ?? ''
-      const leaveCode = view.leave_details?.[name]?.[String(col.day)]
-      const seq = leaveCode === 'SPECIAL' ? view.leave_sequence?.[name]?.[String(col.day)] : undefined
-      const text = seq != null
-        ? `特${seq}`
-        : cellText(shift, source, leaveCode ? leaveNameByCode.get(leaveCode) : undefined)
-      return `<td class="${cls}">${esc(text)}</td>`
+
+  if (hasHoliday) {
+    const runs: { label: string; cols: PrintColumn[] }[] = []
+    for (const col of cols) {
+      const label = col.inMonth ? (holidayNotes[col.day] ?? '').trim() : ''
+      const prev = runs[runs.length - 1]
+      const prevCol = prev?.cols[prev.cols.length - 1]
+      const contiguous =
+        prevCol != null &&
+        prevCol.year === col.year &&
+        prevCol.month === col.month &&
+        prevCol.day === col.day - 1
+      if (label && prev && prev.label === label && contiguous) {
+        prev.cols.push(col)
+      } else {
+        runs.push({ label, cols: [col] })
+      }
+    }
+    const cells = runs.map((run) => {
+      const index = cols.indexOf(run.cols[0])
+      return `<th colspan="${run.cols.length}" class="${dayClass(run.cols[0], index, cols, false)}">${esc(run.label)}</th>`
     })
-    rows.push(`<tr><td class="name">${esc(label)}</td>${cells.join('')}</tr>`)
+    rows.push(
+      `<tr class="holiday-row"><th class="head" colspan="3">節日</th>${cells.join('')}</tr>`,
+    )
   }
-  return `<tbody>${rows.join('')}</tbody>`
+
+  const dateCells = cols.map((col, index) => {
+    const label = col.inMonth ? String(col.day) : `${col.month}/${col.day}`
+    return `<th class="${dayClass(col, index, cols, showWeekendTint)}"><div class="day">${label}</div></th>`
+  })
+  rows.push(
+    `<tr class="date-row"><th class="head name-head" colspan="3" rowspan="2">人員</th>${dateCells.join('')}</tr>`,
+  )
+
+  const weekdayCells = cols.map(
+    (col, index) =>
+      `<th class="${dayClass(col, index, cols, showWeekendTint)}"><div class="wk">${getWeekdayLabel(col.weekday)}</div></th>`,
+  )
+  rows.push(`<tr class="weekday-row">${weekdayCells.join('')}</tr>`)
+
+  return { html: `<thead>${rows.join('')}</thead>`, hasHoliday }
+}
+
+interface PrintRow {
+  name: string
+  employee?: Employee
+}
+
+function buildRows(view: MonthScheduleView, employees: Employee[]): PrintRow[] {
+  const byName = new Map(employees.map((e) => [e.name, e]))
+  return Object.keys(view.schedule ?? {})
+    .map((name) => ({ name, employee: byName.get(name) }))
+    .sort((a, b) => {
+      const ao = a.employee?.sort_order ?? 9999
+      const bo = b.employee?.sort_order ?? 9999
+      if (ao !== bo) return ao - bo
+      return a.name.localeCompare(b.name, 'zh-Hant')
+    })
+}
+
+function renderGroupRows(
+  groupLabel: string,
+  rows: PrintRow[],
+  cols: PrintColumn[],
+  viewMap: Map<string, MonthScheduleView>,
+  offIndexByEmployee: Map<string, Map<string, number>>,
+  leaveNameByCode: Map<string, string>,
+  managerNames: Set<string>,
+  managerBlank: boolean,
+  showWeekendTint: boolean,
+): string {
+  if (rows.length === 0) return ''
+
+  return rows
+    .map(({ name, employee }, rowIndex) => {
+      const isManager = managerNames.has(name)
+      const offIndex = offIndexByEmployee.get(name)
+      const cells = cols.map((col, index) => {
+        const cls = dayClass(col, index, cols, showWeekendTint)
+        const view = viewMap.get(`${col.year}-${col.month}`)
+        const scheduleRow = view?.schedule?.[name]
+        if (!view || !scheduleRow) return `<td class="${cls}"></td>`
+
+        const shift = scheduleRow[col.day - 1] ?? ''
+        const leaveCode = view.leave_details?.[name]?.[String(col.day)] ?? null
+        const leaveName = leaveCode ? leaveNameByCode.get(leaveCode) : undefined
+        const sequence =
+          leaveCode === 'SPECIAL'
+            ? view.leave_sequence?.[name]?.[String(col.day)]
+            : undefined
+
+        let text = ''
+        let extraClass = ''
+        let offOrder: number | null = null
+
+        if (shift === 'OFF') {
+          const iso = isoDate(col.year, col.month, col.day)
+          offOrder = offIndex?.get(iso) ?? 0
+          extraClass = offOrder === 0 ? ' off-first' : ' off-second'
+        } else if (isManager && (shift === 'M' || shift === 'EMPTY' || !shift)) {
+          // 主管班＝M（09:00-17:00）；依選項留白或顯示 M。
+          text = managerBlank ? '' : 'M'
+        } else {
+          text = cellText(shift, leaveCode, leaveName, sequence)
+        }
+
+        const offMark = offOrder === null ? '' : renderOffMark(offOrder)
+        return `<td class="${cls}${extraClass}${offOrder === null ? '' : ' off-cell'}">${offMark}${esc(text)}</td>`
+      })
+
+      const groupCell =
+        rowIndex === 0
+          ? `<td class="grp" rowspan="${rows.length}">${esc(groupLabel)}</td>`
+          : ''
+      return `<tr>${groupCell}<td class="tag">${esc(roleTag(employee))}</td><td class="name">${esc(printName(employee, name))}</td>${cells.join('')}</tr>`
+    })
+    .join('')
+}
+
+function renderOffMark(order: number): string {
+  // 用 inline SVG 畫線，避免 CSS gradient 在「另存 PDF」時被 rasterize 成黑塊。
+  const lines = ['<line x1="0" y1="100" x2="100" y2="0" />']
+  if (order !== 0) lines.push('<line x1="0" y1="0" x2="100" y2="100" />')
+  return `<svg class="off-mark" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">${lines.join('')}</svg>`
+}
+
+function renderOccupancyRow(cols: PrintColumn[], showWeekendTint: boolean): string {
+  const cells = cols.map(
+    (col, index) => `<td class="${dayClass(col, index, cols, showWeekendTint)}"></td>`,
+  )
+  return `<tr class="occupancy"><td class="grp"></td><td class="tag"></td><td class="name">新訂加續住</td>${cells.join('')}</tr>`
 }
 
 function rangeLabel(cols: PrintColumn[]): string {
@@ -147,55 +307,187 @@ function rangeLabel(cols: PrintColumn[]): string {
   return `${first.month}/${first.day} ~ ${last.month}/${last.day}`
 }
 
-export function printSchedule(opts: PrintScheduleOptions): void {
+function collectUsedLeaveCodes(views: MonthScheduleView[]): Set<string> {
+  const used = new Set<string>()
+  for (const view of views) {
+    for (const details of Object.values(view.leave_details ?? {})) {
+      for (const code of Object.values(details)) used.add(code)
+    }
+  }
+  return used
+}
+
+function renderFooter(
+  opts: PrintScheduleOptions,
+  views: MonthScheduleView[],
+): string {
+  const {
+    includeHousekeeping,
+    managerBlank = true,
+    notesText = '',
+    userName = '',
+    leaveTypes,
+  } = opts
+
+  const shiftItems = ['A', 'B', 'C', 'D', 'M'].map(
+    (s) =>
+      `<span class="lg"><span class="sw sw-shift">${s}</span>${SHIFT_TIMES[s]}</span>`,
+  )
+  if (includeHousekeeping) {
+    shiftItems.push(
+      `<span class="lg"><span class="sw sw-shift">房務 A</span>09:00-18:00（含用餐 1 小時）</span>`,
+    )
+  }
+
+  const offItems = [
+    `<span class="lg"><span class="sw sw-off">/</span>每週第一休</span>`,
+    `<span class="lg"><span class="sw sw-off">X</span>每週第二休</span>`,
+  ]
+  if (managerBlank) {
+    offItems.push(`<span class="lg">空白＝<b>M 主管班 09:00-17:00</b></span>`)
+  }
+
+  const usedLeaveCodes = collectUsedLeaveCodes(views)
+  const leaveItems = leaveTypes
+    .filter((lt) => usedLeaveCodes.has(lt.code))
+    .map((lt) => {
+      const short = shortLeaveLabel(lt.code, lt.name)
+      const bg = safeColor(lt.color_bg, '#e1bee7')
+      const text = safeColor(lt.color_text, '#4a148c')
+      return `<span class="lg"><span class="sw" style="background:${bg};color:${text}">${esc(short)}</span>${esc(lt.name)}</span>`
+    })
+
+  const noteLines = notesText
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `<div>${esc(line)}</div>`)
+    .join('')
+
+  const printedAt = new Date()
+  const printedLabel = `${printedAt.getFullYear()}/${String(printedAt.getMonth() + 1).padStart(2, '0')}/${String(printedAt.getDate()).padStart(2, '0')}`
+
+  return `<div class="footer">
+  <div class="legend"><b>上班時段</b>${shiftItems.join('')}</div>
+  <div class="legend"><b>休假</b>${offItems.join('')}${
+    leaveItems.length ? `<b class="legend-gap">假別</b>${leaveItems.join('')}` : ''
+  }</div>
+  ${noteLines ? `<div class="notes">${noteLines}</div>` : ''}
+  <div class="signatures">
+    <span>製表人：${esc(userName)}</span>
+    <span>單位主管：____________</span>
+    <span>會計：____________</span>
+  </div>
+  <div class="printed">列印日期：${printedLabel}</div>
+</div>`
+}
+
+export function buildPrintHtml(opts: PrintScheduleOptions): string {
   const {
     frontView,
-    housekeepingView,
+    housekeepingView = null,
     frontNeighborViews = [],
     housekeepingNeighborViews = [],
+    previousMonthOffDates = {},
     employees,
     leaveTypes,
     hotelName,
+    branchName = '',
     wholeWeek,
     includeHousekeeping,
+    managerBlank = true,
+    holidayNotes = {},
+    showWeekendTint = false,
+    includeOccupancyRow = true,
   } = opts
 
   const { year, month } = frontView
   const cols = buildPrintColumns(frontView, wholeWeek)
-  const frontMap = buildViewMap([frontView, ...frontNeighborViews])
-  const hkMap = housekeepingView
-    ? buildViewMap([housekeepingView, ...housekeepingNeighborViews])
-    : new Map<string, MonthScheduleView>()
+  const frontViews = [frontView, ...frontNeighborViews]
+  const hkViews = housekeepingView
+    ? [housekeepingView, ...housekeepingNeighborViews]
+    : []
+  const frontMap = buildViewMap(frontViews)
+  const hkMap = buildViewMap(hkViews)
 
-  const nickByName = new Map(employees.map((e) => [e.name, e.nickname || e.name]))
+  const frontRows = buildRows(frontView, employees)
+  const hkRows = housekeepingView ? buildRows(housekeepingView, employees) : []
+
+  const frontOff = buildOffIndexByEmployee(
+    frontViews,
+    frontRows.map((r) => r.name),
+    previousMonthOffDates,
+  )
+  const hkOff = buildOffIndexByEmployee(
+    hkViews,
+    hkRows.map((r) => r.name),
+  )
+
   const leaveNameByCode = new Map(leaveTypes.map((lt) => [lt.code, lt.name]))
+  const managerNames = new Set(
+    employees.filter((e) => e.role === 'manager').map((e) => e.name),
+  )
 
-  const frontNames = Object.keys(frontView.schedule)
-  const hkNames = housekeepingView ? Object.keys(housekeepingView.schedule) : []
+  const header = renderHeaderRows(cols, holidayNotes, showWeekendTint)
+  const frontBody = renderGroupRows(
+    '櫃台',
+    frontRows,
+    cols,
+    frontMap,
+    frontOff,
+    leaveNameByCode,
+    managerNames,
+    managerBlank,
+    showWeekendTint,
+  )
+  const hkBody = includeHousekeeping
+    ? renderGroupRows(
+        '房務',
+        hkRows,
+        cols,
+        hkMap,
+        hkOff,
+        leaveNameByCode,
+        managerNames,
+        managerBlank,
+        showWeekendTint,
+      )
+    : ''
+  const occupancy =
+    includeOccupancyRow && (frontRows.length > 0 || hkRows.length > 0)
+      ? renderOccupancyRow(cols, showWeekendTint)
+      : ''
 
-  const frontTable = frontNames.length
-    ? `<table>${renderHeaderRow(cols)}${renderRows(cols, frontNames, frontMap, nickByName, leaveNameByCode)}</table>`
-    : '<p class="empty">（本月尚無櫃台班表）</p>'
-  const hkTable = hkNames.length
-    ? `<table>${renderHeaderRow(cols)}${renderRows(cols, hkNames, hkMap, nickByName, leaveNameByCode)}</table>`
-    : '<p class="empty">（本月尚無房務班表）</p>'
+  const hasManagerRow = [...frontRows, ...hkRows].some((r) => managerNames.has(r.name))
+  const hasAnyRow =
+    frontRows.length > 0 || (includeHousekeeping && hkRows.length > 0)
+  const table = hasAnyRow
+    ? `<table>
+  <colgroup>
+    <col class="c-grp" />
+    <col class="c-tag" />
+    <col class="c-name" />
+    ${cols.map(() => '<col class="c-day" />').join('')}
+  </colgroup>
+  ${header.html}
+  <tbody>${frontBody}${hkBody}${occupancy}</tbody>
+</table>`
+    : `<div class="empty">（本月尚無班表）</div>`
 
-  const legendItems: string[] = []
-  for (const s of SHIFT_ORDER) {
-    if (s === 'SPECIAL') continue
-    const c = PRINT_SHIFT_COLORS[s]
-    legendItems.push(legendItem(c.label, c.bg, c.text, SHIFT_DESCRIPTIONS[s]))
-  }
-  const designated = getDesignatedOffStyle()
-  legendItems.push(legendItem(designated.label, designated.bg, designated.text, '指定休假'))
-  for (const lt of leaveTypes) {
-    const name = lt.name || '假'
-    const label = name.length > 2 ? name.slice(0, 2) : name
-    legendItems.push(legendItem(label, lt.color_bg ?? '#e1bee7', lt.color_text ?? '#4a148c', name))
-  }
-
+  const rocYear = year - 1911
+  const monthLabel =
+    rocYear > 0 ? `${rocYear}（${year}）年 ${month} 月` : `${year} 年 ${month} 月`
   const title = `${hotelName} ${year} 年 ${month} 月班表`
-  const rangeNote = wholeWeek ? `<div class="range">整週檢視：${rangeLabel(cols)}</div>` : ''
+  const branchLine = branchName.trim()
+    ? `<div class="branch">${esc(branchName.trim())}</div>`
+    : ''
+  const rangeNote = wholeWeek
+    ? `<div class="range-note">整週檢視：${rangeLabel(cols)}</div>`
+    : ''
+  const hkEmptyNote =
+    includeHousekeeping && hkRows.length === 0
+      ? '<div class="empty">（本月尚無房務班表）</div>'
+      : ''
 
   const html = `<!doctype html>
 <html lang="zh-TW">
@@ -203,48 +495,140 @@ export function printSchedule(opts: PrintScheduleOptions): void {
 <meta charset="utf-8">
 <title>${esc(title)}</title>
 <style>
-  @page { size: A4 landscape; margin: 10mm; }
+  @page { size: A4 landscape; margin: 8mm; }
   * { box-sizing: border-box; }
-  body { font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; color: #111827; margin: 0; }
-  h1 { font-size: 15px; text-align: center; margin: 0 0 4px; font-weight: 600; }
-  .range { text-align: center; font-size: 9px; color: #6b7280; margin-bottom: 6px; }
-  .section { margin-bottom: 10px; }
-  .caption { font-size: 11px; font-weight: 600; margin: 0 0 4px; }
-  .empty { font-size: 9px; color: #9ca3af; margin: 0 0 4px; }
-  table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", "Heiti TC", sans-serif;
+    color: #111;
+    font-size: 9px;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  @media screen { body { padding: 8mm; background: #fff; } }
+  .doc-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 12px;
+    border-bottom: 2px solid #222;
+    padding-bottom: 3px;
+    margin-bottom: 4px;
+  }
+  .hotel { font-size: 16px; font-weight: 700; letter-spacing: 2px; line-height: 1.15; }
+  .branch { font-size: 10px; color: #333; margin-top: 1px; }
+  .month { font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .range-note { font-size: 8px; color: #666; text-align: right; margin: 1px 0 3px; }
+  .empty { font-size: 10px; color: #666; margin: 6px 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+    border: 1px solid #333;
+  }
+  thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
-  th, td { border: 1px solid #9ca3af; text-align: center; font-size: 9px; padding: 2px 0; }
-  .name { font-weight: 600; width: 44px; }
-  .day { font-weight: 600; }
-  .wk { color: #9ca3af; font-size: 8px; }
-  .weekend { background: #e5e7eb; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .other-month { background: #f8fafc; color: #9ca3af; }
-  .week-start { border-left: 2px solid #111827; }
-  .week-end { border-right: 2px solid #111827; }
-  .legend { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font-size: 8px; }
-  .lg { display: inline-flex; align-items: center; gap: 3px; }
-  .sw { display: inline-flex; align-items: center; justify-content: center; min-width: 16px; height: 12px; border-radius: 2px; font-size: 7px; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  th, td {
+    border: 1px solid #999;
+    text-align: center;
+    vertical-align: middle;
+    padding: 0;
+    height: 20px;
+    font-size: 9px;
+    line-height: 1.1;
+    overflow: hidden;
+  }
+  .head { background: #f2f2f2; font-weight: 700; }
+  .name-head { font-size: 9px; }
+  .holiday-row th { height: 14px; font-size: 7.5px; background: #fff; font-weight: 600; }
+  .date-row th { font-weight: 700; }
+  .weekday-row th { font-size: 8px; color: #555; }
+  .day { font-weight: 700; }
+  .wk { font-size: 8px; }
+  .grp { width: 22px; font-weight: 700; background: #fafafa; }
+  .tag { width: 34px; font-size: 8px; color: #444; }
+  .name {
+    width: 100px;
+    text-align: left;
+    padding-left: 3px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .c-grp { width: 22px; }
+  .c-tag { width: 34px; }
+  .c-name { width: 100px; }
+  .week-start { border-left: 1.5px solid #7030A0; }
+  .week-end { border-right: 1.5px solid #7030A0; }
+  .weekend { background: #f7f7f7; }
+  .other-month { color: #aaa; background: #fbfbfb; }
+  .occupancy td { height: 20px; }
+  .off-cell { position: relative; }
+  .off-mark {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: visible;
+  }
+  .off-mark line {
+    stroke: #222;
+    stroke-width: 0.8;
+    vector-effect: non-scaling-stroke;
+  }
+  .footer {
+    margin-top: 4px;
+    font-size: 8px;
+    color: #222;
+    page-break-inside: avoid;
+  }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 2px; }
+  .legend-gap { margin-left: 6px; }
+  .lg { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+  .sw {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 12px;
+    border: 1px solid #999;
+    border-radius: 2px;
+    font-size: 7px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .sw-shift { background: #fff; }
+  .sw-off { background: #fff; font-size: 10px; }
+  .notes { margin-top: 3px; line-height: 1.35; }
+  .signatures {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    margin-top: 10px;
+    font-size: 9px;
+  }
+  .printed { text-align: right; color: #777; font-size: 7px; margin-top: 2px; }
 </style>
 </head>
 <body>
-<h1>${esc(title)}</h1>
-${rangeNote}
-<div class="section">
-  <div class="caption">櫃台班表</div>
-  ${frontTable}
-</div>
-${includeHousekeeping ? `<div class="section">
-  <div class="caption">房務班表（A 09:00-18:00，含 1 小時用餐）</div>
-  ${hkTable}
-</div>` : ''}
-<div class="legend">${legendItems.join('')}</div>
-<script>window.onload = function () { window.print(); }</script>
+  <div class="doc-head">
+    <div>
+      <div class="hotel">${esc(hotelName)}</div>
+      ${branchLine}
+    </div>
+    <div class="month">${monthLabel}</div>
+  </div>
+  ${rangeNote}
+  ${table}
+  ${hkEmptyNote}
+  ${renderFooter(
+    { ...opts, managerBlank: managerBlank && hasManagerRow },
+    [...frontViews, ...hkViews],
+  )}
 </body>
 </html>`
 
-  const w = window.open('', '_blank')
-  if (!w) return
-  w.document.write(html)
-  w.document.close()
-  w.focus()
+  return html
 }

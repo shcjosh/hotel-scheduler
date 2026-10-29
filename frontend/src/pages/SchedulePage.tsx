@@ -7,7 +7,7 @@ import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
 import { getLeaveTypes } from '../api/leaveTypes'
 import { getSettings } from '../api/settings'
-import { ExportPdfModal } from '../components/schedule/ExportPdfModal'
+import { PrintPreviewModal } from '../components/schedule/PrintPreviewModal'
 import {
   setScheduleStatus,
   getSnapshots,
@@ -88,6 +88,7 @@ export function SchedulePage() {
     queryFn: () => getSettings(),
   })
   const hotelName = settings?.hotel_name ?? '清翼居府中館'
+  const userName = settings?.user_name ?? 'Josh Wang'
   const { data: snapshots = [] } = useQuery({
     queryKey: ['snapshots', currentYear, currentMonth],
     queryFn: () => getSnapshots(currentYear, currentMonth),
@@ -110,6 +111,8 @@ export function SchedulePage() {
     queryClient.invalidateQueries({ queryKey: ['validation', currentYear, currentMonth] })
     queryClient.invalidateQueries({ queryKey: ['snapshots', currentYear, currentMonth] })
     queryClient.invalidateQueries({ queryKey: ['night', currentYear, currentMonth] })
+    queryClient.invalidateQueries({ queryKey: ['off-days', currentYear, currentMonth] })
+    queryClient.invalidateQueries({ queryKey: ['off-day-summary', currentYear, currentMonth] })
   }
 
   const supportMut = useMutation({
@@ -207,7 +210,8 @@ export function SchedulePage() {
       if (emp.tag) {
         if (isLT || !['A1', 'C1', 'D1'].includes(targetShift)) return
       } else if (emp.role === 'night') {
-        if (targetShift !== 'D' && targetShift !== 'OFF') return
+        // 大夜可排 D/OFF，也可選假別（SPECIAL）；其餘班次仍擋
+        if (!isLT && targetShift !== 'D' && targetShift !== 'OFF') return
       } else if (targetShift === 'D') {
         return
       }
@@ -547,7 +551,7 @@ export function SchedulePage() {
                 ? editingEmp.available_shifts
                 : editingEmp.available_shifts.filter((s) => s !== 'D')
           }
-          leaveTypes={editingEmp.tag || editingEmp.role === 'night' ? [] : leaveTypes}
+          leaveTypes={editingEmp.tag ? [] : leaveTypes}
           isPublished={status === 'published'}
           onClose={() => setEditing(null)}
           onValidate={(newShift) =>
@@ -597,7 +601,7 @@ export function SchedulePage() {
       )}
 
       {exportOpen && data && (
-        <ExportPdfModal
+        <PrintPreviewModal
           open={exportOpen}
           year={currentYear}
           month={currentMonth}
@@ -605,6 +609,7 @@ export function SchedulePage() {
           employees={employees}
           leaveTypes={leaveTypes}
           hotelName={hotelName}
+          userName={userName}
           onClose={() => setExportOpen(false)}
         />
       )}

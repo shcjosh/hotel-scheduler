@@ -3,7 +3,8 @@ from pydantic import BaseModel, Field
 
 class NightEntryRequest(BaseModel):
     employee_id: int
-    shift: str = Field(pattern="^(D|OFF)$")
+    shift: str = Field(pattern="^(D|OFF|SPECIAL)$")
+    leave_type: str | None = None
 
 
 class NightDeleteRequest(BaseModel):

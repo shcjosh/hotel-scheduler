@@ -254,9 +254,9 @@ def upsert_cell(
         if shift not in ("A", "OFF", "SPECIAL", "EMPTY"):
             raise ValueError("房務人員只能排 A、假別或休")
     elif is_night:
-        # 大夜專職只能排 D / OFF / 空（原大夜班表頁的規則，來源一律 night_input）
-        if shift not in ("D", "OFF", "EMPTY"):
-            raise ValueError("大夜專職人員只能排 D 或休")
+        # 大夜專職可排 D / OFF / 假別 / 空（來源一律 night_input）
+        if shift not in ("D", "OFF", "SPECIAL", "EMPTY"):
+            raise ValueError("大夜專職人員只能排 D、休或假別")
     elif shift == "D":
         raise ValueError("僅大夜專職人員可排 D 班（D 班備援由系統自動指派）")
 
