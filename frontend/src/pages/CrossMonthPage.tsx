@@ -11,6 +11,9 @@ import { useUIStore } from '../stores/uiStore'
 import { CrossMonthForm } from '../components/cross-month/CrossMonthForm'
 import { CrossMonthPreview } from '../components/cross-month/CrossMonthPreview'
 import { Button } from '../components/ui/button'
+import { PageHeader } from '../components/ui/page-header'
+import { LoadingState } from '../components/ui/loading-state'
+import { EmptyState } from '../components/ui/empty-state'
 import { isHousekeeping, isVisibleInMonth } from '../utils/employee'
 
 export function CrossMonthPage() {
@@ -54,24 +57,20 @@ export function CrossMonthPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800">跨月設定</h2>
-          <p className="text-sm text-gray-500">
-            排班月份：{year}年{month}月 · 上月：{cm?.prev_month_name ?? '—'}
-            ，最後 6 天：{cm?.prev_last_dates?.[0] ?? '—'}~
-            {cm?.prev_last_dates?.[5] ?? '—'}
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => autoMut.mutate()}
-          disabled={autoMut.isPending}
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${autoMut.isPending ? 'animate-spin' : ''}`} />
-          自動載入上月排班
-        </Button>
-      </div>
+      <PageHeader
+        title="跨月設定"
+        description={`排班月份：${year}年${month}月 · 上月：${cm?.prev_month_name ?? '—'}，最後 6 天：${cm?.prev_last_dates?.[0] ?? '—'}~${cm?.prev_last_dates?.[5] ?? '—'}`}
+        actions={
+          <Button
+            variant="outline"
+            onClick={() => autoMut.mutate()}
+            disabled={autoMut.isPending}
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${autoMut.isPending ? 'animate-spin' : ''}`} />
+            自動載入上月排班
+          </Button>
+        }
+      />
 
       {hasAuto && (
         <div className="flex items-center gap-2 rounded-md bg-blue-50 px-4 py-2 text-sm text-blue-700">
@@ -86,13 +85,9 @@ export function CrossMonthPage() {
       )}
 
       {isLoading ? (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-500">
-          載入中…
-        </div>
+        <LoadingState label="載入跨月資料…" />
       ) : scheduleEmployees.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center text-gray-500">
-          尚無員工
-        </div>
+        <EmptyState title="尚無員工" description="請先到員工管理新增員工，才能設定跨月銜接" />
       ) : (
         <CrossMonthForm
           employees={scheduleEmployees}
@@ -109,7 +104,7 @@ export function CrossMonthPage() {
       )}
 
       <div>
-        <h3 className="mb-2 text-sm font-semibold text-gray-700">銜接預覽</h3>
+        <h3 className="mb-2 text-sm font-semibold text-slate-700">銜接預覽</h3>
         <CrossMonthPreview preview={preview} employees={scheduleEmployees} />
       </div>
     </div>

@@ -1,5 +1,52 @@
 # 飯店排班系統 — Release Notes
 
+## v1.3.0-beta（開發中）
+
+> 分支：`v1.3.0-beta`（從 `v1.2.3` 分出）
+> 計畫書：`PLAN-v1.3.0.md`
+> 範圍：只做前端資訊架構與操作體驗；**不動排班求解器、約束規則、班表資料格式**。
+
+### Phase 0（已完成）
+
+- 開 `v1.3.0-beta` 分支，`version.py = 1.3.0-beta`
+- baseline：`npm run build`、`npm run lint`、`tests/test_phase8.py` 全數通過
+
+### Phase 1：設計系統 + Layout/導覽（已完成）
+
+- **設計 token**（`tailwind.config.js`、`styles/globals.css`）
+  - 品牌色 `brand`（indigo 色階）、狀態色 `status`（success/warning/danger/info）
+  - 圓角 6/8/12/16、陰影 `card`/`popover`/`drawer`、字級 xs~2xl
+  - 全域 `:focus-visible` 焦點環、`.hs-card`、`.density-compact`（表格密度，Phase 2 使用）
+- **共用 UI 元件**（`components/ui/`）
+  - 新增：`page-header`、`card`、`section`、`toolbar`、`status-pill`、`badge`、
+    `empty-state`、`loading-state`（含 `Skeleton`）、`drawer`、`confirm-dialog`、`field`、`toast`
+  - `button` 增加 `danger` variant、`size`（sm/md/icon）與 `loading`
+  - `modal` 補上 Esc 關閉、focus trap、`aria-modal`/`aria-labelledby`、背景鎖捲動
+  - 狀態一律改為 lucide icon + 文字（原本的 🟡🟢🔒 emoji 移除）
+- **Sidebar**
+  - 分成「本月作業 / 資料設定 / 分析與輸出」三組
+  - 可收合成 64px icon 模式（記住上次狀態）、手機（< md）改為抽屜選單
+  - 導覽項目支援 badge；Phase 1 只顯示本月班表狀態（草稿／已發布／已鎖定）
+- **Header**
+  - 左側顯示目前頁面名稱（由路由決定，不再由各頁重複）
+  - 中間 `‹ 2026 年 10 月 ›` + 「本月」+ 班表狀態 pill；點年月可直接跳選
+  - 右側使用者選單：使用者名稱／飯店名稱／分館名稱（同 `branch_name` 設定）編輯、
+    「關閉系統」收進選單並改用確認對話框
+- **頁面套版**：6 頁都改用 `PageHeader` + 共用 loading／錯誤／空狀態；
+  排班表與房務班表移除重複的 `STATUS_META`；清空班表／清空大夜／鎖定、
+  刪除員工、覆蓋已發布班表改為 `ConfirmDialog`
+  - 版本歷史改為右側抽屜（`Drawer`），驗證／支援／大夜仍在表格下方，Phase 2 才搬
+
+### 尚未開始
+
+- Phase 2：班表／房務合併、右側抽屜（驗證/支援/大夜/版本）、`⋯` 收納破壞性動作
+- Phase 3：休假頁兩欄 + 求解抽屜、`/settings`（假別/跨月/求解參數/列印）、統計 KPI + tabs
+- Phase 4：無障礙、回歸、文件同步
+
+### 相容性
+
+- 後端 API、SQLite schema、PDF 輸出規則皆不變，beta 與 1.2.3 可共用同一份資料庫。
+
 ## v1.2.3（2026-10-29 正式版）
 
 > 對應 tag：`v1.2.3`

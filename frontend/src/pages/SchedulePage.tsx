@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { CalendarX, FileDown, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send, Paintbrush, CheckCheck, X } from 'lucide-react'
+import { CalendarX, CircleAlert, FileDown, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send, Paintbrush, CheckCheck, X } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
@@ -36,6 +36,12 @@ import { SupportRequestPanel } from '../components/support/SupportRequestPanel'
 import { DBackupRequestPanel } from '../components/night/DBackupRequestPanel'
 import { VersionHistoryDrawer } from '../components/schedule/VersionHistoryDrawer'
 import { Button } from '../components/ui/button'
+import { PageHeader } from '../components/ui/page-header'
+import { StatusPill } from '../components/ui/status-pill'
+import { Toolbar } from '../components/ui/toolbar'
+import { LoadingState } from '../components/ui/loading-state'
+import { EmptyState } from '../components/ui/empty-state'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { displayName } from '../utils/employee'
 import { getShiftStyle } from '../utils/shift'
 import { cn } from '../utils/cn'
@@ -44,12 +50,6 @@ import type { CellViolation } from '../api/schedules'
 
 function hasRealData(schedule: Record<string, string[]>): boolean {
   return Object.values(schedule).some((row) => row.some((s) => s && s !== 'OFF' && s !== 'EMPTY'))
-}
-
-const STATUS_META: Record<ScheduleStatus, { label: string; dot: string; cls: string }> = {
-  draft: { label: '草稿中', dot: '🟡', cls: 'bg-yellow-100 text-yellow-700' },
-  published: { label: '已發布', dot: '🟢', cls: 'bg-green-100 text-green-700' },
-  locked: { label: '已鎖定', dot: '🔒', cls: 'bg-gray-200 text-gray-700' },
 }
 
 const LT_PREFIX = 'LT:'
@@ -61,6 +61,7 @@ export function SchedulePage() {
   const [versionOpen, setVersionOpen] = useState(false)
   const [adjustOpen, setAdjustOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
+  const [confirmKind, setConfirmKind] = useState<'clear' | 'clear-night' | 'lock' | null>(null)
 
   // 快速連選／畫筆模式
   const [selectedTool, setSelectedTool] = useState<string | null>(null)
@@ -154,9 +155,7 @@ export function SchedulePage() {
   })
 
   function handleClearNight() {
-    if (window.confirm(`確定要清空 ${currentYear} 年 ${currentMonth} 月的大夜排班嗎？`)) {
-      clearNightMut.mutate()
-    }
+    setConfirmKind('clear-night')
   }
 
   const statusMut = useMutation({
@@ -173,14 +172,44 @@ export function SchedulePage() {
   })
 
   function handleClear() {
-    if (window.confirm(`確定要清空 ${currentYear} 年 ${currentMonth} 月的排班嗎？（保留大夜手動輸入）`)) {
-      clearMut.mutate()
-    }
+    setConfirmKind('clear')
   }
 
   function handleSetStatus(status: ScheduleStatus) {
-    if (status === 'locked' && !window.confirm('鎖定後該月份將唯讀，確定要鎖定嗎？')) return
+    if (status === 'locked') {
+      setConfirmKind('lock')
+      return
+    }
     statusMut.mutate(status)
+  }
+
+  function handleConfirmAction() {
+    const done = () => setConfirmKind(null)
+    if (confirmKind === 'clear') clearMut.mutate(undefined, { onSettled: done })
+    else if (confirmKind === 'clear-night') clearNightMut.mutate(undefined, { onSettled: done })
+    else if (confirmKind === 'lock') statusMut.mutate('locked', { onSettled: done })
+  }
+
+  const confirmContent: Record<
+    'clear' | 'clear-night' | 'lock',
+    { title: string; description: string; confirmLabel: string }
+  > = {
+    clear: {
+      title: `清空 ${currentYear} 年 ${currentMonth} 月排班？`,
+      description:
+        '將刪除本月所有班表（手動輸入的大夜會保留），同時清除本月支援請求，班表狀態回到草稿。此動作無法復原。',
+      confirmLabel: '清空排班',
+    },
+    'clear-night': {
+      title: `清空 ${currentYear} 年 ${currentMonth} 月大夜排班？`,
+      description: '將清除本月所有大夜格位與大夜假別紀錄，櫃台白天班不受影響。此動作無法復原。',
+      confirmLabel: '清空大夜',
+    },
+    lock: {
+      title: `鎖定 ${currentYear} 年 ${currentMonth} 月班表？`,
+      description: '鎖定後本月班表、休假與大夜皆為唯讀，需先解鎖才能修改。',
+      confirmLabel: '鎖定',
+    },
   }
 
   const empty = data ? !hasRealData(data.schedule) : false
@@ -188,7 +217,6 @@ export function SchedulePage() {
   const editingShift = editing && data ? data.schedule[editing.empName][editing.day - 1] : ''
   const editingLeaveCode = editing && data ? data.leave_details?.[editing.empName]?.[String(editing.day)] ?? null : null
   const status = data?.status ?? 'draft'
-  const statusMeta = STATUS_META[status]
 
   // 處理點擊格子
   function handleCellClick(empName: string, day: number) {
@@ -317,19 +345,16 @@ export function SchedulePage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-semibold text-gray-800">
-            {currentYear} 年 {currentMonth} 月 排班表
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.cls}`}>
-              {statusMeta.dot} {statusMeta.label}
-            </span>
-          </h2>
-          <p className="text-sm text-gray-500">
-            {selectedTool ? '畫筆連選模式：單擊格位即可快速改班' : '點擊格位可手動微調班次，或選取下方畫筆快速連改'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title={`${currentYear} 年 ${currentMonth} 月 班表`}
+        meta={<StatusPill status={status} />}
+        description={
+          selectedTool
+            ? '畫筆連選模式：單擊格位即可快速改班'
+            : '點擊格位可手動微調班次，或選取下方畫筆快速連改'
+        }
+        actions={
+          <>
           <Button
             variant="outline"
             onClick={() => setVersionOpen(true)}
@@ -384,12 +409,13 @@ export function SchedulePage() {
             <Trash2 className="mr-2 h-4 w-4" />
             清空大夜排班
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       {/* 快速手動調整工具列 */}
       {!isLoading && !isError && !empty && status !== 'locked' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/60 px-4 py-2.5 shadow-sm">
+        <Toolbar className="border-blue-200 bg-blue-50/60">
           <div className="flex flex-wrap items-center gap-2">
             <span className="flex items-center gap-1 text-xs font-semibold text-blue-900">
               <Paintbrush className="h-3.5 w-3.5" /> 快捷畫筆：
@@ -476,25 +502,32 @@ export function SchedulePage() {
               </Button>
             </div>
           )}
-        </div>
+        </Toolbar>
       )}
 
-      {isLoading && (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-500">載入中…</div>
-      )}
+      {isLoading && <LoadingState label="載入班表…" />}
       {isError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-8 text-center text-red-600">
-          載入失敗：{error instanceof Error ? error.message : '未知錯誤'}
-        </div>
+        <EmptyState
+          tone="danger"
+          icon={CircleAlert}
+          title="載入失敗"
+          description={error instanceof Error ? error.message : '未知錯誤'}
+        />
       )}
 
       {!isLoading && !isError && empty && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-16 text-center">
-          <CalendarX className="mb-3 h-12 w-12 text-gray-300" />
-          <p className="mb-1 text-lg font-medium text-gray-700">尚無排班資料</p>
-          <p className="mb-4 text-sm text-gray-500">請先執行排班引擎產生 {currentMonth} 月班表</p>
-          <Link to="/off-days"><Button><Sparkles className="mr-2 h-4 w-4" />前往排班</Button></Link>
-        </div>
+        <EmptyState
+          icon={CalendarX}
+          title="尚無排班資料"
+          description={`請先到「休假管理」執行排班引擎產生 ${currentMonth} 月班表`}
+          action={
+            <Link to="/off-days">
+              <Button>
+                <Sparkles className="mr-2 h-4 w-4" />前往排班
+              </Button>
+            </Link>
+          }
+        />
       )}
 
       {!isLoading && !isError && !empty && data && (
@@ -613,6 +646,16 @@ export function SchedulePage() {
           onClose={() => setExportOpen(false)}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmKind !== null}
+        title={confirmKind ? confirmContent[confirmKind].title : ''}
+        description={confirmKind ? confirmContent[confirmKind].description : undefined}
+        confirmLabel={confirmKind ? confirmContent[confirmKind].confirmLabel : '確定'}
+        loading={clearMut.isPending || clearNightMut.isPending || statusMut.isPending}
+        onCancel={() => setConfirmKind(null)}
+        onConfirm={handleConfirmAction}
+      />
     </div>
   )
 }

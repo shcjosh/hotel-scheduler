@@ -3,14 +3,14 @@ import { Sidebar } from './Sidebar'
 import { Header } from './Header'
 import { UpdateBanner } from './UpdateBanner'
 
-export function Layout({ title }: { title: string }) {
+export function Layout() {
   return (
-    <div className="flex h-full w-full">
+    <div className="flex h-full w-full overflow-hidden bg-slate-50">
       <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Header title={title} />
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <Header />
         <UpdateBanner />
-        <main className="flex-1 overflow-auto bg-gray-50 p-6">
+        <main className="hs-scroll flex-1 overflow-auto p-4 md:p-6">
           <Outlet />
         </main>
       </div>

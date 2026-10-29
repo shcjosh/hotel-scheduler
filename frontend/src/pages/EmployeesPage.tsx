@@ -1,17 +1,24 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { UserPlus, ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, CircleAlert, UserPlus } from 'lucide-react'
 import { getEmployees, createEmployee, updateEmployee, deleteEmployee, reorderEmployees } from '../api/employees'
 import type { EmployeePayload } from '../api/employees'
 import { updateRuleOverrides, type NightRuleState } from '../api/night'
 import { EmployeeList } from '../components/employee/EmployeeList'
 import { EmployeeForm } from '../components/employee/EmployeeForm'
 import { Button } from '../components/ui/button'
+import { PageHeader } from '../components/ui/page-header'
+import { Badge } from '../components/ui/badge'
+import { LoadingState } from '../components/ui/loading-state'
+import { EmptyState } from '../components/ui/empty-state'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
+import { useToast } from '../hooks/useToast'
 import { displayName } from '../utils/employee'
 import type { Employee } from '../types'
 
 export function EmployeesPage() {
   const queryClient = useQueryClient()
+  const toast = useToast()
   const { data: employees = [], isLoading, isError, error } = useQuery({
     queryKey: ['employees', 'all'],
     queryFn: () => getEmployees(true),
@@ -20,6 +27,7 @@ export function EmployeesPage() {
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
   const [showResigned, setShowResigned] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
 
   const activeEmployees = employees.filter((e) => e.is_active === 1 && !e.resign_date)
   const resignedEmployees = employees.filter((e) => e.resign_date || e.is_active === 0)
@@ -57,24 +65,30 @@ export function EmployeesPage() {
         })
         await updateRuleOverrides(emp.id, { ignore_all: nightRules.ignore_all })
       } catch (e) {
-        window.alert(
-          `員工已儲存，但大夜規則開關儲存失敗：${e instanceof Error ? e.message : '未知錯誤'}\n請重新編輯該員工再調整規則開關。`,
-        )
+        toast('員工已儲存，但大夜規則開關儲存失敗', {
+          tone: 'error',
+          description: `${e instanceof Error ? e.message : '未知錯誤'}（請重新編輯該員工調整規則開關）`,
+        })
       }
     }
   }
-  async function handleDelete(emp: Employee) {
-    if (
-      !window.confirm(
-        `確定要「刪除」${displayName(emp)} 嗎？\n\n刪除會永久移除，且僅限沒有任何班表/休假紀錄的員工。\n若要保留歷史班表，請改用「設離職」。`,
-      )
-    )
-      return
+  function handleDelete(emp: Employee) {
+    setDeleteTarget(emp)
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
     try {
-      await deleteEmployee(emp.id)
+      await deleteEmployee(deleteTarget.id)
       queryClient.invalidateQueries({ queryKey: ['employees'] })
+      toast(`已刪除 ${displayName(deleteTarget)}`)
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : '刪除失敗')
+      toast('刪除失敗', {
+        tone: 'error',
+        description: e instanceof Error ? e.message : '未知錯誤',
+      })
+    } finally {
+      setDeleteTarget(null)
     }
   }
 
@@ -86,13 +100,16 @@ export function EmployeesPage() {
     if (input === null) return
     const value = input.trim()
     if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-      window.alert('日期格式錯誤，請用 YYYY-MM-DD，例如 2026-09-30')
+      toast('日期格式錯誤，請用 YYYY-MM-DD，例如 2026-09-30', { tone: 'error' })
       return
     }
     try {
       await updateMut.mutateAsync({ id: emp.id, payload: { resign_date: value || null } })
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : '設定失敗')
+      toast('設定離職日失敗', {
+        tone: 'error',
+        description: e instanceof Error ? e.message : '未知錯誤',
+      })
     }
   }
 
@@ -108,26 +125,25 @@ export function EmployeesPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800">員工管理</h2>
-          <p className="text-sm text-gray-500">管理員工資料、順序、角色與可用班次</p>
-        </div>
-        <Button onClick={openCreate}>
-          <UserPlus className="mr-2 h-4 w-4" />
-          新增員工
-        </Button>
-      </div>
+      <PageHeader
+        title="員工管理"
+        description="管理員工資料、順序、角色與可用班次"
+        actions={
+          <Button onClick={openCreate}>
+            <UserPlus className="mr-2 h-4 w-4" />
+            新增員工
+          </Button>
+        }
+      />
 
-      {isLoading && (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-500">
-          載入中…
-        </div>
-      )}
+      {isLoading && <LoadingState label="載入員工資料…" />}
       {isError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-600">
-          載入失敗：{error instanceof Error ? error.message : '未知錯誤'}
-        </div>
+        <EmptyState
+          tone="danger"
+          icon={CircleAlert}
+          title="載入失敗"
+          description={error instanceof Error ? error.message : '未知錯誤'}
+        />
       )}
       {!isLoading && !isError && (
         <>
@@ -153,9 +169,7 @@ export function EmployeesPage() {
                   <ChevronRight className="h-4 w-4" />
                 )}
                 已離職 / 已停用員工
-                <span className="rounded bg-gray-200 px-1.5 py-0.5 text-xs text-gray-600">
-                  {resignedEmployees.length}
-                </span>
+                <Badge>{resignedEmployees.length}</Badge>
               </button>
               {showResigned && (
                 <EmployeeList
@@ -176,6 +190,15 @@ export function EmployeesPage() {
         employee={editing}
         onClose={() => setFormOpen(false)}
         onSubmit={handleSubmit}
+      />
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={deleteTarget ? `刪除 ${displayName(deleteTarget)}？` : ''}
+        description="刪除會永久移除員工，且僅限沒有任何班表／休假紀錄者。若要保留歷史班表，請改用「設離職」。"
+        confirmLabel="永久刪除"
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={confirmDelete}
       />
     </div>
   )

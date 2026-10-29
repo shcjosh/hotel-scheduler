@@ -28,6 +28,9 @@ import { ConsecutiveOffCounter } from '../components/off-days/ConsecutiveOffCoun
 import { LeaveTypeManager } from '../components/off-days/LeaveTypeManager'
 import { SolveResult } from '../components/off-days/SolveResult'
 import { AnnualLeavePanel } from '../components/off-days/AnnualLeavePanel'
+import { PageHeader } from '../components/ui/page-header'
+import { EmptyState } from '../components/ui/empty-state'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { cn } from '../utils/cn'
 import type { LeaveType, SolveResponse } from '../types'
 
@@ -46,6 +49,7 @@ export function OffDaysPage() {
   const [solving, setSolving] = useState(false)
   const [result, setResult] = useState<SolveResponse | null>(null)
   const [solveError, setSolveError] = useState<string | null>(null)
+  const [confirmSolve, setConfirmSolve] = useState(false)
   const [managerCap, setManagerCap] = useState('')
   const managerCapKey = `manager_backup_cap:${year}:${month}`
 
@@ -170,12 +174,15 @@ export function OffDaysPage() {
   }
 
   async function handleSolve() {
-    if (
-      statusData?.status === 'published' &&
-      !window.confirm('目前班表已發布，重新排班將覆蓋現有班表，確定要繼續嗎？')
-    ) {
+    if (statusData?.status === 'published') {
+      setConfirmSolve(true)
       return
     }
+    await runSolve()
+  }
+
+  async function runSolve() {
+    setConfirmSolve(false)
     setSolving(true)
     setSolveError(null)
     setResult(null)
@@ -206,54 +213,50 @@ export function OffDaysPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-800">休假管理</h2>
-          <p className="text-sm text-gray-500">
-            {year} 年 {month} 月 — 指定休假與各類請假
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {empSummary && (
-            <ConsecutiveOffCounter count={empSummary.consecutive_off_count} />
-          )}
-          <label className="flex items-center gap-2 text-sm text-gray-700" title="排班時啟用 D 班備援：備援日由 C+D 備援／管理職改排 D 班">
-            <input
-              type="checkbox"
-              checked={solveEnableDBackup}
-              onChange={(e) => setSolveEnableDBackup(e.target.checked)}
-              className="h-4 w-4"
-            />
-            啟用 D 班備援邏輯
-          </label>
-          <label
-            className="flex items-center gap-1.5 text-sm text-gray-700"
-            title="店長每月最多可被排 A/C 的天數（每位管理職各自計算）；留空表示不限制，超過上限的部分會自動轉為支援請求"
-          >
-            店長最多卡班
-            <input
-              type="number"
-              min={0}
-              value={managerCap}
-              onChange={(e) => setManagerCap(e.target.value)}
-              onBlur={() => {
-                updateSetting(managerCapKey, managerCap.trim()).catch(() => {})
-              }}
-              placeholder="不限"
-              className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
-            />
-            天（A/C）
-          </label>
-          <button
-            onClick={handleSolve}
-            disabled={solving}
-            className="inline-flex items-center justify-center rounded-md bg-indigo-600 px-6 py-2.5 text-base font-semibold text-white shadow hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {solving ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Sparkles className="mr-2 h-5 w-5" />}
-            {solving ? '排班中…' : '開始排班'}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={`${year} 年 ${month} 月 休假管理`}
+        meta={empSummary && <ConsecutiveOffCounter count={empSummary.consecutive_off_count} />}
+        description="指定休假、各類請假與本月排班；右側可調整求解參數後開始排班"
+        actions={
+          <>
+            <label className="flex items-center gap-2 text-sm text-gray-700" title="排班時啟用 D 班備援：備援日由 C+D 備援／管理職改排 D 班">
+              <input
+                type="checkbox"
+                checked={solveEnableDBackup}
+                onChange={(e) => setSolveEnableDBackup(e.target.checked)}
+                className="h-4 w-4"
+              />
+              啟用 D 班備援邏輯
+            </label>
+            <label
+              className="flex items-center gap-1.5 text-sm text-gray-700"
+              title="店長每月最多可被排 A/C 的天數（每位管理職各自計算）；留空表示不限制，超過上限的部分會自動轉為支援請求"
+            >
+              店長最多卡班
+              <input
+                type="number"
+                min={0}
+                value={managerCap}
+                onChange={(e) => setManagerCap(e.target.value)}
+                onBlur={() => {
+                  updateSetting(managerCapKey, managerCap.trim()).catch(() => {})
+                }}
+                placeholder="不限"
+                className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+              />
+              天（A/C）
+            </label>
+            <button
+              onClick={handleSolve}
+              disabled={solving}
+              className="inline-flex items-center justify-center rounded-md bg-brand-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {solving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              {solving ? '排班中…' : '開始排班'}
+            </button>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-end gap-x-5 gap-y-3">
         <div className="flex items-end gap-1.5">
@@ -369,15 +372,16 @@ export function OffDaysPage() {
           onToggleDay={toggleDay}
         />
       ) : (
-        <div className="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center text-gray-500">
-          尚無員工
-        </div>
+        <EmptyState
+          title="尚無員工"
+          description="請先到員工管理新增員工，才能指定休假與排班"
+        />
       )}
 
       <AnnualLeavePanel employee={selectedEmp} />
 
       {summary && visibleEmployees.length > 0 && (
-        <div className="overflow-auto rounded-lg border border-gray-200 bg-white shadow-sm">
+        <div className="overflow-auto rounded-lg border border-slate-200 bg-white shadow-card">
           <table className="w-full text-sm">
             <thead className="bg-gray-100 text-gray-600">
               <tr>
@@ -432,6 +436,16 @@ export function OffDaysPage() {
         onCreate={handleCreateLeaveType}
         onUpdate={handleUpdateLeaveType}
         onDelete={handleDeleteLeaveType}
+      />
+
+      <ConfirmDialog
+        open={confirmSolve}
+        title="重新排班並覆蓋已發布班表？"
+        description="目前班表已發布，重新排班會覆蓋現有班表（系統會先建立版本快照）。"
+        confirmLabel="覆蓋並排班"
+        loading={solving}
+        onCancel={() => setConfirmSolve(false)}
+        onConfirm={runSolve}
       />
     </div>
   )
