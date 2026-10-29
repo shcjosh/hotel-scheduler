@@ -1,6 +1,6 @@
 # 飯店排班系統 (Hotel Shift Scheduler) — 規格書（現況）
 
-- 系統版本：`1.2.1`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
+- 系統版本：`1.2.3-beta`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
 - 本檔只描述**現況**（對應實際程式碼）。
 - 版本演進與歷史見 `RELEASE-NOTES.md`；未實作方向與備選方案見 `ROADMAP.md`。
 
@@ -290,6 +290,8 @@
   成功存班表+自動快照+solve meta；locked 403；失敗自動產生支援請求，見 §13.3；
   店長卡班上限由每月設定 `manager_backup_cap:{y}:{m}` 讀入）
 - **設定** `settings`：GET `/settings`、GET/PUT `/settings/{key}`
+  （列印相關：`branch_name` 抬頭第二行、`print_notes` 頁尾注意事項、
+  `month_notes:{y}:{m}` 每月節日 JSON，key 形如 `month_notes:2026:10`）
 - **統計/匯出**：GET `/stats/{y}/{m}`（含上月連休次數與 S1~S10 細項）、
   GET `/export/{y}/{m}/csv`、GET `/export/{y}/{m}/json`、
   GET `/database/info`（整庫大小/筆數/更新時間）、
@@ -305,7 +307,7 @@
 
 | 路由 | 頁面 | 重點 |
 |---|---|---|
-| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休/假別 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例；選項：整週模式、顯示房務） |
+| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休/假別 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 列印預覽（見 §12.1） |
 | `/housekeeping` | HousekeepingPage 房務班表 | 房務專屬月班表：畫筆（A／假別／休）連選後批次套用、**不做規則檢測**；無覆蓋列/支援/大夜面板；下方房務人員選人 + **特休紀錄面板（週年制，系統外特休維護）**；清空當月房務（不動櫃台，並清除房務假別紀錄）；與櫃台共用月狀態 |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
 | `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）**；大夜假別新增/移除會同步排班表格位 |
@@ -315,6 +317,30 @@
 - 狀態管理：Zustand `uiStore`（currentYear/currentMonth）；資料：TanStack Query
 - Lifecycle：`lifecycle.ts` 僅於 PROD build 啟動（見 §15）
 - `UpdateBanner`：`/updates/check` 有新版時顯示提示橫幅
+
+### 12.1 PDF 列印預覽（`PrintPreviewModal`）
+
+從排班表頁「匯出 PDF」開啟全螢幕預覽，不再 `window.open` + 自動列印。
+
+- **休假框線**（`utils/offDayMarks.ts`）：
+  - 以週一～週日為一週；該週第 1 個 `OFF`＝單斜線 `/`，第 2 個（含以上）＝交叉 `X`
+  - 只處理 `OFF`（含指定休）；`SPECIAL` 仍顯示「特N／事／病／自訂假別」
+  - 一定載入前後月班表計算順序，月頭/月尾被切掉的週才不會誤判
+  - 上月尚無班表時，讀 `cross-month` 的上月末 links 補足第一週順序
+    （只在上月該員工沒有任何非 EMPTY 班表時使用，避免與實際班表衝突）
+- **主管班**：`role=manager` 的 `M`／`EMPTY` 預設留白；頁尾圖例
+  「空白＝M 主管班 09:00-17:00」；可勾選顯示 `M`
+- **版面**：A4 橫式、8mm 邊界；兩列日期/星期、粗週框線（`#7030A0`）、
+  左側單位（櫃台/房務）＋類別（`tag` 或 店長/大夜/C+D）＋姓名（中文名＋暱稱）；
+  櫃台與房務同一張表；表頭 `thead` 跨頁重複
+- **頁尾**：上班時段、休假/假別圖例、`print_notes` 注意事項、
+  製表人（`user_name`）／單位主管／會計簽名欄、列印日期
+- **選項**：整週模式、顯示房務、主管班顯示 M、節日/備註列、週末淺灰底、
+  「新訂加續住」空白列
+- **節日/備註**：`month_notes:{y}:{m}`（JSON `{"1":"元旦","6":"主會"}`），
+  `HolidayNotesModal` 逐日新增/修改/刪除；連續相同文字以 colspan 合併
+- **實作**：`utils/printSchedule.ts` 只產生 HTML 字串；`PrintPreviewModal` 用
+  `<iframe srcDoc>` 即時預覽，按鈕才呼叫 `iframe.contentWindow.print()`
 
 ## 13. 排班引擎
 

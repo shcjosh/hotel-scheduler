@@ -7,7 +7,7 @@ import { getEmployees } from '../api/employees'
 import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
 import { getLeaveTypes } from '../api/leaveTypes'
 import { getSettings } from '../api/settings'
-import { ExportPdfModal } from '../components/schedule/ExportPdfModal'
+import { PrintPreviewModal } from '../components/schedule/PrintPreviewModal'
 import {
   setScheduleStatus,
   getSnapshots,
@@ -88,6 +88,7 @@ export function SchedulePage() {
     queryFn: () => getSettings(),
   })
   const hotelName = settings?.hotel_name ?? '清翼居府中館'
+  const userName = settings?.user_name ?? 'Josh Wang'
   const { data: snapshots = [] } = useQuery({
     queryKey: ['snapshots', currentYear, currentMonth],
     queryFn: () => getSnapshots(currentYear, currentMonth),
@@ -600,7 +601,7 @@ export function SchedulePage() {
       )}
 
       {exportOpen && data && (
-        <ExportPdfModal
+        <PrintPreviewModal
           open={exportOpen}
           year={currentYear}
           month={currentMonth}
@@ -608,6 +609,7 @@ export function SchedulePage() {
           employees={employees}
           leaveTypes={leaveTypes}
           hotelName={hotelName}
+          userName={userName}
           onClose={() => setExportOpen(false)}
         />
       )}
