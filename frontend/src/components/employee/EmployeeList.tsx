@@ -50,6 +50,7 @@ export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, 
                       disabled={idx === 0}
                       onClick={() => onMoveUp?.(idx)}
                       className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 disabled:opacity-20"
+                      aria-label="上移"
                       title="上移"
                     >
                       <ArrowUp className="h-3.5 w-3.5" />
@@ -59,6 +60,7 @@ export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, 
                       disabled={idx === employees.length - 1}
                       onClick={() => onMoveDown?.(idx)}
                       className="rounded p-1 text-gray-400 hover:bg-gray-200 hover:text-gray-700 disabled:opacity-20"
+                      aria-label="下移"
                       title="下移"
                     >
                       <ArrowDown className="h-3.5 w-3.5" />
@@ -135,6 +137,7 @@ export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, 
                   <button
                     onClick={() => onEdit(emp)}
                     className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-indigo-600"
+                    aria-label="編輯員工"
                     title="編輯"
                   >
                     <Pencil className="h-4 w-4" />
@@ -142,6 +145,7 @@ export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, 
                   <button
                     onClick={() => onResign?.(emp)}
                     className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-amber-600"
+                    aria-label={emp.resign_date ? '取消離職或修改最後上班日' : '設定離職日'}
                     title={emp.resign_date ? '取消離職 / 修改最後上班日' : '設離職（保留歷史班表）'}
                   >
                     <UserMinus className="h-4 w-4" />
@@ -149,6 +153,7 @@ export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, 
                   <button
                     onClick={() => onDelete(emp)}
                     className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-red-600"
+                    aria-label="刪除員工"
                     title="刪除（僅限沒有班表紀錄者）"
                   >
                     <Trash2 className="h-4 w-4" />

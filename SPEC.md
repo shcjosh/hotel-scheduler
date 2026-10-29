@@ -318,7 +318,11 @@ v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書
 
 - 共用 UI：`components/ui/`（PageHeader、Card、Section、Toolbar、Tabs、StatusPill、Badge、
   EmptyState、LoadingState、Drawer、ConfirmDialog、Toast、Field、Button、Modal）；
-  破壞性操作一律 `ConfirmDialog`，Modal/Drawer 具 Esc、focus trap、`aria-modal`
+  破壞性操作一律 `ConfirmDialog`，Modal/Drawer/列印預覽具 Esc、focus trap、`aria-modal`
+- 鍵盤：班表方向鍵移動／Shift 範圍／Home-End／Enter 編輯／Esc 取消；
+  Ctrl/Cmd+Z 復原、Ctrl/Cmd+Shift+Z 重做（暫存層）；分頁可用左右方向鍵切換
+- 無障礙：狀態以圖示＋文字表示（不用 emoji）、圖示按鈕有 `aria-label`、
+  月曆格有 `aria-pressed` 與日期說明、列印預覽有 `aria-label` 與焦點回收
 - 狀態管理：Zustand `uiStore`（currentYear/currentMonth、側欄收合、求解參數）；
   資料：TanStack Query
 - 靜態檔：後端以 SPA fallback 服務（無副檔名且非 `/api/*` 的路徑回 `index.html`），
@@ -466,3 +470,8 @@ cd backend && .venv/bin/python tests/seed_dev.py
    時視為資料不足，H9 退回 H2 式判斷（不誤加休假）；可於跨月設定頁重新「自動載入」補齊。
 4. 員工人數 >7 或規則組合極端時可能無解；診斷會給出可能原因與建議。
 5. `updates/check` 依賴 GitHub Releases 的公開 API（離線環境僅回 error 欄位）。
+6. **手機以唯讀檢視為主**（v1.3.0）：班表可橫向捲動、導覽為漢堡選單，
+   但未針對小螢幕做完整編輯最佳化（格位編輯、畫筆仍以桌機為主）。
+7. 員工編輯仍是 Modal（未改抽屜）；表單欄位未全面改用共用 `Field` 樣式（Phase 4 保留）。
+8. `tests/test_phase8.py` 的「調整求解」偶發失敗（CP-SAT 非決定性，約 1/5），
+   重跑即過；尚未區分 INFEASIBLE 與 UNKNOWN（逾時）的錯誤訊息。

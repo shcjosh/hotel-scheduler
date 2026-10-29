@@ -42,6 +42,7 @@ export function ShiftCell({
       onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
       disabled={disabled}
+      aria-label={`${label}${pending ? '（尚未儲存）' : ''}${disabled ? '（已鎖定）' : ''}`}
       className={cn(
         'relative flex items-center justify-center rounded text-xs font-semibold transition',
         !inline && style.bg,

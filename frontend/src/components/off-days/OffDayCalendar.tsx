@@ -58,6 +58,14 @@ export function OffDayCalendar({
             <button
               key={day}
               onClick={() => onToggleDay(day)}
+              aria-pressed={designated || special}
+              aria-label={`${month} 月 ${day} 日${
+                designated
+                  ? '，指定休假'
+                  : special
+                    ? `，${leaveInfoByDay?.[day]?.label ?? '請假'}`
+                    : ''
+              }`}
               className={cn(
                 'relative flex aspect-square flex-col items-center justify-start rounded-md border p-1 transition hover:border-indigo-400 hover:shadow-sm',
                 weekend ? 'bg-gray-50' : 'bg-white',

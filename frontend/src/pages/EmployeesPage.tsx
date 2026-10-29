@@ -12,6 +12,8 @@ import { Badge } from '../components/ui/badge'
 import { LoadingState } from '../components/ui/loading-state'
 import { EmptyState } from '../components/ui/empty-state'
 import { ConfirmDialog } from '../components/ui/confirm-dialog'
+import { Modal } from '../components/ui/modal'
+import { Field, controlClassName } from '../components/ui/field'
 import { useToast } from '../hooks/useToast'
 import { displayName } from '../utils/employee'
 import type { Employee } from '../types'
@@ -28,6 +30,9 @@ export function EmployeesPage() {
   const [editing, setEditing] = useState<Employee | null>(null)
   const [showResigned, setShowResigned] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null)
+  const [resignTarget, setResignTarget] = useState<Employee | null>(null)
+  const [resignDate, setResignDate] = useState('')
+  const [savingResign, setSavingResign] = useState(false)
 
   const activeEmployees = employees.filter((e) => e.is_active === 1 && !e.resign_date)
   const resignedEmployees = employees.filter((e) => e.resign_date || e.is_active === 0)
@@ -92,24 +97,30 @@ export function EmployeesPage() {
     }
   }
 
-  async function handleResign(emp: Employee) {
-    const input = window.prompt(
-      `設定「${displayName(emp)}」的最後上班日（YYYY-MM-DD）；留空 = 取消離職。\n離職月之後的班表將不再顯示此人。`,
-      emp.resign_date ?? '',
-    )
-    if (input === null) return
-    const value = input.trim()
+  function openResign(emp: Employee) {
+    setResignTarget(emp)
+    setResignDate(emp.resign_date ?? '')
+  }
+
+  async function saveResign() {
+    if (!resignTarget) return
+    const value = resignDate.trim()
     if (value && !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       toast('日期格式錯誤，請用 YYYY-MM-DD，例如 2026-09-30', { tone: 'error' })
       return
     }
+    setSavingResign(true)
     try {
-      await updateMut.mutateAsync({ id: emp.id, payload: { resign_date: value || null } })
+      await updateMut.mutateAsync({ id: resignTarget.id, payload: { resign_date: value || null } })
+      toast(value ? `已設定 ${displayName(resignTarget)} 的最後上班日` : '已取消離職設定')
+      setResignTarget(null)
     } catch (e) {
       toast('設定離職日失敗', {
         tone: 'error',
         description: e instanceof Error ? e.message : '未知錯誤',
       })
+    } finally {
+      setSavingResign(false)
     }
   }
 
@@ -151,7 +162,7 @@ export function EmployeesPage() {
             employees={activeEmployees}
             onEdit={openEdit}
             onDelete={handleDelete}
-            onResign={handleResign}
+            onResign={openResign}
             onMoveUp={(idx) => move(idx, -1)}
             onMoveDown={(idx) => move(idx, 1)}
           />
@@ -176,7 +187,7 @@ export function EmployeesPage() {
                   employees={resignedEmployees}
                   onEdit={openEdit}
                   onDelete={handleDelete}
-                  onResign={handleResign}
+                  onResign={openResign}
                   reorderable={false}
                 />
               )}
@@ -200,6 +211,35 @@ export function EmployeesPage() {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={confirmDelete}
       />
+
+      <Modal
+        open={resignTarget !== null}
+        title={resignTarget ? `設定 ${displayName(resignTarget)} 的離職日` : '設定離職日'}
+        description="離職日 = 最後上班日；留空並儲存即取消離職。離職月之後的班表將不再顯示此人。"
+        onClose={() => setResignTarget(null)}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setResignTarget(null)} disabled={savingResign}>
+              取消
+            </Button>
+            <Button onClick={saveResign} loading={savingResign}>
+              儲存
+            </Button>
+          </>
+        }
+      >
+        <Field
+          label="最後上班日"
+          hint="格式 YYYY-MM-DD，例如 2026-09-30；留空 = 取消離職。"
+        >
+          <input
+            type="date"
+            value={resignDate}
+            onChange={(event) => setResignDate(event.target.value)}
+            className={controlClassName}
+          />
+        </Field>
+      </Modal>
     </div>
   )
 }

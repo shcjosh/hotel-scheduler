@@ -21,9 +21,11 @@ export function useFocusTrap(
   ref: RefObject<HTMLElement | null>,
   active: boolean,
   onEscape?: () => void,
+  options?: { lockScroll?: boolean },
 ) {
   const escapeRef = useRef(onEscape)
   escapeRef.current = onEscape
+  const lockScroll = options?.lockScroll ?? true
 
   useEffect(() => {
     if (!active) return
@@ -41,8 +43,10 @@ export function useFocusTrap(
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        // 沒有指定 onEscape 時不要攔截，讓外層（例如列印預覽）自己處理
+        if (!escapeRef.current) return
         event.stopPropagation()
-        escapeRef.current?.()
+        escapeRef.current()
         return
       }
       if (event.key !== 'Tab') return
@@ -65,12 +69,12 @@ export function useFocusTrap(
 
     document.addEventListener('keydown', handleKeyDown, true)
     const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    if (lockScroll) document.body.style.overflow = 'hidden'
 
     return () => {
       document.removeEventListener('keydown', handleKeyDown, true)
-      document.body.style.overflow = previousOverflow
+      if (lockScroll) document.body.style.overflow = previousOverflow
       previous?.focus?.()
     }
-  }, [active, ref])
+  }, [active, ref, lockScroll])
 }

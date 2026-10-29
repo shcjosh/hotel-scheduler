@@ -181,6 +181,7 @@ export function SupportRequestPanel({
                           <button
                             onClick={() => setResolveId(request.id)}
                             className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
+                            aria-label="標記為已解決"
                             title="解決"
                           >
                             <Check className="h-4 w-4" />
@@ -188,6 +189,7 @@ export function SupportRequestPanel({
                           <button
                             onClick={() => onUpdate(request.id, 'ignored', null)}
                             className="rounded p-1 text-slate-400 hover:bg-slate-100"
+                            aria-label="忽略這筆支援請求"
                             title="忽略"
                           >
                             <X className="h-4 w-4" />
@@ -197,6 +199,7 @@ export function SupportRequestPanel({
                       <button
                         onClick={() => onRemove(request.id)}
                         className="rounded p-1 text-red-400 hover:bg-red-50"
+                        aria-label="刪除支援請求"
                         title="刪除"
                       >
                         <Trash2 className="h-4 w-4" />

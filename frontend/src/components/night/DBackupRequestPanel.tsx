@@ -117,6 +117,7 @@ export function DBackupRequestPanel({
                     <button
                       onClick={() => onRemove(request.id)}
                       className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                      aria-label="刪除備援日"
                       title="刪除"
                     >
                       <Trash2 className="h-4 w-4" />

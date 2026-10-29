@@ -1,6 +1,6 @@
 # 飯店排班系統 — Release Notes
 
-## v1.3.0-beta（開發中）
+## v1.3.0-beta（測試版，待實機驗證）
 
 > 分支：`v1.3.0-beta`（從 `v1.2.3` 分出）
 > 計畫書：`PLAN-v1.3.0.md`
@@ -36,10 +36,6 @@
   排班表與房務班表移除重複的 `STATUS_META`；清空班表／清空大夜／鎖定、
   刪除員工、覆蓋已發布班表改為 `ConfirmDialog`
   - 版本歷史改為右側抽屜（`Drawer`），驗證／支援／大夜仍在表格下方，Phase 2 才搬
-
-### 尚未開始
-
-- Phase 4：無障礙、回歸、文件同步
 
 ### Phase 2：班表／房務合併 + 右側抽屜（已完成）
 
@@ -89,9 +85,29 @@
 - **導覽**：資料設定新增「排班規則」、移除「跨月設定」；頁面標題改為「休假與排班」
 - **移除**：`pages/CrossMonthPage.tsx`、`components/off-days/LeaveTypeManager.tsx`（改為設定頁面板）
 
-### 尚未開始（續）
+### Phase 4：Polish／無障礙／回歸（已完成）
 
-- Phase 4：無障礙、回歸、文件同步
+- **無障礙**
+  - 列印預覽（`PrintPreviewModal`）加 focus trap、`aria-label`，關閉後焦點回到原按鈕；
+    Esc 與背景鎖捲動沿用原本行為（避免雙重鎖定）
+  - 月曆格加 `aria-pressed` 與日期說明（例如「8 月 5 日，指定休假」）
+  - 班表格位加 `aria-label`（含尚未儲存／已鎖定狀態）
+  - 分頁可用左右方向鍵切換（`ui/tabs.tsx`）
+- **最後一個 `window.prompt` 移除**：員工「設離職」改成 Modal + 日期欄位（`Field`），
+  含格式驗證、Loading 與 Toast；整庫匯入也在 Phase 3 改為 `ConfirmDialog`
+- **回歸**
+  - `npm run build`、`npm run lint`（0 warning）
+  - 後端 `backend/tests/` 全數腳本逐檔執行
+  - Headless Chromium 走完全部路由＋PDF 預覽＋鍵盤／Esc＋手機 390px，主控台 0 error
+- **文件**：README 增加「介面操作小技巧」；SPEC 更新 §12（鍵盤／無障礙）、
+  §17（手機唯讀、員工表單仍為 Modal、test_phase8 偶發）
+
+### 已知／留待後續
+
+- 員工編輯仍是 Modal（未改抽屜）、表單未全面改用 `Field`
+- 手機以唯讀檢視為主，未做小螢幕完整編輯
+- `tests/test_phase8.py` 的調整求解偶發失敗（CP-SAT 非決定性），錯誤訊息未區分
+  INFEASIBLE 與 UNKNOWN（逾時）
 
 ### 相容性
 
