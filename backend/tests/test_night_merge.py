@@ -16,9 +16,11 @@ from sqlalchemy import select
 from app.database.connection import SessionLocal, init_db
 from app.database.models import (
     Employee,
+    LeaveType,
     NightRuleOverride,
     PreviousMonthLink,
     ScheduleEntry,
+    SpecialLeave,
 )
 from app.scheduler import data_loader, engine
 from app.services import schedule_service
@@ -32,6 +34,15 @@ chang = Employee(name="張先生", role="general", available_shifts='["A","B","C
 lin = Employee(name="林備援", role="cd_backup", available_shifts='["C","D"]', preferred_shift="C", scheduling_mode="auto")
 chen = Employee(name="陳大夜", role="night", available_shifts='["D"]', preferred_shift="D", scheduling_mode="manual")
 db.add_all([wang, lee, chang, lin, chen])
+db.add(
+    LeaveType(
+        code="custom_typhoon",
+        name="颱風假",
+        color_bg="#dbeafe",
+        color_text="#1e3a8a",
+        is_builtin=0,
+    )
+)
 db.commit()
 
 prev = {
@@ -82,12 +93,17 @@ schedule_service.upsert_cell(db, chen.id, 2026, 8, 1, "OFF")
 db.refresh(e)
 check("2. 大夜改 OFF，source 仍為 night_input", e.shift == "OFF" and e.source == "night_input")
 
-# 3. 大夜排特休 → 擋
-try:
-    schedule_service.upsert_cell(db, chen.id, 2026, 8, 2, "SPECIAL")
-    check("3. 大夜排 SPECIAL 被擋", False)
-except ValueError:
-    check("3. 大夜排 SPECIAL 被擋", True)
+# 3. 大夜排自訂假別（颱風假）→ 成功，並寫入 special_leaves
+schedule_service.upsert_cell(
+    db, chen.id, 2026, 8, 2, "SPECIAL", leave_type="custom_typhoon"
+)
+e_leave = entry(chen.id, 2)
+leave = db.scalars(select(SpecialLeave).where(
+    SpecialLeave.employee_id == chen.id, SpecialLeave.day == 2
+)).first()
+check("3. 大夜排颱風假成功且寫入 special_leaves",
+      e_leave is not None and e_leave.shift == "SPECIAL" and e_leave.source == "night_input"
+      and leave is not None and leave.leave_type == "custom_typhoon")
 
 # 4. 大夜排 A → 擋
 try:
@@ -135,15 +151,18 @@ if result.success:
     ok10 = all(row[d - 1] == NIGHT_PATTERN[d] for d in NIGHT_PATTERN)
     check("10. 排班後大夜手動班次逐日保留", ok10)
 
-    # 情境 2：畫筆對調（5: D→OFF、4: OFF→D）→ 再排 → 修改保留
-    schedule_service.upsert_cell(db, chen.id, 2026, 8, 5, "OFF")
+    # 情境 2：畫筆調整（4: OFF→D、5: D→颱風假）→ 再排 → 修改保留
+    schedule_service.upsert_cell(
+        db, chen.id, 2026, 8, 5, "SPECIAL", leave_type="custom_typhoon"
+    )
     schedule_service.upsert_cell(db, chen.id, 2026, 8, 4, "D")
     data2 = data_loader.load(db, 2026, 8)
     result2 = engine.solve(data2, max_time=30)
     check("11. 二次求解成功", result2.success)
     if result2.success:
         row2 = result2.schedule["陳大夜"]
-        check("12. 對調後（4=D, 5=OFF）再排班仍保留", row2[3] == "D" and row2[4] == "OFF")
+        check("12. 大夜假別再排班仍保留（4=D, 5=SPECIAL）",
+              row2[3] == "D" and row2[4] == "SPECIAL")
 
 print("=" * 70)
 print("D. 清空班表保留大夜")

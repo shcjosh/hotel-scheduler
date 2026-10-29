@@ -89,7 +89,9 @@ def save_night_entry(
     req: NightEntryRequest, db: Session = Depends(get_db),
 ):
     try:
-        night_service.save_night_entry(db, req.employee_id, year, month, day, req.shift)
+        night_service.save_night_entry(
+            db, req.employee_id, year, month, day, req.shift, req.leave_type
+        )
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

@@ -52,7 +52,7 @@
 | 角色 | role 值 | 排班方式 | 可上班班次 | 說明 |
 |---|---|---|---|---|
 | 日班櫃台 | `general` | 自動 | A/B/C | 主要排班對象 |
-| 大夜專職 | `night` | 手動（格位輸入，source=night_input） | D/OFF | 班表上直接輸入；求解器豁免 H2/H3/H4/H8/H9/H12（格位固定，見 §4 末） |
+| 大夜專職 | `night` | 手動（格位輸入，source=night_input） | D/OFF/假別 | 班表上直接輸入；假別寫入 `SPECIAL` + `special_leaves`（含颱風假等自訂假別）；求解器豁免 H2/H3/H4/H8/H9/H12（格位固定，見 §4 末） |
 | C+D 備援 | `cd_backup` | 自動 | C/D（偏好 C） | D 備援日被指派時固定排 D |
 | 管理職 | `manager` | 自動 | M/ABCD（偏好 M） | S8 權重鼓勵上 M；覆蓋不足時可備援（受店長卡班上限約束，見 §4） |
 | 外部支援 | 任意 + `tag` | 完全手動 | A1/C1/D1 | 帶標籤（如「二館」）員工：豁免所有個人規則、不參與求解，其支援班次計入當日覆蓋 |
@@ -101,8 +101,8 @@
 - **H11 D 班備援**：備援日被指派者固定排 D，且當日 C 班由他人遞補
   （無人可遞補 → 求解失敗）。
 - **H12 連休**：每人每月 1~2 次「連休」（定義見 §8）。
-- **H13 大夜固定**：大夜專職班次 = 班表上手動輸入值（source=night_input），
-  無輸入的日子視為 OFF。
+- **H13 大夜固定**：大夜專職班次 = 班表上手動輸入值（source=night_input，
+  可為 D/OFF/假別），無輸入的日子視為 OFF；假別以 SPECIAL 表示並視為休息日。
 - **H14 一天最多一個支援請求**：同日（day>0）最多只能有一筆支援請求（A/C 合計）。
   自動偵測缺班（`diagnose_support_needs` / `_coverage_gaps`）以「最小化需要支援的天數」
   為目標，同日 A、C 都缺時只產生一筆、**外部優先 A**（他們比較喜歡上 A 班）；
@@ -258,7 +258,7 @@
   （PUT 可設 `resign_date` 設離職；DELETE 為真刪，僅限無班表/休假歷史者，否則 400）
 - **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+leave_sequence+leave_base+status；
   `?group=front`（預設，排除房務）|`housekeeping`（只看房務））、
-  PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF、source 維持 night_input；
+  PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF/假別、source 維持 night_input；
   房務只允許 A/OFF/空、source=manual、跳過規則；鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
   DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input；`?group=housekeeping` 只清房務、
   不動櫃台、並清除房務假別紀錄；兩種清空**連同該月支援請求（手動/自動）全清**、
@@ -269,6 +269,7 @@
   GET/POST `/schedule-entries`、GET/PUT/DELETE `/schedule-entries/{id}`
 - **休假** `off_days`：GET `/off-days/{y}/{m}`、GET `/off-days/summary/{y}/{m}`（連休計數+run_days）、
   POST/DELETE `/off-days/designated/...`、POST/DELETE `/off-days/special/...`
+  （大夜假別會同步該日格位為 SPECIAL/OFF；鎖定月份 403）
 - **假別** `leave_types`：GET/POST `/leave-types`、PUT/DELETE `/leave-types/{code}`
 - **特休** `annual_leave`：GET `/annual-leave/{y}/{m}`（每人各週年期間額度/已用/剩餘
   + 該月半天紀錄；含房務）、PUT `/annual-leave/adjustment`（期初已用/額度覆寫）、
@@ -278,7 +279,8 @@
   GET `/snapshots/diff/{a}/{b}`、GET `/change-logs/{y}/{m}`
 - **跨月** `cross_month`：GET `/cross-month/{y}/{m}`（`?reload=true` 自動載入）、
   POST `/cross-month/{y}/{m}`、GET `/cross-month/preview/{y}/{m}`
-- **大夜/備援** `night`：GET/PUT/DELETE `/night/{y}/{m}` 系列逐日輸入、
+- **大夜/備援** `night`：GET/PUT/DELETE `/night/{y}/{m}` 系列逐日輸入
+  （D/OFF/SPECIAL；SPECIAL 可帶 `leave_type`）、
   GET `/night/{y}/{m}/validation`（大夜人員合規驗證，尊重開關）、
   GET/PUT `/night/rule-overrides/...`、POST `/night/backup-request`、
   GET `/night/backup-requests/{y}/{m}`、DELETE `/night/backup-request/{id}` 或 `/{y}/{m}/{d}`
@@ -303,10 +305,10 @@
 
 | 路由 | 頁面 | 重點 |
 |---|---|---|
-| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例；選項：整週模式、顯示房務） |
+| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休/假別 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 匯出（橫式 A4、週框線、週末淺灰、含圖例；選項：整週模式、顯示房務） |
 | `/housekeeping` | HousekeepingPage 房務班表 | 房務專屬月班表：畫筆（A／假別／休）連選後批次套用、**不做規則檢測**；無覆蓋列/支援/大夜面板；下方房務人員選人 + **特休紀錄面板（週年制，系統外特休維護）**；清空當月房務（不動櫃台，並清除房務假別紀錄）；與櫃台共用月狀態 |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
-| `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）** |
+| `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）**；大夜假別新增/移除會同步排班表格位 |
 | `/cross-month` | CrossMonthPage | 上月末 5 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
 | `/stats` | StatsPage | 每人班次/休假統計 + 公平性 + 每日覆蓋 + S1~S10 細項 + 上月連休「優先 2 次」標記 + 調班紀錄 + **特休彙總（週年制）** + 求解時間上限設定 + CSV/JSON 匯出 |
 
@@ -320,10 +322,10 @@
 
 1. `data_loader.load`：員工（排除帶 tag 者；已離職者離職月後排除，月中離職設
    `resign_cutoff`）、指定休、請假、跨月 links、
-   大夜班（schedule_entries source=night_input）、D 備援請求與指派鏈、
+   大夜班（schedule_entries source=night_input，含 D/OFF/假別）、D 備援請求與指派鏈、
    外部支援（tag 員工的 A1/C1/D1 → 當日該班覆蓋）、支援請求（open/resolved
    皆視為有人；ignored 不算）、規則開關、上月每人連休次數
-2. `build_fixed`：固定格 = 大夜全部格位、指定休=OFF、請假=SPECIAL、備援日=D
+2. `build_fixed`：固定格 = 大夜全部格位（D/OFF/SPECIAL）、指定休=OFF、請假=SPECIAL、備援日=D
 3. 建變數：每格 ALL_SHIFTS 各一 BoolVar（固定格不省略變數，用約束鎖定）
 4. H1~H13 → S1~S10 → `model.Maximize`
 5. 求解：`max_time_in_seconds`（預設 30s，請求可調）、8 workers、
@@ -412,7 +414,7 @@ cd frontend && npm run dev
 # 單一後端模式（服務前端 build）
 cd frontend && npm run build && cd ../backend && .venv/bin/python run.py
 # 測試（逐檔執行，各自帶 assert 與 temp DB_PATH，非 pytest）
-cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_manager_cap、test_resign、test_annual_leave、test_database_export、test_database_import）
+cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_night_leave、test_manager_cap、test_resign、test_annual_leave、test_database_export、test_database_import）
 # 測試資料
 cd backend && .venv/bin/python tests/seed_dev.py
 ```

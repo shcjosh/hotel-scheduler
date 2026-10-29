@@ -19,7 +19,7 @@ def _validate(db: Session, data: data_loader.ShiftScheduleData, employee_id: int
     if emp is None:
         raise ValueError("員工不存在或已離職")
     if emp.role == "night":
-        raise ValueError("大夜專職人員請至大夜班表頁面調整")
+        raise ValueError("大夜專職人員請直接在排班表格位調整（D／休／假別）")
     for d in days:
         if d < 1 or d > data.num_days:
             raise ValueError(f"日期無效：{d}")

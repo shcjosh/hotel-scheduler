@@ -4,7 +4,14 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.database.models import DBackupRequest, Employee, NightRuleOverride, ScheduleEntry
+from app.database.models import (
+    DBackupRequest,
+    Employee,
+    LeaveType,
+    NightRuleOverride,
+    ScheduleEntry,
+    SpecialLeave,
+)
 from app.scheduler import data_loader, validator
 from app.services.employee_service import visible_in_month_clause
 
@@ -75,15 +82,27 @@ def get_night_schedule(db: Session, year: int, month: int) -> dict:
 
 
 def save_night_entry(
-    db: Session, emp_id: int, year: int, month: int, day: int, shift: str
+    db: Session,
+    emp_id: int,
+    year: int,
+    month: int,
+    day: int,
+    shift: str,
+    leave_type: str | None = None,
 ) -> None:
-    if shift not in ("D", "OFF"):
-        raise ValueError("大夜班次只能為 D 或 OFF")
+    if shift not in ("D", "OFF", "SPECIAL"):
+        raise ValueError("大夜班次只能為 D、OFF 或假別")
     emp = db.get(Employee, emp_id)
     if emp is None:
         raise ValueError("員工不存在")
     if emp.role != "night":
         raise ValueError("該員工非大夜專職人員")
+    if emp.tag:
+        raise ValueError("二館支援人員請使用 A1 / C1 / D1 支援班")
+
+    lt = leave_type or "SPECIAL"
+    if shift == "SPECIAL" and db.get(LeaveType, lt) is None:
+        raise ValueError("假別不存在")
 
     existing = db.scalars(
         select(ScheduleEntry).where(
@@ -107,6 +126,30 @@ def save_night_entry(
                 source="night_input",
             )
         )
+
+    leave = db.scalars(
+        select(SpecialLeave).where(
+            SpecialLeave.employee_id == emp_id,
+            SpecialLeave.year == year,
+            SpecialLeave.month == month,
+            SpecialLeave.day == day,
+        )
+    ).first()
+    if shift == "SPECIAL":
+        if leave is None:
+            db.add(
+                SpecialLeave(
+                    employee_id=emp_id,
+                    year=year,
+                    month=month,
+                    day=day,
+                    leave_type=lt,
+                )
+            )
+        else:
+            leave.leave_type = lt
+    elif leave is not None:
+        db.delete(leave)
     db.commit()
 
 
@@ -124,12 +167,22 @@ def delete_night_entry(
     ).first()
     if rec is None:
         raise ValueError("該日無大夜班紀錄")
+    leave = db.scalars(
+        select(SpecialLeave).where(
+            SpecialLeave.employee_id == emp_id,
+            SpecialLeave.year == year,
+            SpecialLeave.month == month,
+            SpecialLeave.day == day,
+        )
+    ).first()
+    if leave is not None:
+        db.delete(leave)
     db.delete(rec)
     db.commit()
 
 
 def clear_night_schedule(db: Session, year: int, month: int) -> int:
-    """Delete all night_input entries for the month (night staff D/OFF)."""
+    """Delete all night_input entries for the month (night staff D/OFF/leave)."""
     from app.services import status_service
 
     if status_service.get_status(db, year, month) == "locked":
@@ -141,6 +194,17 @@ def clear_night_schedule(db: Session, year: int, month: int) -> int:
             ScheduleEntry.source == "night_input",
         )
     )
+    # 大夜假別只透過大夜格位／休假管理建立；清空大夜班表時一併清除，
+    # 避免留下「班表已清空、特休仍計入」的孤兒紀錄。
+    night_ids = list(db.scalars(select(Employee.id).where(Employee.role == "night")))
+    if night_ids:
+        db.execute(
+            delete(SpecialLeave).where(
+                SpecialLeave.year == year,
+                SpecialLeave.month == month,
+                SpecialLeave.employee_id.in_(night_ids),
+            )
+        )
     db.commit()
     return result.rowcount or 0
 

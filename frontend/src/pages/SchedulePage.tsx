@@ -110,6 +110,8 @@ export function SchedulePage() {
     queryClient.invalidateQueries({ queryKey: ['validation', currentYear, currentMonth] })
     queryClient.invalidateQueries({ queryKey: ['snapshots', currentYear, currentMonth] })
     queryClient.invalidateQueries({ queryKey: ['night', currentYear, currentMonth] })
+    queryClient.invalidateQueries({ queryKey: ['off-days', currentYear, currentMonth] })
+    queryClient.invalidateQueries({ queryKey: ['off-day-summary', currentYear, currentMonth] })
   }
 
   const supportMut = useMutation({
@@ -207,7 +209,8 @@ export function SchedulePage() {
       if (emp.tag) {
         if (isLT || !['A1', 'C1', 'D1'].includes(targetShift)) return
       } else if (emp.role === 'night') {
-        if (targetShift !== 'D' && targetShift !== 'OFF') return
+        // 大夜可排 D/OFF，也可選假別（SPECIAL）；其餘班次仍擋
+        if (!isLT && targetShift !== 'D' && targetShift !== 'OFF') return
       } else if (targetShift === 'D') {
         return
       }
@@ -547,7 +550,7 @@ export function SchedulePage() {
                 ? editingEmp.available_shifts
                 : editingEmp.available_shifts.filter((s) => s !== 'D')
           }
-          leaveTypes={editingEmp.tag || editingEmp.role === 'night' ? [] : leaveTypes}
+          leaveTypes={editingEmp.tag ? [] : leaveTypes}
           isPublished={status === 'published'}
           onClose={() => setEditing(null)}
           onValidate={(newShift) =>

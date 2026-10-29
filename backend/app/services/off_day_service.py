@@ -3,7 +3,13 @@ import calendar
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.database.models import DesignatedOffDay, Employee, ScheduleEntry, SpecialLeave
+from app.database.models import (
+    DesignatedOffDay,
+    Employee,
+    ScheduleEntry,
+    SpecialLeave,
+    now_iso,
+)
 from app.scheduler.off_count import count_off_blocks
 from app.services.employee_service import not_housekeeping_clause, visible_in_month_clause
 
@@ -206,10 +212,55 @@ def remove_designated_off(
     db.commit()
 
 
+def _sync_night_schedule(
+    db: Session, emp: Employee, year: int, month: int, day: int, shift: str
+) -> None:
+    """大夜假別與班表格位同步（source 一律 night_input）。
+
+    一般員工的假別是排班輸入資料，求解後才反映到格位；大夜格位為手動輸入、
+    不會再經求解覆蓋，因此休假管理新增/移除假別時直接同步該日格位。
+    """
+    if emp.role != "night":
+        return
+    # 二館支援（tag）維持 A1/C1/D1 手動支援班，不寫入 D/OFF/假別格位。
+    if emp.tag:
+        return
+
+    from app.services import status_service
+
+    if status_service.get_status(db, year, month) == "locked":
+        raise PermissionError("班表已鎖定，請先解鎖才能調整大夜假別")
+
+    existing = db.scalars(
+        select(ScheduleEntry).where(
+            ScheduleEntry.employee_id == emp.id,
+            ScheduleEntry.year == year,
+            ScheduleEntry.month == month,
+            ScheduleEntry.day == day,
+        )
+    ).first()
+    if existing is None:
+        db.add(
+            ScheduleEntry(
+                employee_id=emp.id,
+                year=year,
+                month=month,
+                day=day,
+                shift=shift,
+                source="night_input",
+            )
+        )
+    else:
+        existing.shift = shift
+        existing.source = "night_input"
+        existing.updated_at = now_iso()
+
+
 def add_special_leave(
     db: Session, emp_id: int, year: int, month: int, day: int, leave_type: str = "SPECIAL"
 ) -> SpecialLeave:
-    if db.get(Employee, emp_id) is None:
+    emp = db.get(Employee, emp_id)
+    if emp is None:
         raise ValueError("員工不存在")
     if day < 1 or day > _num_days(year, month):
         raise ValueError("日期無效")
@@ -246,6 +297,7 @@ def add_special_leave(
         employee_id=emp_id, year=year, month=month, day=day, leave_type=leave_type
     )
     db.add(rec)
+    _sync_night_schedule(db, emp, year, month, day, "SPECIAL")
     db.commit()
     db.refresh(rec)
     return rec
@@ -264,5 +316,8 @@ def remove_special_leave(
     ).first()
     if rec is None:
         raise ValueError("該日無特休")
+    emp = db.get(Employee, emp_id)
     db.delete(rec)
+    if emp is not None:
+        _sync_night_schedule(db, emp, year, month, day, "OFF")
     db.commit()
