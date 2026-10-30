@@ -18,7 +18,13 @@ function yearsLabel(years: number): string {
   return `滿 ${years} 年`
 }
 
-export function AnnualLeavePanel({ employee }: { employee: Employee | null }) {
+export function AnnualLeavePanel({
+  employee,
+  readOnly = false,
+}: {
+  employee: Employee | null
+  readOnly?: boolean
+}) {
   const { currentYear: year, currentMonth: month } = useUIStore()
   const queryClient = useQueryClient()
   const { data } = useQuery({
@@ -74,6 +80,7 @@ export function AnnualLeavePanel({ employee }: { employee: Employee | null }) {
             key={`${p.period_start}:${p.opening_used_days}:${p.entitlement_override}`}
             employeeId={employee.id}
             period={p}
+            readOnly={readOnly}
             onSave={async (opening, override, note) => {
               try {
                 await upsertAdjustment({
@@ -96,6 +103,7 @@ export function AnnualLeavePanel({ employee }: { employee: Employee | null }) {
         <ManualEntries
           entries={info.manual_entries}
           defaultDate={`${year}-${pad(month)}-01`}
+          readOnly={readOnly}
           onAdd={async (date, days, note) => {
             try {
               await addManualEntry(employee.id, date, days, note)
@@ -121,10 +129,12 @@ export function AnnualLeavePanel({ employee }: { employee: Employee | null }) {
 function PeriodCard({
   period,
   onSave,
+  readOnly = false,
 }: {
   employeeId: number
   period: AnnualLeavePeriod
   onSave: (opening: number, override: number | null, note: string | null) => Promise<void>
+  readOnly?: boolean
 }) {
   const [opening, setOpening] = useState(String(period.opening_used_days))
   const [override, setOverride] = useState(
@@ -180,7 +190,8 @@ function PeriodCard({
             min={0}
             value={opening}
             onChange={(e) => setOpening(e.target.value)}
-            className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+            disabled={readOnly}
+            className="w-24 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-slate-50 disabled:text-slate-400"
           />
         </label>
         <label className="flex flex-col gap-0.5 text-xs text-gray-600">
@@ -192,17 +203,20 @@ function PeriodCard({
             placeholder={String(period.entitlement_law)}
             value={override}
             onChange={(e) => setOverride(e.target.value)}
-            className="w-24 rounded border border-gray-300 px-2 py-1 text-sm"
+            disabled={readOnly}
+            className="w-24 rounded border border-gray-300 px-2 py-1 text-sm disabled:bg-slate-50 disabled:text-slate-400"
           />
         </label>
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-        >
-          {saving ? '儲存中…' : '儲存'}
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+          >
+            {saving ? '儲存中…' : '儲存'}
+          </button>
+        )}
         <span className="text-xs text-gray-400">
           系統內特休 {period.system_days} 天 / 半天紀錄 {period.manual_days} 天
         </span>
@@ -216,11 +230,13 @@ function ManualEntries({
   defaultDate,
   onAdd,
   onDelete,
+  readOnly = false,
 }: {
   entries: { id: number; date: string; days: number; note: string | null }[]
   defaultDate: string
   onAdd: (date: string, days: number, note: string) => Promise<void>
   onDelete: (id: number) => Promise<void>
+  readOnly?: boolean
 }) {
   const [date, setDate] = useState(defaultDate)
   const [days, setDays] = useState('0.5')
@@ -229,40 +245,42 @@ function ManualEntries({
   return (
     <div className="mt-3 border-t border-purple-200 pt-3">
       <div className="text-xs font-semibold text-purple-900">半天 / 臨時補登（不涉排班）</div>
-      <div className="mt-1.5 flex flex-wrap items-end gap-2">
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="rounded border border-gray-300 px-2 py-1 text-sm"
-        />
-        <input
-          type="number"
-          step={0.5}
-          min={0.5}
-          value={days}
-          onChange={(e) => setDays(e.target.value)}
-          className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
-        />
-        <input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          placeholder="備註（選填）"
-          className="w-40 rounded border border-gray-300 px-2 py-1 text-sm"
-        />
-        <button
-          type="button"
-          onClick={async () => {
-            const d = Number(days)
-            if (!date || !Number.isFinite(d) || d <= 0) return
-            await onAdd(date, d, note.trim())
-            setNote('')
-          }}
-          className="rounded-md border border-purple-400 px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-50"
-        >
-          新增
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="mt-1.5 flex flex-wrap items-end gap-2">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          <input
+            type="number"
+            step={0.5}
+            min={0.5}
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+            className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="備註（選填）"
+            className="w-40 rounded border border-gray-300 px-2 py-1 text-sm"
+          />
+          <button
+            type="button"
+            onClick={async () => {
+              const d = Number(days)
+              if (!date || !Number.isFinite(d) || d <= 0) return
+              await onAdd(date, d, note.trim())
+              setNote('')
+            }}
+            className="rounded-md border border-purple-400 px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-50"
+          >
+            新增
+          </button>
+        </div>
+      )}
       {entries.length > 0 && (
         <ul className="mt-2 space-y-1 text-xs text-gray-700">
           {entries.map((e) => (
@@ -270,14 +288,16 @@ function ManualEntries({
               <span className="tabular-nums">{e.date}</span>
               <span className="font-medium">{e.days} 天</span>
               {e.note && <span className="text-gray-400">{e.note}</span>}
-              <button
-                type="button"
-                onClick={() => onDelete(e.id)}
-                className="text-red-400 hover:text-red-600"
-                title="刪除"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => onDelete(e.id)}
+                  className="text-red-400 hover:text-red-600"
+                  title="刪除"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              )}
             </li>
           ))}
         </ul>

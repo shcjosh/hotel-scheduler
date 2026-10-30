@@ -15,12 +15,14 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { Modal } from '../components/ui/modal'
 import { Field, controlClassName } from '../components/ui/field'
 import { useToast } from '../hooks/useToast'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { displayName } from '../utils/employee'
 import type { Employee } from '../types'
 
 export function EmployeesPage() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const readOnly = useIsMobile()
   const { data: employees = [], isLoading, isError, error } = useQuery({
     queryKey: ['employees', 'all'],
     queryFn: () => getEmployees(true),
@@ -52,10 +54,12 @@ export function EmployeesPage() {
   })
 
   function openCreate() {
+    if (readOnly) return
     setEditing(null)
     setFormOpen(true)
   }
   function openEdit(emp: Employee) {
+    if (readOnly) return
     setEditing(emp)
     setFormOpen(true)
   }
@@ -78,6 +82,7 @@ export function EmployeesPage() {
     }
   }
   function handleDelete(emp: Employee) {
+    if (readOnly) return
     setDeleteTarget(emp)
   }
 
@@ -98,6 +103,7 @@ export function EmployeesPage() {
   }
 
   function openResign(emp: Employee) {
+    if (readOnly) return
     setResignTarget(emp)
     setResignDate(emp.resign_date ?? '')
   }
@@ -138,12 +144,18 @@ export function EmployeesPage() {
     <div className="space-y-4">
       <PageHeader
         title="員工管理"
-        description="管理員工資料、順序、角色與可用班次"
+        description={
+          readOnly
+            ? '手機版唯讀：可檢視員工資料；新增、編輯、排序與離職設定請使用桌機'
+            : '管理員工資料、順序、角色與可用班次'
+        }
         actions={
-          <Button onClick={openCreate}>
-            <UserPlus className="mr-2 h-4 w-4" />
-            新增員工
-          </Button>
+          !readOnly ? (
+            <Button onClick={openCreate}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              新增員工
+            </Button>
+          ) : undefined
         }
       />
 
@@ -165,6 +177,7 @@ export function EmployeesPage() {
             onResign={openResign}
             onMoveUp={(idx) => move(idx, -1)}
             onMoveDown={(idx) => move(idx, 1)}
+            readOnly={readOnly}
           />
 
           {resignedEmployees.length > 0 && (
@@ -189,6 +202,7 @@ export function EmployeesPage() {
                   onDelete={handleDelete}
                   onResign={openResign}
                   reorderable={false}
+                  readOnly={readOnly}
                 />
               )}
             </div>

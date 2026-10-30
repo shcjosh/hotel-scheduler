@@ -37,6 +37,7 @@ import { LoadingState } from '../components/ui/loading-state'
 import { EmptyState } from '../components/ui/empty-state'
 import { ConfirmDialog } from '../components/ui/confirm-dialog'
 import { useToast } from '../hooks/useToast'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { MonthStatusBar, type SidePanelTab } from '../components/schedule/MonthStatusBar'
 import { ScheduleToolbar } from '../components/schedule/ScheduleToolbar'
 import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
@@ -79,6 +80,7 @@ export function SchedulePage() {
   const { currentYear: year, currentMonth: month } = useUIStore()
   const queryClient = useQueryClient()
   const toast = useToast()
+  const isMobile = useIsMobile()
 
   const [editing, setEditing] = useState<{ empName: string; day: number } | null>(null)
   const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab | null>(null)
@@ -140,6 +142,7 @@ export function SchedulePage() {
 
   const status: ScheduleStatus = view?.status ?? 'draft'
   const locked = status === 'locked'
+  const readOnly = locked || isMobile
   const numDays = view?.num_days ?? 30
   const hotelName = settings?.hotel_name ?? '清翼居府中館'
   const userName = settings?.user_name ?? 'Josh Wang'
@@ -175,10 +178,10 @@ export function SchedulePage() {
 
   const openEditor = useCallback(
     (empName: string, day: number) => {
-      if (locked) return
+      if (readOnly) return
       setEditing({ empName, day })
     },
-    [locked],
+    [readOnly],
   )
 
   const selection = useGridSelection(names, numDays, openEditor)
@@ -301,7 +304,7 @@ export function SchedulePage() {
   }
 
   function handleCellClick(empName: string, day: number) {
-    if (locked) return
+    if (readOnly) return
     if (brush.consumeDragClick()) return
     if (brush.isActive) {
       brush.paint(empName, day)
@@ -324,6 +327,7 @@ export function SchedulePage() {
   }
 
   function handleSetStatus(next: ScheduleStatus) {
+    if (readOnly) return
     if (next === 'locked') {
       setConfirmKind('lock')
       return
@@ -346,7 +350,7 @@ export function SchedulePage() {
   })
 
   async function handleApply() {
-    if (Object.keys(pending).length === 0) return
+    if (readOnly || Object.keys(pending).length === 0) return
 
     if (group === 'housekeeping') {
       setBatchSaving(true)
@@ -401,6 +405,7 @@ export function SchedulePage() {
   }
 
   async function handleBatchConfirm(reason?: string) {
+    if (readOnly) return
     const entries = Object.entries(pending)
     if (entries.length === 0) return
     setBatchSaving(true)
@@ -434,6 +439,7 @@ export function SchedulePage() {
   }
 
   function handleConfirmAction() {
+    if (readOnly) return
     const done = () => setConfirmKind(null)
     if (confirmKind === 'clear') clearMut.mutate(undefined, { onSettled: done })
     else if (confirmKind === 'clear-night') clearNightMut.mutate(undefined, { onSettled: done })
@@ -485,13 +491,15 @@ export function SchedulePage() {
       <PageHeader
         title={`${year} 年 ${month} 月 ${groupLabel}`}
         description={
-          group === 'housekeeping'
-            ? '房務手動排班（A 09:00-18:00，含 1 小時用餐）；與櫃台互不干涉、不做規則檢測'
-            : '點擊格位微調班次，或選畫筆後單擊／拖曳連續塗色'
+          isMobile
+            ? '手機版唯讀：可檢視班表與列印／存 PDF；修改請使用桌機'
+            : group === 'housekeeping'
+              ? '房務手動排班（A 09:00-18:00，含 1 小時用餐）；與櫃台互不干涉、不做規則檢測'
+              : '點擊格位微調班次，或選畫筆後單擊／拖曳連續塗色'
         }
         actions={
           <>
-            {status === 'draft' && (
+            {!isMobile && status === 'draft' && (
               <Button onClick={() => handleSetStatus('published')} loading={statusMut.isPending}>
                 <Send className="mr-2 h-4 w-4" /> 發布班表
               </Button>
@@ -501,7 +509,7 @@ export function SchedulePage() {
                 <Printer className="mr-2 h-4 w-4" /> 列印 / PDF
               </Button>
             )}
-            {status === 'locked' && (
+            {!isMobile && status === 'locked' && (
               <Button
                 variant="outline"
                 onClick={() => statusMut.mutate('draft')}
@@ -515,24 +523,26 @@ export function SchedulePage() {
                 <FileDown className="mr-2 h-4 w-4" /> 列印 / PDF
               </Button>
             )}
-            <ScheduleActionsMenu
-              status={status}
-              canAdjust={
-                group === 'front' &&
-                status !== 'locked' &&
-                !!frontView &&
-                !!view &&
-                hasRealData(view.schedule)
-              }
-              showNightActions={group === 'front'}
-              onOpenVersions={() => setSidePanelTab('version')}
-              onOpenAdjust={() => setAdjustOpen(true)}
-              onClear={() => setConfirmKind('clear')}
-              onClearNight={() => setConfirmKind('clear-night')}
-              onToggleLock={() =>
-                status === 'locked' ? statusMut.mutate('draft') : setConfirmKind('lock')
-              }
-            />
+            {!isMobile && (
+              <ScheduleActionsMenu
+                status={status}
+                canAdjust={
+                  group === 'front' &&
+                  status !== 'locked' &&
+                  !!frontView &&
+                  !!view &&
+                  hasRealData(view.schedule)
+                }
+                showNightActions={group === 'front'}
+                onOpenVersions={() => setSidePanelTab('version')}
+                onOpenAdjust={() => setAdjustOpen(true)}
+                onClear={() => setConfirmKind('clear')}
+                onClearNight={() => setConfirmKind('clear-night')}
+                onToggleLock={() =>
+                  status === 'locked' ? statusMut.mutate('draft') : setConfirmKind('lock')
+                }
+              />
+            )}
           </>
         }
       />
@@ -559,7 +569,7 @@ export function SchedulePage() {
           onToggleDense={() => setDense((value) => !value)}
           fullscreen={fullscreen}
           onToggleFullscreen={handleToggleFullscreen}
-          locked={locked}
+          locked={readOnly}
         />
 
         {activeQuery.isLoading && <LoadingState label="載入班表…" />}
@@ -609,7 +619,7 @@ export function SchedulePage() {
                 pendingChanges={pending}
                 showCoverage={group === 'front'}
                 dense={dense}
-                locked={locked}
+                locked={readOnly}
                 fullscreen={fullscreen}
                 isSelected={(empName, day) => {
                   const index = nameIndex.get(empName)
@@ -671,7 +681,7 @@ export function SchedulePage() {
                     )
                   })}
                 </div>
-                <AnnualLeavePanel employee={selectedHkEmployee} />
+                <AnnualLeavePanel employee={selectedHkEmployee} readOnly={readOnly} />
               </div>
             )}
           </>
@@ -760,6 +770,7 @@ export function SchedulePage() {
           await restoreMut.mutateAsync(id)
         }}
         onDiffSnapshots={diffSnapshots}
+        readOnly={isMobile}
       />
 
       {adjustOpen && view && (

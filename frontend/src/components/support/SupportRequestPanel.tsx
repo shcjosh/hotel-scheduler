@@ -12,6 +12,7 @@ interface SupportRequestPanelProps {
   onAdd: (day: number, shift: string, reason: string) => Promise<unknown>
   onUpdate: (id: number, status: string, resolution: string | null) => Promise<unknown>
   onRemove: (id: number) => Promise<unknown>
+  readOnly?: boolean
 }
 
 /** 支援請求（放在 ScheduleSidePanel 的「支援」分頁）。 */
@@ -22,6 +23,7 @@ export function SupportRequestPanel({
   onAdd,
   onUpdate,
   onRemove,
+  readOnly = false,
 }: SupportRequestPanelProps) {
   const [adding, setAdding] = useState(false)
   const [day, setDay] = useState(1)
@@ -62,9 +64,11 @@ export function SupportRequestPanel({
         <span className="text-sm text-slate-600">
           {openCount > 0 ? `${openCount} 件待處理` : '沒有待處理的支援請求'}
         </span>
-        <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-          <Plus className="mr-1 h-3.5 w-3.5" /> 新增
-        </Button>
+        {!readOnly && (
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            <Plus className="mr-1 h-3.5 w-3.5" /> 新增
+          </Button>
+        )}
       </div>
 
       {error && <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
@@ -126,7 +130,7 @@ export function SupportRequestPanel({
                 <th className="px-2 py-1 text-left">原因</th>
                 <th className="px-2 py-1 text-left">來源</th>
                 <th className="px-2 py-1 text-left">狀態</th>
-                <th className="px-2 py-1 text-right">操作</th>
+                {!readOnly && <th className="px-2 py-1 text-right">操作</th>}
               </tr>
             </thead>
             <tbody>
@@ -174,38 +178,40 @@ export function SupportRequestPanel({
                       <div className="text-xs text-slate-400">{request.resolution}</div>
                     )}
                   </td>
-                  <td className="px-2 py-1.5">
-                    <div className="flex justify-end gap-1">
-                      {request.status === 'open' && (
-                        <>
-                          <button
-                            onClick={() => setResolveId(request.id)}
-                            className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
-                            aria-label="標記為已解決"
-                            title="解決"
-                          >
-                            <Check className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => onUpdate(request.id, 'ignored', null)}
-                            className="rounded p-1 text-slate-400 hover:bg-slate-100"
-                            aria-label="忽略這筆支援請求"
-                            title="忽略"
-                          >
-                            <X className="h-4 w-4" />
-                          </button>
-                        </>
-                      )}
-                      <button
-                        onClick={() => onRemove(request.id)}
-                        className="rounded p-1 text-red-400 hover:bg-red-50"
-                        aria-label="刪除支援請求"
-                        title="刪除"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </td>
+                  {!readOnly && (
+                    <td className="px-2 py-1.5">
+                      <div className="flex justify-end gap-1">
+                        {request.status === 'open' && (
+                          <>
+                            <button
+                              onClick={() => setResolveId(request.id)}
+                              className="rounded p-1 text-emerald-600 hover:bg-emerald-50"
+                              aria-label="標記為已解決"
+                              title="解決"
+                            >
+                              <Check className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={() => onUpdate(request.id, 'ignored', null)}
+                              className="rounded p-1 text-slate-400 hover:bg-slate-100"
+                              aria-label="忽略這筆支援請求"
+                              title="忽略"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </>
+                        )}
+                        <button
+                          onClick={() => onRemove(request.id)}
+                          className="rounded p-1 text-red-400 hover:bg-red-50"
+                          aria-label="刪除支援請求"
+                          title="刪除"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

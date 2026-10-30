@@ -13,6 +13,7 @@ interface DBackupRequestPanelProps {
   requests: BackupRequestData[]
   onAdd: (day: number) => Promise<unknown>
   onRemove: (id: number) => Promise<unknown>
+  readOnly?: boolean
 }
 
 /** D 班備援指示（放在 ScheduleSidePanel 的「大夜」分頁）。 */
@@ -23,6 +24,7 @@ export function DBackupRequestPanel({
   requests,
   onAdd,
   onRemove,
+  readOnly = false,
 }: DBackupRequestPanelProps) {
   const [day, setDay] = useState(1)
   const [error, setError] = useState<string | null>(null)
@@ -45,22 +47,24 @@ export function DBackupRequestPanel({
         </span>
       </div>
 
-      <div className="flex items-center gap-2">
-        <select
-          value={day}
-          onChange={(event) => setDay(Number(event.target.value))}
-          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
-        >
-          {Array.from({ length: numDays }, (_, index) => index + 1).map((value) => (
-            <option key={value} value={value}>
-              {month}/{value}（{getWeekdayLabel(getWeekday(year, month, value))}）
-            </option>
-          ))}
-        </select>
-        <Button size="sm" onClick={handleAdd}>
-          新增備援日
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex items-center gap-2">
+          <select
+            value={day}
+            onChange={(event) => setDay(Number(event.target.value))}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+          >
+            {Array.from({ length: numDays }, (_, index) => index + 1).map((value) => (
+              <option key={value} value={value}>
+                {month}/{value}（{getWeekdayLabel(getWeekday(year, month, value))}）
+              </option>
+            ))}
+          </select>
+          <Button size="sm" onClick={handleAdd}>
+            新增備援日
+          </Button>
+        </div>
+      )}
 
       {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{error}</div>}
 
@@ -73,7 +77,7 @@ export function DBackupRequestPanel({
               <th className="px-2 py-1 text-left">日期</th>
               <th className="px-2 py-1 text-left">星期</th>
               <th className="px-2 py-1 text-left">狀態</th>
-              <th className="px-2 py-1 text-right">操作</th>
+              {!readOnly && <th className="px-2 py-1 text-right">操作</th>}
             </tr>
           </thead>
           <tbody>
@@ -113,16 +117,18 @@ export function DBackupRequestPanel({
                       </span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 text-right">
-                    <button
-                      onClick={() => onRemove(request.id)}
-                      className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                      aria-label="刪除備援日"
-                      title="刪除"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </td>
+                  {!readOnly && (
+                    <td className="px-2 py-1.5 text-right">
+                      <button
+                        onClick={() => onRemove(request.id)}
+                        className="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                        aria-label="刪除備援日"
+                        title="刪除"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </td>
+                  )}
                 </tr>
               )
             })}

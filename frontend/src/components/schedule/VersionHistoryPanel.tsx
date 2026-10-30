@@ -13,6 +13,7 @@ interface VersionHistoryPanelProps {
   employees: Employee[]
   onRestore: (id: number) => Promise<void>
   onDiff: (aId: number, bId: number) => Promise<{ changes: SnapshotDiffChange[] }>
+  readOnly?: boolean
 }
 
 /** 版本歷史內容（放在 ScheduleSidePanel 的「版本」分頁）。 */
@@ -22,6 +23,7 @@ export function VersionHistoryPanel({
   employees,
   onRestore,
   onDiff,
+  readOnly = false,
 }: VersionHistoryPanelProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,14 +83,16 @@ export function VersionHistoryPanel({
               </span>
               <span className="flex-1 text-sm text-slate-700">{snapshot.name}</span>
               <span className="text-xs text-slate-400">{snapshot.created_at}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleRestore(snapshot.id)}
-                disabled={busy}
-              >
-                <RotateCcw className="mr-1 h-3.5 w-3.5" /> 還原
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleRestore(snapshot.id)}
+                  disabled={busy}
+                >
+                  <RotateCcw className="mr-1 h-3.5 w-3.5" /> 還原
+                </Button>
+              )}
             </li>
           ))}
         </ul>

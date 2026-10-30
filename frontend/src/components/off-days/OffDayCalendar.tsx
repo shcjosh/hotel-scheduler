@@ -10,6 +10,7 @@ interface OffDayCalendarProps {
   leaveInfoByDay?: Record<number, { label: string; bg: string; text: string }>
   runDays: Set<number>
   onToggleDay: (day: number) => void
+  readOnly?: boolean
 }
 
 const WEEKDAY_LABELS = ['一', '二', '三', '四', '五', '六', '日']
@@ -23,6 +24,7 @@ export function OffDayCalendar({
   leaveInfoByDay,
   runDays,
   onToggleDay,
+  readOnly = false,
 }: OffDayCalendarProps) {
   const firstWeekday = getWeekday(year, month, 1)
   const leadingBlanks = (firstWeekday + 6) % 7
@@ -57,7 +59,9 @@ export function OffDayCalendar({
           return (
             <button
               key={day}
-              onClick={() => onToggleDay(day)}
+              type="button"
+              onClick={() => !readOnly && onToggleDay(day)}
+              disabled={readOnly}
               aria-pressed={designated || special}
               aria-label={`${month} 月 ${day} 日${
                 designated
