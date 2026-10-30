@@ -93,10 +93,12 @@
 - **H5 班次銜接禁止**（隔 1 天休/特休即可）：C→A、D→A、D→C、D→M。
 - **H6 指定休假**：指定休當日固定為 OFF。
 - **H7 可用班次**：只能排 `available_shifts ∪ OFF`。
-- **H8 跨月銜接**：載入上月最後 5 天。①上月末日班次 → 本月首日套用 H5；
+- **H8 跨月銜接**：載入上月最後 6 天。①上月末日班次 → 本月首日套用 H5；
   ②跨月連續上班視窗（上月尾段無休 → 本月開頭 6 天視窗內至少 1 天休/特休）。
 - **H9 跨月週**：本月首週 = 上月部分（previous_month_links 的 OFF 天數，最多 6 天）+
   本月部分合計恰好 2 天 OFF。上月部分缺資料時退回 H2 式判斷（不誤加休假）。
+  求解失敗診斷（v1.3.1）會檢查「本月可用天數不足」與「指定休假超過應休額度」，
+  回報 `h9_cross_month_off` 並建議調整上月最後一週或本月跨月週的休假。
 - **H10 一人一天一班**：每人每天恰好 1 個班次（含 OFF）。
 - **H11 D 班備援**：備援日被指派者固定排 D，且當日 C 班由他人遞補
   （無人可遞補 → 求解失敗）。
@@ -287,7 +289,8 @@
 - **支援請求** `support`：GET `/support-requests/{y}/{m}`、POST `/support-requests`、
   PUT/DELETE `/support-requests/{id}`
 - **排班** `solve`：POST `/solve`（body: year, month, max_solve_time, enable_d_backup；
-  成功存班表+自動快照+solve meta；locked 403；失敗自動產生支援請求，見 §13.3；
+  成功存班表+自動快照+solve meta；locked 403；`INFEASIBLE` 才自動產生支援請求，
+  `UNKNOWN`（逾時）不產生；response 含 `status`，見 §13.3；
   店長卡班上限由每月設定 `manager_backup_cap:{y}:{m}` 讀入）
 - **設定** `settings`：GET `/settings`、GET/PUT `/settings/{key}`
   （列印相關：`branch_name` 抬頭第二行、`print_notes` 頁尾注意事項、
@@ -310,12 +313,14 @@ v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書
 |---|---|---|
 | `/` | SchedulePage 班表 | `?group=front`（預設）／`?group=housekeeping` 切換櫃台／房務分頁。櫃台：月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 畫筆（單擊／拖曳連塗、角色限制）+ 暫存修改（復原/重做、放棄、檢查並套用）+ 格位編輯 modal + 大夜格位輸入 + 本月狀態列 + 右側抽屜（驗證／支援／大夜／版本）+ `⋯` 選單（清空班表、清空大夜、鎖定/解鎖，皆需確認）+ PDF 列印預覽（見 §12.1）。房務：A／假別／休手動排班，不做規則檢測，抽屜只有版本分頁，下方特休紀錄面板 |
 | `/housekeeping` | redirect | `<Navigate replace>` → `/?group=housekeeping` |
-| `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
+| `/employees` | EmployeesPage | CRUD（v1.3.1 起新增／編輯用右側 Drawer + 共用 Field）+ 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊；手機唯讀 |
 | `/off-days` | OffDaysPage 休假與排班 | 兩欄：左側員工清單（指定休假 n/2、請假、連休）＋右側月曆；工具列指定休假／特休／事假／病假／自訂假別（管理假別連到排班規則）；「開始排班」為主要動作，結果以 Toast + 右側抽屜（SolveResult：班次統計/軟性約束/診斷）呈現；下方分頁「本月休假統計／特休紀錄（週年制）」；大夜假別新增/移除會同步班表格位；鎖定月份唯讀 |
 | `/settings` | SettingsPage 排班規則（v1.3.0 新） | 分頁（`?tab=`）：假別管理（CRUD，內建不可刪）／跨月銜接（上月末 6 天自動載入/手動輸入 + 銜接預覽）／求解參數（求解秒數、D 班備援、每月店長卡班上限）／列印設定（`branch_name`、`print_notes`） |
 | `/cross-month` | redirect | `<Navigate replace>` → `/settings?tab=cross-month` |
 | `/stats` | StatsPage 統計報表 | 4 張 KPI（總班次、每人平均上班天數、週末平均上班人數、違規/警告）＋分頁：總覽／每人統計／每日覆蓋／公平性與軟性約束／休假與特休／變更紀錄／備份；CSV/JSON 匯出在頁首；整庫備份/匯入在「備份」分頁 |
 
+- 手機唯讀（v1.3.1）：`hooks/useIsMobile.ts`（< 768px）＋全域提示；所有資料寫入入口
+  以 UI 停用或隱藏，保留檢視、月份切換、統計匯出、列印／存 PDF
 - 共用 UI：`components/ui/`（PageHeader、Card、Section、Toolbar、Tabs、StatusPill、Badge、
   EmptyState、LoadingState、Drawer、ConfirmDialog、Toast、Field、Button、Modal）；
   破壞性操作一律 `ConfirmDialog`，Modal/Drawer/列印預覽具 Esc、focus trap、`aria-modal`
@@ -348,7 +353,14 @@ v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書
 - **頁尾**：上班時段、休假/假別圖例、`print_notes` 注意事項、
   製表人（`user_name`）／單位主管／會計簽名欄、列印日期
 - **選項**：整週模式、顯示房務、主管班顯示 M、節日/備註列、週末淺灰底、
-  「新訂加續住」空白列
+  「新訂加續住」空白列、每人上班／休假統計
+- **每人上班／休假統計**（v1.3.1）：
+  - 只算本月（整週模式補進來的前後月日期不計）
+  - 上班＝`A/B/C/D/M`（含房務 A、大夜 D、主管 M）；休假＝`OFF`；
+    請假依 `leave_details` 的假別代碼各自一欄
+  - 包含房務，排除任何有 `tag` 的二館支援員工
+  - 由 `utils/printSchedule.ts` 的 `buildPrintStats` 計算，印在主班表下方；
+    預設關閉
 - **節日/備註**：`month_notes:{y}:{m}`（JSON `{"1":"元旦","6":"主會"}`），
   `HolidayNotesModal` 逐日新增/修改/刪除；連續相同文字以 colspan 合併
 - **實作**：`utils/printSchedule.ts` 只產生 HTML 字串；`PrintPreviewModal` 用
@@ -368,7 +380,9 @@ v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書
 4. H1~H13 → S1~S10 → `model.Maximize`
 5. 求解：`max_time_in_seconds`（預設 30s，請求可調）、8 workers、
    `SCHEDULER_LOG_SEARCH_PROGRESS=1` 可開求解 log
-6. 成功：提取班表 + 軟性約束統計；失敗：`diagnose_detailed` 結構化診斷
+6. 成功：提取班表 + 軟性約束統計；失敗：`diagnose_detailed` 結構化診斷。
+   `SolveResult.status` 區分 `OPTIMAL/FEASIBLE/INFEASIBLE/UNKNOWN/MODEL_INVALID/NO_EMPLOYEES`；
+   `UNKNOWN` 是逾時、不等於無解，不產生支援請求。
 
 ### 13.2 當月臨時異動（`engine.solve_adjust`，v1.0.7）
 
@@ -470,8 +484,8 @@ cd backend && .venv/bin/python tests/seed_dev.py
    時視為資料不足，H9 退回 H2 式判斷（不誤加休假）；可於跨月設定頁重新「自動載入」補齊。
 4. 員工人數 >7 或規則組合極端時可能無解；診斷會給出可能原因與建議。
 5. `updates/check` 依賴 GitHub Releases 的公開 API（離線環境僅回 error 欄位）。
-6. **手機以唯讀檢視為主**（v1.3.0）：班表可橫向捲動、導覽為漢堡選單，
-   但未針對小螢幕做完整編輯最佳化（格位編輯、畫筆仍以桌機為主）。
-7. 員工編輯仍是 Modal（未改抽屜）；表單欄位未全面改用共用 `Field` 樣式（Phase 4 保留）。
-8. `tests/test_phase8.py` 的「調整求解」偶發失敗（CP-SAT 非決定性，約 1/5），
-   重跑即過；尚未區分 INFEASIBLE 與 UNKNOWN（逾時）的錯誤訊息。
+6. **手機（< 768px）全面唯讀**（v1.3.1）：班表可橫向捲動、導覽為漢堡選單；
+   可檢視與列印／匯出，但班表、休假、員工、設定、版本還原、資料庫匯入等寫入入口皆停用，
+   未做小螢幕完整編輯。
+7. `tests/test_phase8.py` 的調整求解仍可能遇到 CP-SAT `UNKNOWN`（逾時）；
+   測試會自動加大秒數重試（30→60→120 秒），`INFEASIBLE` 才視為真失敗。

@@ -1,5 +1,52 @@
 # 飯店排班系統 — Release Notes
 
+## v1.3.1-beta（開發中，2026-10-30）
+
+> 以 `v1.3.0` 為基礎，處理 v1.3.0 留下的四項後續並新增 PDF 每人統計。
+> 後端 API、SQLite schema 皆向後相容；PDF 統計為前端選項，預設關閉。
+
+### 本版重點
+
+- **PDF 新增「每人上班／休假統計」**
+  - 列印預覽左側新增勾選項，預設關閉
+  - 只統計本月（整週模式補進來的前後月日期不計）
+  - 上班＝A/B/C/D/M（含房務 A、大夜 D、主管 M）
+  - 休假＝OFF；特休／事假／病假／自訂假別各自分開計
+  - 包含房務，排除任何有 `tag` 的二館支援員工
+  - 統計表印在班表下方，欄位依本月實際使用的假別動態產生
+  - 版面微調：版頭飯店名稱置中、班別字加大、人員欄縮窄以增加日期欄寬度
+- **求解失敗診斷**
+  - 新增 H9 跨月週診斷：
+    - 依上月最後 1~6 天已休天數，算出本月跨月週應休天數
+    - 剩餘天數不足、或指定休假超過應休天數時，回報 `h9_cross_month_off`
+  - `SolveResult` / `SolveResponse` 新增 `status`：
+    `OPTIMAL`、`FEASIBLE`、`INFEASIBLE`、`UNKNOWN`、`MODEL_INVALID`、`NO_EMPLOYEES`
+  - `UNKNOWN`（逾時）不再顯示成「無法找到合法解」，也不會自動產生支援請求
+  - 排班結果抽屜以黃色提示「求解逾時，不代表無解」，建議提高求解秒數重試
+- **員工編輯**
+  - `EmployeeForm` 由 Modal 改為右側 Drawer
+  - 取消／儲存移到 Drawer footer
+  - 移除元件內重複的 local `Field`，全面改用共用 `Field` + `controlClassName`
+  - 補 `htmlFor` / `id` 與可上班班次的 `aria-pressed`
+- **手機唯讀**
+  - 新增 `useIsMobile`（< 768px）與全域唯讀提示
+  - 停用／隱藏所有寫入入口：
+    班表畫筆與格位編輯、發布／鎖定／解鎖、清空、臨時異動、支援請求、
+    大夜備援、版本還原、休假指定／請假、開始排班、員工 CRUD／排序／離職、
+    排班規則表單、資料庫匯入、列印預覽的文字編輯
+  - 保留檢視、月份切換、統計匯出、列印／存 PDF
+  - 後端 API 不變，以 UI 不提供寫入入口為主
+
+### 測試與相容性
+
+- 後端 `backend/tests/test_*.py` 全數通過
+- `tests/test_phase8.py`：`UNKNOWN` 時自動加大求解秒數重試（30→60→120 秒），
+  `INFEASIBLE` 才視為真失敗
+- `tests/test_phase7.py`：補 `d_backup_unfillable` 的 `status == "INFEASIBLE"` 檢查
+- `tests/test_cross_month_week.py`：補 H9 診斷的剩餘天數不足／指定休假超額案例
+- `npm run lint`、`npm run build` 通過
+- 與 `v1.3.0` 共用同一份資料庫；無 migration
+
 ## v1.3.0（2026-10-30 正式版）
 
 > 對應 tag：`v1.3.0`
