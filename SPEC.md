@@ -303,18 +303,30 @@
 
 ## 12. 前端
 
-6 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁；房務班表頁 v1.2.0）：
+6 個路由（大夜班表頁已於 v1.1.4 整併進排班表總覽、一鍵排班整合於休假管理頁；
+v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書籤）：
 
 | 路由 | 頁面 | 重點 |
 |---|---|---|
-| `/` | SchedulePage 排班表總覽 | 月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 快捷畫筆（單擊連選多格、脈衝高亮暫存、批次「檢查並套用」/強制套用/放棄）+ 格位微調 modal + 大夜格位直接輸入 D/休/假別 + D 班備援指示面板 + 支援請求面板 + 版本歷史 drawer（還原/Diff）+ 整月規則驗證報告（預設收合）+ 圖例 + 清空班表/清空大夜 + PDF 列印預覽（見 §12.1） |
-| `/housekeeping` | HousekeepingPage 房務班表 | 房務專屬月班表：畫筆（A／假別／休）連選後批次套用、**不做規則檢測**；無覆蓋列/支援/大夜面板；下方房務人員選人 + **特休紀錄面板（週年制，系統外特休維護）**；清空當月房務（不動櫃台，並清除房務假別紀錄）；與櫃台共用月狀態 |
+| `/` | SchedulePage 班表 | `?group=front`（預設）／`?group=housekeeping` 切換櫃台／房務分頁。櫃台：月排班表（橫軸日期、縱軸員工依 sort_order）+ 每日覆蓋列（綠圈=A/C、綠同心圓=A/B/C、紅字=缺班；不含 D，A1/C1 計入）+ 畫筆（單擊／拖曳連塗、角色限制）+ 暫存修改（復原/重做、放棄、檢查並套用）+ 格位編輯 modal + 大夜格位輸入 + 本月狀態列 + 右側抽屜（驗證／支援／大夜／版本）+ `⋯` 選單（清空班表、清空大夜、鎖定/解鎖，皆需確認）+ PDF 列印預覽（見 §12.1）。房務：A／假別／休手動排班，不做規則檢測，抽屜只有版本分頁，下方特休紀錄面板 |
+| `/housekeeping` | redirect | `<Navigate replace>` → `/?group=housekeeping` |
 | `/employees` | EmployeesPage | CRUD + 角色/可用班次/偏好 + 暱稱/標籤/排序（上移下移）+ 大夜規則開關（含無視所有規則）+ 離職日設定（設離職/取消、復原軟刪除）+ 真刪（僅無歷史資料者）+ 已離職/停用者收合於下方區塊 |
-| `/off-days` | OffDaysPage | 圓形 Icon 選人 + 常用假別單鍵（指定休/特休/事假/病假）+ 自訂假別管理 + 連休計數器 + 「開始排班」按鈕與 D 備援開關 + 店長卡班上限輸入（每月，A/C）+ 排班結果/診斷顯示（SolveResult）+ **特休紀錄面板（週年制：期間/額度/已用/剩餘、期初已用、覆寫額度、半天紀錄）**；大夜假別新增/移除會同步排班表格位 |
-| `/cross-month` | CrossMonthPage | 上月末 5 天自動載入/手動輸入 + 銜接預覽 + 跨月週休假摘要 |
-| `/stats` | StatsPage | 每人班次/休假統計 + 公平性 + 每日覆蓋 + S1~S10 細項 + 上月連休「優先 2 次」標記 + 調班紀錄 + **特休彙總（週年制）** + 求解時間上限設定 + CSV/JSON 匯出 |
+| `/off-days` | OffDaysPage 休假與排班 | 兩欄：左側員工清單（指定休假 n/2、請假、連休）＋右側月曆；工具列指定休假／特休／事假／病假／自訂假別（管理假別連到排班規則）；「開始排班」為主要動作，結果以 Toast + 右側抽屜（SolveResult：班次統計/軟性約束/診斷）呈現；下方分頁「本月休假統計／特休紀錄（週年制）」；大夜假別新增/移除會同步班表格位；鎖定月份唯讀 |
+| `/settings` | SettingsPage 排班規則（v1.3.0 新） | 分頁（`?tab=`）：假別管理（CRUD，內建不可刪）／跨月銜接（上月末 6 天自動載入/手動輸入 + 銜接預覽）／求解參數（求解秒數、D 班備援、每月店長卡班上限）／列印設定（`branch_name`、`print_notes`） |
+| `/cross-month` | redirect | `<Navigate replace>` → `/settings?tab=cross-month` |
+| `/stats` | StatsPage 統計報表 | 4 張 KPI（總班次、每人平均上班天數、週末平均上班人數、違規/警告）＋分頁：總覽／每人統計／每日覆蓋／公平性與軟性約束／休假與特休／變更紀錄／備份；CSV/JSON 匯出在頁首；整庫備份/匯入在「備份」分頁 |
 
-- 狀態管理：Zustand `uiStore`（currentYear/currentMonth）；資料：TanStack Query
+- 共用 UI：`components/ui/`（PageHeader、Card、Section、Toolbar、Tabs、StatusPill、Badge、
+  EmptyState、LoadingState、Drawer、ConfirmDialog、Toast、Field、Button、Modal）；
+  破壞性操作一律 `ConfirmDialog`，Modal/Drawer/列印預覽具 Esc、focus trap、`aria-modal`
+- 鍵盤：班表方向鍵移動／Shift 範圍／Home-End／Enter 編輯／Esc 取消；
+  Ctrl/Cmd+Z 復原、Ctrl/Cmd+Shift+Z 重做（暫存層）；分頁可用左右方向鍵切換
+- 無障礙：狀態以圖示＋文字表示（不用 emoji）、圖示按鈕有 `aria-label`、
+  月曆格有 `aria-pressed` 與日期說明、列印預覽有 `aria-label` 與焦點回收
+- 狀態管理：Zustand `uiStore`（currentYear/currentMonth、側欄收合、求解參數）；
+  資料：TanStack Query
+- 靜態檔：後端以 SPA fallback 服務（無副檔名且非 `/api/*` 的路徑回 `index.html`），
+  深層連結重新整理可用
 - Lifecycle：`lifecycle.ts` 僅於 PROD build 啟動（見 §15）
 - `UpdateBanner`：`/updates/check` 有新版時顯示提示橫幅
 
@@ -458,3 +470,8 @@ cd backend && .venv/bin/python tests/seed_dev.py
    時視為資料不足，H9 退回 H2 式判斷（不誤加休假）；可於跨月設定頁重新「自動載入」補齊。
 4. 員工人數 >7 或規則組合極端時可能無解；診斷會給出可能原因與建議。
 5. `updates/check` 依賴 GitHub Releases 的公開 API（離線環境僅回 error 欄位）。
+6. **手機以唯讀檢視為主**（v1.3.0）：班表可橫向捲動、導覽為漢堡選單，
+   但未針對小螢幕做完整編輯最佳化（格位編輯、畫筆仍以桌機為主）。
+7. 員工編輯仍是 Modal（未改抽屜）；表單欄位未全面改用共用 `Field` 樣式（Phase 4 保留）。
+8. `tests/test_phase8.py` 的「調整求解」偶發失敗（CP-SAT 非決定性，約 1/5），
+   重跑即過；尚未區分 INFEASIBLE 與 UNKNOWN（逾時）的錯誤訊息。

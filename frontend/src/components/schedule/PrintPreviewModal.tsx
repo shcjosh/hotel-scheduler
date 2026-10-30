@@ -8,6 +8,7 @@ import { getSetting, updateSetting } from '../../api/settings'
 import { buildPrintHtml } from '../../utils/printSchedule'
 import { getMonthDays } from '../../utils/date'
 import { isHousekeeping } from '../../utils/employee'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 import type { OffDate } from '../../utils/offDayMarks'
 import type { Employee, LeaveType, MonthScheduleView } from '../../types'
 
@@ -139,6 +140,9 @@ export function PrintPreviewModal({
   onClose,
 }: PrintPreviewModalProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  // 焦點留在預覽對話框內；Esc 與背景捲動由本元件自己的 effect 處理。
+  useFocusTrap(dialogRef, open, undefined, { lockScroll: false })
   // xlsx 為整週檢視（含前後月補齊），預設開啟。
   const [wholeWeek, setWholeWeek] = useState(true)
   // xlsx 預設含房務；沒有房務人員時仍會自動忽略。
@@ -305,7 +309,14 @@ export function PrintPreviewModal({
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-gray-100" role="dialog" aria-modal="true">
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-50 flex flex-col bg-gray-100"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`列印預覽 ${year} 年 ${month} 月班表`}
+      tabIndex={-1}
+    >
       <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4">
         <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-gray-800">列印預覽 — {year} 年 {month} 月班表</h2>

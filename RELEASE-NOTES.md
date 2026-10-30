@@ -1,5 +1,118 @@
 # 飯店排班系統 — Release Notes
 
+## v1.3.0-beta（測試版，待實機驗證）
+
+> 分支：`v1.3.0-beta`（從 `v1.2.3` 分出）
+> 計畫書：`PLAN-v1.3.0.md`
+> 範圍：只做前端資訊架構與操作體驗；**不動排班求解器、約束規則、班表資料格式**。
+
+### Phase 0（已完成）
+
+- 開 `v1.3.0-beta` 分支，`version.py = 1.3.0-beta`
+- baseline：`npm run build`、`npm run lint`、`tests/test_phase8.py` 全數通過
+
+### Phase 1：設計系統 + Layout/導覽（已完成）
+
+- **設計 token**（`tailwind.config.js`、`styles/globals.css`）
+  - 品牌色 `brand`（indigo 色階）、狀態色 `status`（success/warning/danger/info）
+  - 圓角 6/8/12/16、陰影 `card`/`popover`/`drawer`、字級 xs~2xl
+  - 全域 `:focus-visible` 焦點環、`.hs-card`、`.density-compact`（表格密度，Phase 2 使用）
+- **共用 UI 元件**（`components/ui/`）
+  - 新增：`page-header`、`card`、`section`、`toolbar`、`status-pill`、`badge`、
+    `empty-state`、`loading-state`（含 `Skeleton`）、`drawer`、`confirm-dialog`、`field`、`toast`
+  - `button` 增加 `danger` variant、`size`（sm/md/icon）與 `loading`
+  - `modal` 補上 Esc 關閉、focus trap、`aria-modal`/`aria-labelledby`、背景鎖捲動
+  - 狀態一律改為 lucide icon + 文字（原本的 🟡🟢🔒 emoji 移除）
+- **Sidebar**
+  - 分成「本月作業 / 資料設定 / 分析與輸出」三組
+  - 可收合成 64px icon 模式（記住上次狀態）、手機（< md）改為抽屜選單
+  - 導覽項目支援 badge；Phase 1 只顯示本月班表狀態（草稿／已發布／已鎖定）
+- **Header**
+  - 左側顯示目前頁面名稱（由路由決定，不再由各頁重複）
+  - 中間 `‹ 2026 年 10 月 ›` + 「本月」+ 班表狀態 pill；點年月可直接跳選
+  - 右側使用者選單：使用者名稱／飯店名稱／分館名稱（同 `branch_name` 設定）編輯、
+    「關閉系統」收進選單並改用確認對話框
+- **頁面套版**：6 頁都改用 `PageHeader` + 共用 loading／錯誤／空狀態；
+  排班表與房務班表移除重複的 `STATUS_META`；清空班表／清空大夜／鎖定、
+  刪除員工、覆蓋已發布班表改為 `ConfirmDialog`
+  - 版本歷史改為右側抽屜（`Drawer`），驗證／支援／大夜仍在表格下方，Phase 2 才搬
+
+### Phase 2：班表／房務合併 + 右側抽屜（已完成）
+
+- **班表頁合併**：`/` 用 `?group=front|housekeeping` 切換「櫃台／房務」分頁，
+  `/housekeeping` 以 `<Navigate replace>` 轉到 `/?group=housekeeping`；`HousekeepingPage` 移除
+- **版面重組**
+  - `PageHeader` 只留一個主要動作：草稿→「發布班表」、已發布→「列印 / PDF」、鎖定→「解鎖」
+  - `MonthStatusBar`：狀態｜違規/警告｜待處理支援｜目前版本，點擊開對應抽屜分頁
+  - `ScheduleToolbar`：櫃台／房務分頁、畫筆 popover、列高切換、全螢幕
+  - `ScheduleSidePanel`（右側抽屜）：驗證／支援／大夜／版本，房務只顯示版本
+  - 表格下方不再堆疊驗證、支援、大夜、版本面板
+- **互動**
+  - `ScheduleGrid` 由 `ScheduleTable` 改寫：表頭與姓名欄黏著、週一粗線、週末底色、
+    今天加圈、整欄 hover 高亮、列高 comfortable/compact
+  - 共用 `useScheduleBrush`（櫃台／房務同一套畫筆規則）：單擊、拖曳連塗、
+    依角色限制（二館 A1/C1/D1、大夜 D/OFF/假別、房務 A/OFF/假別）
+  - `usePendingChanges`：暫存修改支援復原／重做（Ctrl/Cmd+Z、Ctrl/Cmd+Shift+Z）、放棄
+  - `useGridSelection`：方向鍵移動、Shift+方向鍵範圍選取、Home/End、Enter 編輯、Esc 取消
+  - 破壞性操作收進 `ScheduleActionsMenu`（⋯）：清空當月、清空大夜、鎖定/解鎖，
+    一律走 `ConfirmDialog`
+  - 房務分頁「套用」直接寫入（不做規則檢測），櫃台分頁仍先逐格驗證再開確認視窗
+- **後端小改**：`app/api/__init__.py` 的靜態檔 mount 改為 `_SpaStaticFiles`，
+  無副檔名的未知路徑回 `index.html`（`/api/*` 仍維持 404），讓舊書籤與深層連結可用
+- **移除**：`pages/HousekeepingPage.tsx`、`components/schedule/ScheduleTable.tsx`、
+  `components/schedule/VersionHistoryDrawer.tsx`（改為 `VersionHistoryPanel` + 抽屜）
+
+### Phase 3：休假／排班規則／統計（已完成）
+
+- **休假與排班頁（`/off-days`）**
+  - 兩欄：左側員工清單（指定休假 n/2、請假天數、連休 n/2），右側月曆
+  - 工具列：指定休假／特休／事假／病假／自訂假別；「管理假別」連到排班規則
+  - 主要動作只有「開始排班」；求解秒數、D 班備援、店長卡班上限移到排班規則
+  - 結果改為 Toast + 右側「排班結果」抽屜（成功：班次統計／軟性約束；失敗：診斷＋重試）
+  - 下方分頁：本月休假統計 / 特休紀錄（週年制面板）
+  - 鎖定月份在頁面上直接提示唯讀
+- **排班規則頁（`/settings`，新）**
+  - 分頁：假別管理／跨月銜接／求解參數／列印設定（`?tab=` 可直連）
+  - 假別管理由休假頁移入（新增/改色/刪除，內建假別不可刪）
+  - 跨月銜接由 `/cross-month` 移入；舊網址以 `<Navigate replace>` 轉到 `?tab=cross-month`
+  - 求解參數：求解時間上限、D 班備援、店長卡班上限（依目前月份）
+  - 列印設定：分館名稱、頁尾注意事項（與 PDF 預覽共用同一組設定）
+- **統計報表頁（`/stats`）**
+  - 上方 4 張 KPI：總班次、每人平均上班天數、週末平均上班人數、違規／警告
+  - 分頁：總覽／每人統計／每日覆蓋／公平性與軟性約束／休假與特休／變更紀錄／備份
+  - 匯出 CSV/JSON 留在頁首；求解時間上限移到排班規則
+  - 整庫匯入改用 `ConfirmDialog`（不再用 `window.confirm`）
+- **導覽**：資料設定新增「排班規則」、移除「跨月設定」；頁面標題改為「休假與排班」
+- **移除**：`pages/CrossMonthPage.tsx`、`components/off-days/LeaveTypeManager.tsx`（改為設定頁面板）
+
+### Phase 4：Polish／無障礙／回歸（已完成）
+
+- **無障礙**
+  - 列印預覽（`PrintPreviewModal`）加 focus trap、`aria-label`，關閉後焦點回到原按鈕；
+    Esc 與背景鎖捲動沿用原本行為（避免雙重鎖定）
+  - 月曆格加 `aria-pressed` 與日期說明（例如「8 月 5 日，指定休假」）
+  - 班表格位加 `aria-label`（含尚未儲存／已鎖定狀態）
+  - 分頁可用左右方向鍵切換（`ui/tabs.tsx`）
+- **最後一個 `window.prompt` 移除**：員工「設離職」改成 Modal + 日期欄位（`Field`），
+  含格式驗證、Loading 與 Toast；整庫匯入也在 Phase 3 改為 `ConfirmDialog`
+- **回歸**
+  - `npm run build`、`npm run lint`（0 warning）
+  - 後端 `backend/tests/` 全數腳本逐檔執行
+  - Headless Chromium 走完全部路由＋PDF 預覽＋鍵盤／Esc＋手機 390px，主控台 0 error
+- **文件**：README 增加「介面操作小技巧」；SPEC 更新 §12（鍵盤／無障礙）、
+  §17（手機唯讀、員工表單仍為 Modal、test_phase8 偶發）
+
+### 已知／留待後續
+
+- 員工編輯仍是 Modal（未改抽屜）、表單未全面改用 `Field`
+- 手機以唯讀檢視為主，未做小螢幕完整編輯
+- `tests/test_phase8.py` 的調整求解偶發失敗（CP-SAT 非決定性），錯誤訊息未區分
+  INFEASIBLE 與 UNKNOWN（逾時）
+
+### 相容性
+
+- 後端 API、SQLite schema、PDF 輸出規則皆不變，beta 與 1.2.3 可共用同一份資料庫。
+
 ## v1.2.3（2026-10-29 正式版）
 
 > 對應 tag：`v1.2.3`

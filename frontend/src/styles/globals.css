@@ -12,4 +12,62 @@ body,
 body {
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Noto Sans TC", sans-serif;
+  font-size: 14px;
+  color: #1e293b;
+  background-color: #f8fafc;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer base {
+  /* 全站統一的鍵盤焦點樣式（滑鼠點擊不顯示） */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-1 ring-offset-white;
+  }
+
+  /* 原生 <select> 在深色模式下不一致，統一用系統字型 */
+  select,
+  input,
+  textarea,
+  button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  /* 卡片：與 ui/card.tsx 對應，供無法使用元件的原生表格沿用 */
+  .hs-card {
+    @apply rounded-lg border border-slate-200 bg-white shadow-card;
+  }
+
+  /* 表格密度：Phase 2 起由工具列切換（comfortable 為預設） */
+  .density-comfortable td,
+  .density-comfortable th {
+    @apply py-2;
+  }
+  .density-compact td,
+  .density-compact th {
+    @apply py-1;
+  }
+}
+
+/* 細捲軸（表格横向捲動時較不干擾） */
+@layer utilities {
+  .hs-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .hs-scroll::-webkit-scrollbar {
+    height: 8px;
+    width: 8px;
+  }
+  .hs-scroll::-webkit-scrollbar-thumb {
+    background-color: #cbd5e1;
+    border-radius: 9999px;
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
 }

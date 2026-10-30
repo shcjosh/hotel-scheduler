@@ -1,13 +1,18 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
-import { CalendarX, FileDown, History, Lock, RefreshCw, Sparkles, Trash2, Unlock, Send, Paintbrush, CheckCheck, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CalendarX, CircleAlert, FileDown, LockOpen, Printer, Send, Sparkles } from 'lucide-react'
 import { useUIStore } from '../stores/uiStore'
 import { getEmployees } from '../api/employees'
-import { getSchedule, getValidationReport, validateCell, updateScheduleEntry, clearSchedule } from '../api/schedules'
+import {
+  getSchedule,
+  getValidationReport,
+  validateCell,
+  updateScheduleEntry,
+  clearSchedule,
+} from '../api/schedules'
 import { getLeaveTypes } from '../api/leaveTypes'
 import { getSettings } from '../api/settings'
-import { PrintPreviewModal } from '../components/schedule/PrintPreviewModal'
 import {
   setScheduleStatus,
   getSnapshots,
@@ -26,244 +31,368 @@ import {
   removeBackupRequest,
   clearNightSchedule,
 } from '../api/night'
-import { ScheduleTable } from '../components/schedule/ScheduleTable'
+import { PageHeader } from '../components/ui/page-header'
+import { Button } from '../components/ui/button'
+import { LoadingState } from '../components/ui/loading-state'
+import { EmptyState } from '../components/ui/empty-state'
+import { ConfirmDialog } from '../components/ui/confirm-dialog'
+import { useToast } from '../hooks/useToast'
+import { MonthStatusBar, type SidePanelTab } from '../components/schedule/MonthStatusBar'
+import { ScheduleToolbar } from '../components/schedule/ScheduleToolbar'
+import { ScheduleGrid } from '../components/schedule/ScheduleGrid'
+import { PendingChangesBar } from '../components/schedule/PendingChangesBar'
+import { ScheduleActionsMenu } from '../components/schedule/ScheduleActionsMenu'
+import { ScheduleSidePanel } from '../components/schedule/ScheduleSidePanel'
 import { ShiftLegend } from '../components/schedule/ShiftLegend'
 import { CellEditModal } from '../components/schedule/CellEditModal'
 import { BatchApplyModal, type PendingCellChange } from '../components/schedule/BatchApplyModal'
 import { AdjustScheduleModal } from '../components/schedule/AdjustScheduleModal'
-import { ValidationReportPanel } from '../components/schedule/ValidationReport'
-import { SupportRequestPanel } from '../components/support/SupportRequestPanel'
-import { DBackupRequestPanel } from '../components/night/DBackupRequestPanel'
-import { VersionHistoryDrawer } from '../components/schedule/VersionHistoryDrawer'
-import { Button } from '../components/ui/button'
-import { displayName } from '../utils/employee'
-import { getShiftStyle } from '../utils/shift'
+import { PrintPreviewModal } from '../components/schedule/PrintPreviewModal'
+import { AnnualLeavePanel } from '../components/off-days/AnnualLeavePanel'
+import { usePendingChanges } from '../hooks/usePendingChanges'
+import { useScheduleBrush } from '../hooks/useScheduleBrush'
+import { useGridSelection } from '../hooks/useGridSelection'
+import {
+  avatarColor,
+  avatarText,
+  displayName,
+  isHousekeeping,
+  isVisibleInMonth,
+} from '../utils/employee'
+import { splitPendingKey, type ScheduleGroup } from '../utils/brush'
 import { cn } from '../utils/cn'
 import type { ScheduleStatus } from '../types'
 import type { CellViolation } from '../api/schedules'
 
+type ConfirmKind = 'clear' | 'clear-night' | 'lock'
+
 function hasRealData(schedule: Record<string, string[]>): boolean {
-  return Object.values(schedule).some((row) => row.some((s) => s && s !== 'OFF' && s !== 'EMPTY'))
+  return Object.values(schedule).some((row) =>
+    row.some((shift) => shift && shift !== 'OFF' && shift !== 'EMPTY'),
+  )
 }
-
-const STATUS_META: Record<ScheduleStatus, { label: string; dot: string; cls: string }> = {
-  draft: { label: '草稿中', dot: '🟡', cls: 'bg-yellow-100 text-yellow-700' },
-  published: { label: '已發布', dot: '🟢', cls: 'bg-green-100 text-green-700' },
-  locked: { label: '已鎖定', dot: '🔒', cls: 'bg-gray-200 text-gray-700' },
-}
-
-const LT_PREFIX = 'LT:'
 
 export function SchedulePage() {
-  const { currentYear, currentMonth } = useUIStore()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const group: ScheduleGroup =
+    searchParams.get('group') === 'housekeeping' ? 'housekeeping' : 'front'
+  const { currentYear: year, currentMonth: month } = useUIStore()
   const queryClient = useQueryClient()
+  const toast = useToast()
+
   const [editing, setEditing] = useState<{ empName: string; day: number } | null>(null)
-  const [versionOpen, setVersionOpen] = useState(false)
+  const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab | null>(null)
   const [adjustOpen, setAdjustOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
-
-  // 快速連選／畫筆模式
-  const [selectedTool, setSelectedTool] = useState<string | null>(null)
-  const [pendingChanges, setPendingChanges] = useState<Record<string, { shift: string; leaveType?: string }>>({})
+  const [confirmKind, setConfirmKind] = useState<ConfirmKind | null>(null)
   const [batchModalOpen, setBatchModalOpen] = useState(false)
   const [batchChecking, setBatchChecking] = useState(false)
   const [batchSaving, setBatchSaving] = useState(false)
   const [batchViolations, setBatchViolations] = useState<CellViolation[]>([])
   const [batchWarnings, setBatchWarnings] = useState<CellViolation[]>([])
+  const [dense, setDense] = useState(false)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [selectedHkId, setSelectedHkId] = useState<number | null>(null)
+  const gridWrapRef = useRef<HTMLDivElement>(null)
 
+  // ---- 資料 ----
   const { data: employees = [] } = useQuery({
     queryKey: ['employees'],
     queryFn: () => getEmployees(),
   })
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['schedule', currentYear, currentMonth],
-    queryFn: () => getSchedule(currentYear, currentMonth),
+  const frontQuery = useQuery({
+    queryKey: ['schedule', year, month],
+    queryFn: () => getSchedule(year, month, 'front'),
   })
+  const hkQuery = useQuery({
+    queryKey: ['housekeeping-schedule', year, month],
+    queryFn: () => getSchedule(year, month, 'housekeeping'),
+    enabled: group === 'housekeeping',
+  })
+  const activeQuery = group === 'housekeeping' ? hkQuery : frontQuery
+  const view = activeQuery.data
+  const frontView = frontQuery.data
+
   const { data: leaveTypes = [] } = useQuery({
     queryKey: ['leave-types'],
     queryFn: () => getLeaveTypes(),
   })
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: () => getSettings(),
-  })
-  const hotelName = settings?.hotel_name ?? '清翼居府中館'
-  const userName = settings?.user_name ?? 'Josh Wang'
-  const { data: snapshots = [] } = useQuery({
-    queryKey: ['snapshots', currentYear, currentMonth],
-    queryFn: () => getSnapshots(currentYear, currentMonth),
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: () => getSettings() })
+  const { data: snapshots = [], isLoading: snapshotsLoading } = useQuery({
+    queryKey: ['snapshots', year, month],
+    queryFn: () => getSnapshots(year, month),
   })
   const { data: report, isLoading: reportLoading } = useQuery({
-    queryKey: ['validation', currentYear, currentMonth],
-    queryFn: () => getValidationReport(currentYear, currentMonth),
+    queryKey: ['validation', year, month],
+    queryFn: () => getValidationReport(year, month),
+    enabled: group === 'front',
   })
-  const { data: supportReqs = [] } = useQuery({
-    queryKey: ['support-requests', currentYear, currentMonth],
-    queryFn: () => getSupportRequests(currentYear, currentMonth),
+  const { data: supportRequests = [] } = useQuery({
+    queryKey: ['support-requests', year, month],
+    queryFn: () => getSupportRequests(year, month),
+    enabled: group === 'front',
   })
   const { data: night } = useQuery({
-    queryKey: ['night', currentYear, currentMonth],
-    queryFn: () => getNightSchedule(currentYear, currentMonth),
+    queryKey: ['night', year, month],
+    queryFn: () => getNightSchedule(year, month),
+    enabled: group === 'front',
   })
 
+  const status: ScheduleStatus = view?.status ?? 'draft'
+  const locked = status === 'locked'
+  const numDays = view?.num_days ?? 30
+  const hotelName = settings?.hotel_name ?? '清翼居府中館'
+  const userName = settings?.user_name ?? 'Josh Wang'
+
+  const hkEmployees = useMemo(
+    () => employees.filter((e) => isHousekeeping(e) && isVisibleInMonth(e, year, month)),
+    [employees, year, month],
+  )
+  const selectedHkEmployee =
+    hkEmployees.find((e) => e.id === selectedHkId) ?? hkEmployees[0] ?? null
+
+  // ---- 暫存 / 畫筆 / 選取 ----
+  const pendingApi = usePendingChanges()
+  const { pending, count, canUndo, canRedo } = pendingApi
+
+  const getOriginal = useCallback(
+    (empName: string, day: number) => ({
+      shift: view?.schedule[empName]?.[day - 1] ?? '',
+      leaveType: view?.leave_details?.[empName]?.[String(day)] ?? null,
+    }),
+    [view],
+  )
+
+  const brush = useScheduleBrush({
+    group,
+    employees,
+    getOriginal,
+    patch: pendingApi.patch,
+  })
+
+  const names = useMemo(() => (view ? Object.keys(view.schedule) : []), [view])
+  const nameIndex = useMemo(() => new Map(names.map((name, index) => [name, index])), [names])
+
+  const openEditor = useCallback(
+    (empName: string, day: number) => {
+      if (locked) return
+      setEditing({ empName, day })
+    },
+    [locked],
+  )
+
+  const selection = useGridSelection(names, numDays, openEditor)
+
+  // 換月／換分頁時把暫存、選取、畫筆清乾淨，避免套用到別的月份
+  const { reset: resetPending } = pendingApi
+  const { clear: clearSelection } = selection
+  const { clearTool } = brush
+  useEffect(() => {
+    resetPending()
+    clearSelection()
+    clearTool()
+    setSidePanelTab(null)
+  }, [year, month, group, resetPending, clearSelection, clearTool])
+
+  // Ctrl/Cmd+Z 復原、Ctrl/Cmd+Shift+Z 重做
+  const { undo, redo } = pendingApi
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      if (target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)) return
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return
+      event.preventDefault()
+      if (event.shiftKey) redo()
+      else undo()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [redo, undo])
+
+  useEffect(() => {
+    function handleFullscreenChange() {
+      setFullscreen(document.fullscreenElement === gridWrapRef.current)
+    }
+    document.addEventListener('fullscreenchange', handleFullscreenChange)
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange)
+  }, [])
+
+  // ---- 寫入 ----
   function invalidateAll() {
-    queryClient.invalidateQueries({ queryKey: ['schedule', currentYear, currentMonth] })
-    queryClient.invalidateQueries({ queryKey: ['validation', currentYear, currentMonth] })
-    queryClient.invalidateQueries({ queryKey: ['snapshots', currentYear, currentMonth] })
-    queryClient.invalidateQueries({ queryKey: ['night', currentYear, currentMonth] })
-    queryClient.invalidateQueries({ queryKey: ['off-days', currentYear, currentMonth] })
-    queryClient.invalidateQueries({ queryKey: ['off-day-summary', currentYear, currentMonth] })
+    queryClient.invalidateQueries({ queryKey: ['schedule', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['housekeeping-schedule', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['validation', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['snapshots', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['night', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['support-requests', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['schedule-status', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['off-days', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['off-day-summary', year, month] })
+    queryClient.invalidateQueries({ queryKey: ['annual-leave', year, month] })
   }
+
+  const updateMut = useMutation({
+    mutationFn: ({
+      empId,
+      day,
+      shift,
+      leaveType,
+      reason,
+    }: {
+      empId: number
+      day: number
+      shift: string
+      leaveType?: string
+      reason?: string
+    }) => updateScheduleEntry(empId, year, month, day, shift, leaveType, reason),
+    onSuccess: () => invalidateAll(),
+  })
+
+  const statusMut = useMutation({
+    mutationFn: (next: ScheduleStatus) => setScheduleStatus(year, month, next),
+    onSuccess: () => invalidateAll(),
+  })
+
+  const clearMut = useMutation({
+    mutationFn: () => clearSchedule(year, month, group),
+    onSuccess: () => {
+      pendingApi.reset()
+      invalidateAll()
+      toast('已清空本月班表')
+    },
+  })
+
+  const clearNightMut = useMutation({
+    mutationFn: () => clearNightSchedule(year, month),
+    onSuccess: () => {
+      pendingApi.reset()
+      invalidateAll()
+      toast('已清空本月大夜排班')
+    },
+  })
+
+  const restoreMut = useMutation({
+    mutationFn: (id: number) => restoreSnapshot(id),
+    onSuccess: () => {
+      pendingApi.reset()
+      invalidateAll()
+      toast('已還原版本')
+    },
+  })
 
   const supportMut = useMutation({
     mutationFn: async (fn: () => Promise<unknown>) => fn(),
     onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ['support-requests', currentYear, currentMonth] }),
-  })
-
-  const updateMut = useMutation({
-    mutationFn: ({ empId, day, shift, leaveType, reason }: { empId: number; day: number; shift: string; leaveType?: string; reason?: string }) =>
-      updateScheduleEntry(empId, currentYear, currentMonth, day, shift, leaveType, reason),
-    onSuccess: () => {
-      invalidateAll()
-    },
-  })
-
-  const clearMut = useMutation({
-    mutationFn: () => clearSchedule(currentYear, currentMonth),
-    onSuccess: () => {
-      setPendingChanges({})
-      invalidateAll()
-    },
+      queryClient.invalidateQueries({ queryKey: ['support-requests', year, month] }),
   })
 
   const backupAddMut = useMutation({
-    mutationFn: (day: number) => addBackupRequest(currentYear, currentMonth, day),
+    mutationFn: (day: number) => addBackupRequest(year, month, day),
     onSuccess: () => invalidateAll(),
   })
   const backupRemoveMut = useMutation({
     mutationFn: (id: number) => removeBackupRequest(id),
     onSuccess: () => invalidateAll(),
   })
-  const clearNightMut = useMutation({
-    mutationFn: () => clearNightSchedule(currentYear, currentMonth),
-    onSuccess: () => {
-      setPendingChanges({})
-      invalidateAll()
-    },
-  })
 
-  function handleClearNight() {
-    if (window.confirm(`確定要清空 ${currentYear} 年 ${currentMonth} 月的大夜排班嗎？`)) {
-      clearNightMut.mutate()
-    }
+  // ---- 互動 ----
+  function handleGroupChange(next: ScheduleGroup) {
+    setSearchParams(next === 'housekeeping' ? { group: 'housekeeping' } : {}, { replace: true })
   }
 
-  const statusMut = useMutation({
-    mutationFn: (status: ScheduleStatus) => setScheduleStatus(currentYear, currentMonth, status),
-    onSuccess: () => invalidateAll(),
-  })
-
-  const restoreMut = useMutation({
-    mutationFn: (id: number) => restoreSnapshot(id),
-    onSuccess: () => {
-      setPendingChanges({})
-      invalidateAll()
-    },
-  })
-
-  function handleClear() {
-    if (window.confirm(`確定要清空 ${currentYear} 年 ${currentMonth} 月的排班嗎？（保留大夜手動輸入）`)) {
-      clearMut.mutate()
-    }
-  }
-
-  function handleSetStatus(status: ScheduleStatus) {
-    if (status === 'locked' && !window.confirm('鎖定後該月份將唯讀，確定要鎖定嗎？')) return
-    statusMut.mutate(status)
-  }
-
-  const empty = data ? !hasRealData(data.schedule) : false
-  const editingEmp = editing ? employees.find((e) => e.name === editing.empName) : null
-  const editingShift = editing && data ? data.schedule[editing.empName][editing.day - 1] : ''
-  const editingLeaveCode = editing && data ? data.leave_details?.[editing.empName]?.[String(editing.day)] ?? null : null
-  const status = data?.status ?? 'draft'
-  const statusMeta = STATUS_META[status]
-
-  // 處理點擊格子
   function handleCellClick(empName: string, day: number) {
-    if (status === 'locked') return
-    const emp = employees.find((e) => e.name === empName)
-    if (!emp) return
-
-    if (selectedTool) {
-      // 快速連選模式
-      const key = `${empName}_${day}`
-      const originalShift = data?.schedule[empName]?.[day - 1]
-      const originalLeaveCode = data?.leave_details?.[empName]?.[String(day)]
-
-      const isLT = selectedTool.startsWith(LT_PREFIX)
-      const targetShift = isLT ? 'SPECIAL' : selectedTool
-      const targetLeaveType = isLT ? selectedTool.slice(LT_PREFIX.length) : undefined
-
-      // 二館支援只能 A1/C1/D1；大夜格位只能 D/OFF；非大夜不可排 D（備援由系統指派）
-      if (emp.tag) {
-        if (isLT || !['A1', 'C1', 'D1'].includes(targetShift)) return
-      } else if (emp.role === 'night') {
-        // 大夜可排 D/OFF，也可選假別（SPECIAL）；其餘班次仍擋
-        if (!isLT && targetShift !== 'D' && targetShift !== 'OFF') return
-      } else if (targetShift === 'D') {
-        return
-      }
-
-      // 如果點擊的值跟原始資料相同，則清除暫存
-      if (originalShift === targetShift && (!isLT || originalLeaveCode === targetLeaveType)) {
-        setPendingChanges((prev) => {
-          const next = { ...prev }
-          delete next[key]
-          return next
-        })
-      } else {
-        setPendingChanges((prev) => ({
-          ...prev,
-          [key]: { shift: targetShift, leaveType: targetLeaveType },
-        }))
-      }
-    } else {
-      // 單格編輯彈窗
-      setEditing({ empName, day })
+    if (locked) return
+    if (brush.consumeDragClick()) return
+    if (brush.isActive) {
+      brush.paint(empName, day)
+      return
     }
+    openEditor(empName, day)
   }
 
-  // 批次檢查並開啟確認彈窗
-  async function handleOpenBatchModal() {
-    const changeKeys = Object.keys(pendingChanges)
-    if (changeKeys.length === 0 || !data) return
+  function handleGridKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') return
+    selection.handleKeyDown(event)
+  }
 
+  async function handleToggleFullscreen() {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen()
+      return
+    }
+    await gridWrapRef.current?.requestFullscreen()
+  }
+
+  function handleSetStatus(next: ScheduleStatus) {
+    if (next === 'locked') {
+      setConfirmKind('lock')
+      return
+    }
+    statusMut.mutate(next)
+  }
+
+  const pendingChangeList: PendingCellChange[] = Object.entries(pending).map(([key, change]) => {
+    const { empName, day } = splitPendingKey(key)
+    return {
+      empName,
+      day,
+      shift:
+        change.shift === 'SPECIAL' && change.leaveType
+          ? `請假(${change.leaveType})`
+          : change.shift,
+      leaveType: change.leaveType,
+      prevShift: view?.schedule[empName]?.[day - 1] ?? '',
+    }
+  })
+
+  async function handleApply() {
+    if (Object.keys(pending).length === 0) return
+
+    if (group === 'housekeeping') {
+      setBatchSaving(true)
+      try {
+        for (const [key, change] of Object.entries(pending)) {
+          const { empName, day } = splitPendingKey(key)
+          const emp = employees.find((item) => item.name === empName)
+          if (!emp) continue
+          await updateScheduleEntry(emp.id, year, month, day, change.shift, change.leaveType)
+        }
+        pendingApi.reset()
+        invalidateAll()
+        toast(`已套用房務 ${Object.keys(pending).length} 處修改`)
+      } catch (e) {
+        toast('套用失敗', {
+          tone: 'error',
+          description: e instanceof Error ? e.message : '未知錯誤',
+        })
+      } finally {
+        setBatchSaving(false)
+      }
+      return
+    }
+
+    // 櫃台：先逐格驗證，再開確認視窗
     setBatchModalOpen(true)
     setBatchChecking(true)
     setBatchViolations([])
     setBatchWarnings([])
-
     try {
-      const allViolations: CellViolation[] = []
-      const allWarnings: CellViolation[] = []
-      for (const key of changeKeys) {
-        const [empName, dayStr] = key.split('_')
-        const day = Number(dayStr)
-        const emp = employees.find((e) => e.name === empName)
+      const hard: CellViolation[] = []
+      const soft: CellViolation[] = []
+      for (const [key, change] of Object.entries(pending)) {
+        const { empName, day } = splitPendingKey(key)
+        const emp = employees.find((item) => item.name === empName)
         if (!emp) continue
-        const item = pendingChanges[key]
-        const r = await validateCell(emp.id, currentYear, currentMonth, day, item.shift)
-        for (const v of r.violations) {
-          allViolations.push({ ...v, message: `${empName} (${day}號): ${v.message}` })
+        const result = await validateCell(emp.id, year, month, day, change.shift)
+        for (const violation of result.violations) {
+          hard.push({ ...violation, message: `${empName} (${day}號): ${violation.message}` })
         }
-        for (const w of r.warnings) {
-          allWarnings.push({ ...w, message: `${empName} (${day}號): ${w.message}` })
+        for (const warning of result.warnings) {
+          soft.push({ ...warning, message: `${empName} (${day}號): ${warning.message}` })
         }
       }
-      setBatchViolations(allViolations)
-      setBatchWarnings(allWarnings)
+      setBatchViolations(hard)
+      setBatchWarnings(soft)
     } catch {
       setBatchViolations([{ rule: 'ERR', severity: 'hard', message: '檢查過程發生錯誤' }])
     } finally {
@@ -271,294 +400,313 @@ export function SchedulePage() {
     }
   }
 
-  // 批次確認套用
   async function handleBatchConfirm(reason?: string) {
-    const changeKeys = Object.keys(pendingChanges)
-    if (changeKeys.length === 0) return
-
+    const entries = Object.entries(pending)
+    if (entries.length === 0) return
     setBatchSaving(true)
     try {
-      for (const key of changeKeys) {
-        const [empName, dayStr] = key.split('_')
-        const day = Number(dayStr)
-        const emp = employees.find((e) => e.name === empName)
+      for (const [key, change] of entries) {
+        const { empName, day } = splitPendingKey(key)
+        const emp = employees.find((item) => item.name === empName)
         if (!emp) continue
-        const item = pendingChanges[key]
         await updateScheduleEntry(
           emp.id,
-          currentYear,
-          currentMonth,
+          year,
+          month,
           day,
-          item.shift,
-          item.leaveType,
+          change.shift,
+          change.leaveType,
           reason,
         )
       }
-      setPendingChanges({})
+      pendingApi.reset()
       setBatchModalOpen(false)
       invalidateAll()
+      toast(`已套用 ${entries.length} 處修改`)
+    } catch (e) {
+      toast('套用失敗', {
+        tone: 'error',
+        description: e instanceof Error ? e.message : '未知錯誤',
+      })
     } finally {
       setBatchSaving(false)
     }
   }
 
-  const pendingChangeList: PendingCellChange[] = Object.entries(pendingChanges).map(([key, val]) => {
-    const [empName, dayStr] = key.split('_')
-    const day = Number(dayStr)
-    const prevShift = data?.schedule[empName]?.[day - 1] ?? ''
-    return {
-      empName,
-      day,
-      shift: val.shift === 'SPECIAL' && val.leaveType ? `請假(${val.leaveType})` : val.shift,
-      leaveType: val.leaveType,
-      prevShift,
+  function handleConfirmAction() {
+    const done = () => setConfirmKind(null)
+    if (confirmKind === 'clear') clearMut.mutate(undefined, { onSettled: done })
+    else if (confirmKind === 'clear-night') clearNightMut.mutate(undefined, { onSettled: done })
+    else if (confirmKind === 'lock') statusMut.mutate('locked', { onSettled: done })
+  }
+
+  const confirmContent: Record<ConfirmKind, { title: string; description: string; label: string }> =
+    {
+      clear: {
+        title: `清空 ${year} 年 ${month} 月${group === 'housekeeping' ? '房務' : ''}班表？`,
+        description:
+          group === 'housekeeping'
+            ? '只會清除房務班表與房務假別紀錄，櫃台班表不受影響。此動作無法復原。'
+            : '將刪除本月所有班表（手動輸入的大夜會保留），同時清除本月支援請求，班表狀態回到草稿。此動作無法復原。',
+        label: group === 'housekeeping' ? '清空房務' : '清空排班',
+      },
+      'clear-night': {
+        title: `清空 ${year} 年 ${month} 月大夜排班？`,
+        description: '將清除本月所有大夜格位與大夜假別紀錄，白天班不受影響。此動作無法復原。',
+        label: '清空大夜',
+      },
+      lock: {
+        title: `鎖定 ${year} 年 ${month} 月班表？`,
+        description: '鎖定後本月班表、休假與大夜皆為唯讀，需先解鎖才能修改。',
+        label: '鎖定',
+      },
     }
-  })
+
+  const empty =
+    group === 'housekeeping'
+      ? hkEmployees.length === 0
+      : view
+        ? !hasRealData(view.schedule)
+        : false
+  const editingEmp = editing ? employees.find((e) => e.name === editing.empName) : null
+  const editingShift = editing && view ? view.schedule[editing.empName]?.[editing.day - 1] : ''
+  const editingLeaveCode =
+    editing && view ? (view.leave_details?.[editing.empName]?.[String(editing.day)] ?? null) : null
+
+  const hardViolations = report?.summary.hard_violations ?? 0
+  const softWarnings = report?.summary.soft_warnings ?? 0
+  const openSupports = supportRequests.filter((request) => request.status === 'open').length
+  const version = snapshots.length > 0 ? snapshots[snapshots.length - 1].version_number : null
+
+  const groupLabel = group === 'housekeeping' ? '房務班表' : '班表'
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="flex items-center gap-2 text-xl font-semibold text-gray-800">
-            {currentYear} 年 {currentMonth} 月 排班表
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${statusMeta.cls}`}>
-              {statusMeta.dot} {statusMeta.label}
-            </span>
-          </h2>
-          <p className="text-sm text-gray-500">
-            {selectedTool ? '畫筆連選模式：單擊格位即可快速改班' : '點擊格位可手動微調班次，或選取下方畫筆快速連改'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setVersionOpen(true)}
-            className="text-gray-700"
-          >
-            <History className="mr-2 h-4 w-4" />
-            版本歷史
-          </Button>
-          {data && (
-            <Button variant="outline" onClick={() => setExportOpen(true)} className="text-gray-700">
-              <FileDown className="mr-2 h-4 w-4" />
-              匯出 PDF
-            </Button>
-          )}
-          {status === 'draft' && (
-            <Button onClick={() => handleSetStatus('published')}>
-              <Send className="mr-2 h-4 w-4" /> 發布班表
-            </Button>
-          )}
-          {(status === 'draft' || status === 'published') && (
-            <Button variant="outline" onClick={() => handleSetStatus('locked')} className="text-gray-700">
-              <Lock className="mr-2 h-4 w-4" /> 鎖定
-            </Button>
-          )}
-          {status === 'locked' && (
-            <Button variant="outline" onClick={() => handleSetStatus('draft')} className="text-gray-700">
-              <Unlock className="mr-2 h-4 w-4" /> 解鎖
-            </Button>
-          )}
-          {!empty && data && status !== 'locked' && (
-            <Button variant="outline" onClick={() => setAdjustOpen(true)} className="text-gray-700">
-              <RefreshCw className="mr-2 h-4 w-4" /> 臨時異動
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            onClick={handleClear}
-            disabled={clearMut.isPending || status === 'locked'}
-            title={status === 'locked' ? '已鎖定月份請先解鎖才能清空' : undefined}
-            className="text-red-600"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            清空當月排班
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleClearNight}
-            disabled={clearNightMut.isPending || status === 'locked'}
-            title={status === 'locked' ? '已鎖定月份請先解鎖才能清空' : undefined}
-            className="text-red-600"
-          >
-            <Trash2 className="mr-2 h-4 w-4" />
-            清空大夜排班
-          </Button>
-        </div>
+    <div className="space-y-3">
+      <PageHeader
+        title={`${year} 年 ${month} 月 ${groupLabel}`}
+        description={
+          group === 'housekeeping'
+            ? '房務手動排班（A 09:00-18:00，含 1 小時用餐）；與櫃台互不干涉、不做規則檢測'
+            : '點擊格位微調班次，或選畫筆後單擊／拖曳連續塗色'
+        }
+        actions={
+          <>
+            {status === 'draft' && (
+              <Button onClick={() => handleSetStatus('published')} loading={statusMut.isPending}>
+                <Send className="mr-2 h-4 w-4" /> 發布班表
+              </Button>
+            )}
+            {status === 'published' && (
+              <Button onClick={() => setExportOpen(true)} disabled={!frontView}>
+                <Printer className="mr-2 h-4 w-4" /> 列印 / PDF
+              </Button>
+            )}
+            {status === 'locked' && (
+              <Button
+                variant="outline"
+                onClick={() => statusMut.mutate('draft')}
+                loading={statusMut.isPending}
+              >
+                <LockOpen className="mr-2 h-4 w-4" /> 解鎖
+              </Button>
+            )}
+            {status !== 'published' && (
+              <Button variant="outline" onClick={() => setExportOpen(true)} disabled={!frontView}>
+                <FileDown className="mr-2 h-4 w-4" /> 列印 / PDF
+              </Button>
+            )}
+            <ScheduleActionsMenu
+              status={status}
+              canAdjust={
+                group === 'front' &&
+                status !== 'locked' &&
+                !!frontView &&
+                !!view &&
+                hasRealData(view.schedule)
+              }
+              showNightActions={group === 'front'}
+              onOpenVersions={() => setSidePanelTab('version')}
+              onOpenAdjust={() => setAdjustOpen(true)}
+              onClear={() => setConfirmKind('clear')}
+              onClearNight={() => setConfirmKind('clear-night')}
+              onToggleLock={() =>
+                status === 'locked' ? statusMut.mutate('draft') : setConfirmKind('lock')
+              }
+            />
+          </>
+        }
+      />
+
+      <MonthStatusBar
+        status={status}
+        group={group}
+        hardViolations={hardViolations}
+        softWarnings={softWarnings}
+        openSupports={openSupports}
+        version={version}
+        onOpenTab={setSidePanelTab}
+      />
+
+      <div className="space-y-2">
+        <ScheduleToolbar
+          group={group}
+          onGroupChange={handleGroupChange}
+          tool={brush.tool}
+          onSelectTool={brush.setTool}
+          onClearTool={brush.clearTool}
+          leaveTypes={leaveTypes}
+          dense={dense}
+          onToggleDense={() => setDense((value) => !value)}
+          fullscreen={fullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
+          locked={locked}
+        />
+
+        {activeQuery.isLoading && <LoadingState label="載入班表…" />}
+        {activeQuery.isError && (
+          <EmptyState
+            tone="danger"
+            icon={CircleAlert}
+            title="載入失敗"
+            description={
+              activeQuery.error instanceof Error ? activeQuery.error.message : '未知錯誤'
+            }
+          />
+        )}
+
+        {!activeQuery.isLoading && !activeQuery.isError && empty && (
+          <EmptyState
+            icon={CalendarX}
+            title={group === 'housekeeping' ? '尚無房務人員' : '尚無排班資料'}
+            description={
+              group === 'housekeeping'
+                ? '請先到員工管理新增角色為「房務」的員工'
+                : `請先到「休假管理」執行排班引擎產生 ${month} 月班表`
+            }
+            action={
+              <Link to={group === 'housekeeping' ? '/employees' : '/off-days'}>
+                <Button>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {group === 'housekeeping' ? '前往員工管理' : '前往排班'}
+                </Button>
+              </Link>
+            }
+          />
+        )}
+
+        {!activeQuery.isLoading && !activeQuery.isError && !empty && view && (
+          <>
+            <div
+              ref={gridWrapRef}
+              className={cn(
+                fullscreen && 'flex h-full flex-col gap-2 overflow-auto bg-white p-3',
+              )}
+            >
+              <ScheduleGrid
+                view={view}
+                employees={employees}
+                leaveTypes={leaveTypes}
+                pendingChanges={pending}
+                showCoverage={group === 'front'}
+                dense={dense}
+                locked={locked}
+                fullscreen={fullscreen}
+                isSelected={(empName, day) => {
+                  const index = nameIndex.get(empName)
+                  return index === undefined ? false : selection.isSelected(index, day)
+                }}
+                onCellClick={handleCellClick}
+                onCellPointerDown={brush.onPointerDown}
+                onCellPointerEnter={brush.onPointerEnter}
+                onKeyDown={handleGridKeyDown}
+              />
+              <ShiftLegend leaveTypes={leaveTypes} />
+            </div>
+
+            <PendingChangesBar
+              count={count}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              applying={group === 'front' ? batchChecking : batchSaving}
+              mode={group === 'front' ? 'check' : 'direct'}
+              onUndo={pendingApi.undo}
+              onRedo={pendingApi.redo}
+              onDiscard={() => pendingApi.reset()}
+              onApply={handleApply}
+            />
+
+            {group === 'housekeeping' && hkEmployees.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-medium text-slate-500">特休紀錄對象：</span>
+                  {hkEmployees.map((employee) => {
+                    const selected = selectedHkEmployee?.id === employee.id
+                    return (
+                      <button
+                        key={employee.id}
+                        onClick={() => setSelectedHkId(employee.id)}
+                        className="flex flex-col items-center gap-0.5"
+                        title={displayName(employee)}
+                      >
+                        <span
+                          className={cn(
+                            'flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white transition',
+                            avatarColor(employee.id),
+                            selected
+                              ? 'ring-2 ring-brand-500 ring-offset-2'
+                              : 'opacity-70 hover:opacity-100',
+                          )}
+                        >
+                          {avatarText(employee)}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-xs',
+                            selected ? 'font-medium text-brand-700' : 'text-slate-500',
+                          )}
+                        >
+                          {employee.nickname || employee.name}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <AnnualLeavePanel employee={selectedHkEmployee} />
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      {/* 快速手動調整工具列 */}
-      {!isLoading && !isError && !empty && status !== 'locked' && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50/60 px-4 py-2.5 shadow-sm">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="flex items-center gap-1 text-xs font-semibold text-blue-900">
-              <Paintbrush className="h-3.5 w-3.5" /> 快捷畫筆：
-            </span>
-            {['A', 'B', 'C', 'D', 'M', 'OFF'].map((s) => {
-              const style = getShiftStyle(s)
-              const active = selectedTool === s
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSelectedTool((cur) => (cur === s ? null : s))}
-                  className={cn(
-                    'inline-flex h-7 min-w-8 items-center justify-center rounded px-2 text-xs font-bold transition',
-                    style.bg,
-                    style.text,
-                    active ? 'ring-2 ring-blue-600 ring-offset-1 scale-105 shadow-sm' : 'opacity-80 hover:opacity-100',
-                  )}
-                  title={s === 'D' ? '僅可塗在大夜專職格位' : undefined}
-                >
-                  {style.label}
-                </button>
-              )
-            })}
-            <span className="mx-1 h-4 w-px bg-blue-200" />
-            {['A1', 'C1', 'D1'].map((s) => {
-              const style = getShiftStyle(s)
-              const active = selectedTool === s
-              return (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSelectedTool((cur) => (cur === s ? null : s))}
-                  className={cn(
-                    'inline-flex h-7 min-w-8 items-center justify-center rounded px-2 text-xs font-bold transition',
-                    style.bg,
-                    style.text,
-                    active ? 'ring-2 ring-amber-600 ring-offset-1 scale-105 shadow-sm' : 'opacity-80 hover:opacity-100',
-                  )}
-                  title="二館支援班次"
-                >
-                  {style.label}
-                </button>
-              )
-            })}
-            {leaveTypes.map((lt) => {
-              const active = selectedTool === `${LT_PREFIX}${lt.code}`
-              return (
-                <button
-                  key={lt.code}
-                  type="button"
-                  onClick={() => setSelectedTool((cur) => (cur === `${LT_PREFIX}${lt.code}` ? null : `${LT_PREFIX}${lt.code}`))}
-                  className={cn(
-                    'inline-flex h-7 items-center justify-center rounded px-2.5 text-xs font-bold transition',
-                    active ? 'ring-2 ring-blue-600 ring-offset-1 scale-105 shadow-sm' : 'opacity-80 hover:opacity-100',
-                  )}
-                  style={{ backgroundColor: lt.color_bg, color: lt.color_text }}
-                >
-                  {lt.name}
-                </button>
-              )
-            })}
-            {selectedTool && (
-              <button
-                type="button"
-                onClick={() => setSelectedTool(null)}
-                className="flex items-center gap-0.5 rounded px-2 py-1 text-xs text-gray-500 hover:bg-blue-100 hover:text-gray-700"
-              >
-                <X className="h-3 w-3" /> 取消畫筆
-              </button>
-            )}
-          </div>
-
-          {pendingChangeList.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-blue-900">
-                已暫存 {pendingChangeList.length} 處修改
-              </span>
-              <Button variant="outline" className="px-2 py-1 text-xs" onClick={() => setPendingChanges({})}>
-                放棄
-              </Button>
-              <Button className="px-3 py-1 text-xs" onClick={handleOpenBatchModal}>
-                <CheckCheck className="mr-1 h-3.5 w-3.5" /> 檢查並套用
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {isLoading && (
-        <div className="rounded-lg border border-gray-200 bg-white p-12 text-center text-gray-500">載入中…</div>
-      )}
-      {isError && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-8 text-center text-red-600">
-          載入失敗：{error instanceof Error ? error.message : '未知錯誤'}
-        </div>
-      )}
-
-      {!isLoading && !isError && empty && (
-        <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 bg-white p-16 text-center">
-          <CalendarX className="mb-3 h-12 w-12 text-gray-300" />
-          <p className="mb-1 text-lg font-medium text-gray-700">尚無排班資料</p>
-          <p className="mb-4 text-sm text-gray-500">請先執行排班引擎產生 {currentMonth} 月班表</p>
-          <Link to="/off-days"><Button><Sparkles className="mr-2 h-4 w-4" />前往排班</Button></Link>
-        </div>
-      )}
-
-      {!isLoading && !isError && !empty && data && (
-        <>
-          <ScheduleTable
-            view={data}
-            employees={employees}
-            leaveTypes={leaveTypes}
-            pendingChanges={pendingChanges}
-            onCellClick={handleCellClick}
-          />
-          <ShiftLegend leaveTypes={leaveTypes} />
-          <ValidationReportPanel
-            report={report}
-            isLoading={reportLoading}
-            onRefresh={() => invalidateAll()}
-            onJumpTo={(empName, day) => setEditing({ empName, day })}
-            employees={employees}
-          />
-          <SupportRequestPanel
-            requests={supportReqs}
-            numDays={data.num_days}
-            month={currentMonth}
-            onAdd={(d, s, r) => supportMut.mutateAsync(() => createSupportRequest(currentYear, currentMonth, d, s, r))}
-            onUpdate={(id, st, res) => supportMut.mutateAsync(() => updateSupportRequest(id, st, res))}
-            onRemove={(id) => supportMut.mutateAsync(() => deleteSupportRequest(id))}
-          />
-        </>
-      )}
-
-      {!isLoading && !isError && data && status !== 'locked' && (
-        <DBackupRequestPanel
-          year={currentYear}
-          month={currentMonth}
-          numDays={data.num_days}
-          requests={night?.d_backup_requests ?? []}
-          onAdd={(d) => backupAddMut.mutateAsync(d)}
-          onRemove={(id) => backupRemoveMut.mutateAsync(id)}
-        />
-      )}
-
-      {editing && editingEmp && (
+      {editing && editingEmp && view && (
         <CellEditModal
           open={true}
           employeeName={displayName(editingEmp)}
           day={editing.day}
-          month={currentMonth}
-          currentShift={editingShift}
+          month={month}
+          currentShift={editingShift ?? ''}
           currentLeaveTypeCode={editingLeaveCode}
           availableShifts={
             editingEmp.tag
               ? ['A1', 'C1', 'D1']
               : editingEmp.role === 'night'
                 ? editingEmp.available_shifts
-                : editingEmp.available_shifts.filter((s) => s !== 'D')
+                : editingEmp.available_shifts.filter((shift) => shift !== 'D')
           }
           leaveTypes={editingEmp.tag ? [] : leaveTypes}
           isPublished={status === 'published'}
           onClose={() => setEditing(null)}
           onValidate={(newShift) =>
-            validateCell(editingEmp.id, currentYear, currentMonth, editing.day, newShift)
+            validateCell(editingEmp.id, year, month, editing.day, newShift)
           }
           onConfirm={async (newShift, leaveType, reason) => {
-            await updateMut.mutateAsync({ empId: editingEmp.id, day: editing.day, shift: newShift, leaveType, reason })
+            await updateMut.mutateAsync({
+              empId: editingEmp.id,
+              day: editing.day,
+              shift: newShift,
+              leaveType,
+              reason,
+            })
           }}
         />
       )}
@@ -577,35 +725,64 @@ export function SchedulePage() {
         />
       )}
 
-      <VersionHistoryDrawer
-        open={versionOpen}
-        snapshots={snapshots}
+      <ScheduleSidePanel
+        open={sidePanelTab !== null}
+        tab={sidePanelTab ?? 'validation'}
+        onTabChange={setSidePanelTab}
+        onClose={() => setSidePanelTab(null)}
+        group={group}
         employees={employees}
-        onClose={() => setVersionOpen(false)}
-        onRestore={async (id) => {
+        counts={{ hard: hardViolations, soft: softWarnings, openSupports }}
+        report={report}
+        reportLoading={reportLoading}
+        onRefreshReport={() => invalidateAll()}
+        onJumpToCell={(empName, day) => {
+          setSidePanelTab(null)
+          openEditor(empName, day)
+        }}
+        year={year}
+        month={month}
+        numDays={numDays}
+        supportRequests={supportRequests}
+        onSupportAdd={(day, shift, reason) =>
+          supportMut.mutateAsync(() => createSupportRequest(year, month, day, shift, reason))
+        }
+        onSupportUpdate={(id, nextStatus, resolution) =>
+          supportMut.mutateAsync(() => updateSupportRequest(id, nextStatus, resolution))
+        }
+        onSupportRemove={(id) => supportMut.mutateAsync(() => deleteSupportRequest(id))}
+        backupRequests={night?.d_backup_requests ?? []}
+        onBackupAdd={(day) => backupAddMut.mutateAsync(day)}
+        onBackupRemove={(id) => backupRemoveMut.mutateAsync(id)}
+        snapshots={snapshots}
+        snapshotsLoading={snapshotsLoading}
+        onRestoreSnapshot={async (id) => {
           await restoreMut.mutateAsync(id)
         }}
-        onDiff={diffSnapshots}
+        onDiffSnapshots={diffSnapshots}
       />
 
-      {adjustOpen && data && (
+      {adjustOpen && view && (
         <AdjustScheduleModal
-          year={currentYear}
-          month={currentMonth}
+          year={year}
+          month={month}
           employees={employees}
           leaveTypes={leaveTypes}
-          numDays={data.num_days}
+          numDays={numDays}
           onClose={() => setAdjustOpen(false)}
-          onApplied={() => invalidateAll()}
+          onApplied={() => {
+            pendingApi.reset()
+            invalidateAll()
+          }}
         />
       )}
 
-      {exportOpen && data && (
+      {exportOpen && frontView && (
         <PrintPreviewModal
           open={exportOpen}
-          year={currentYear}
-          month={currentMonth}
-          frontView={data}
+          year={year}
+          month={month}
+          frontView={frontView}
           employees={employees}
           leaveTypes={leaveTypes}
           hotelName={hotelName}
@@ -613,7 +790,16 @@ export function SchedulePage() {
           onClose={() => setExportOpen(false)}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmKind !== null}
+        title={confirmKind ? confirmContent[confirmKind].title : ''}
+        description={confirmKind ? confirmContent[confirmKind].description : undefined}
+        confirmLabel={confirmKind ? confirmContent[confirmKind].label : '確定'}
+        loading={clearMut.isPending || clearNightMut.isPending || statusMut.isPending}
+        onCancel={() => setConfirmKind(null)}
+        onConfirm={handleConfirmAction}
+      />
     </div>
   )
 }
-

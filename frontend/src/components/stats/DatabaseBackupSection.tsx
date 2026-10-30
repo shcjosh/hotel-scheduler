@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Database, Upload } from 'lucide-react'
 import { Button } from '../ui/button'
+import { ConfirmDialog } from '../ui/confirm-dialog'
 import { getDatabaseInfo, downloadDatabase, importDatabase } from '../../api/database'
 
 function formatSize(bytes: number): string {
@@ -18,17 +19,14 @@ export function DatabaseBackupSection() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [messageOk, setMessageOk] = useState(true)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
 
-  async function handleFile(file: File | undefined) {
+  function handleFile(file: File | undefined) {
     if (!file || busy) return
-    if (
-      !window.confirm(
-        `確定要用「${file.name}」覆蓋整庫嗎？\n` +
-          '這是整庫覆蓋、不是合併，當前資料會先自動備份，仍建議先下載備份。',
-      )
-    ) {
-      return
-    }
+    setPendingFile(file)
+  }
+
+  async function runImport(file: File) {
     setBusy(true)
     setMessage(null)
     try {
@@ -51,7 +49,7 @@ export function DatabaseBackupSection() {
   }
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-4">
+    <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-gray-600">
           {isLoading && '讀取資料庫資訊…'}
@@ -98,6 +96,24 @@ export function DatabaseBackupSection() {
         整庫備份（含全部月份、設定、快照），用於離線版 ↔ Docker 版同步（拿到另一邊匯入）。
         下載檔為標準 SQLite，可直接以同版本程式開啟。
       </p>
+
+      <ConfirmDialog
+        open={pendingFile !== null}
+        title="用備份覆蓋整庫？"
+        description={
+          pendingFile
+            ? `確定要用「${pendingFile.name}」覆蓋整庫嗎？這是整庫覆蓋、不是合併；當前資料會先自動備份，仍建議先下載備份。`
+            : undefined
+        }
+        confirmLabel="覆蓋匯入"
+        loading={busy}
+        onCancel={() => setPendingFile(null)}
+        onConfirm={() => {
+          const file = pendingFile
+          setPendingFile(null)
+          if (file) void runImport(file)
+        }}
+      />
     </div>
   )
 }
