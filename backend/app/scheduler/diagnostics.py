@@ -66,6 +66,67 @@ def _weekly_off_shortage(data, emp_id) -> list[dict]:
     return issues
 
 
+def _h9_cross_month_off(data, emp) -> dict | None:
+    """H9：跨月週（週一制）的休假日數是否還有調整空間。
+
+    solver 的 H9 只套用在非大夜、非月中離職員工（hard._rule_enabled），
+    這裡必須用同一範圍，避免把不會造成求解失敗的情境報成原因。
+    """
+    if emp.role == "night" or emp.id in getattr(data, "resign_cutoff", {}):
+        return None
+    if not data.weeks:
+        return None
+    weekday_day1 = data.dates[0].weekday()
+    if weekday_day1 <= 0:
+        return None
+    prev = data.previous_month.get(emp.id)
+    if not prev:
+        return None
+
+    prev_off = 0
+    for j in range(1, min(weekday_day1, 6) + 1):
+        s = prev[-j] if j <= len(prev) else None
+        if s is None:
+            # 舊資料缺 day_6：solver 會退回 H2 式判斷，H9 不成立。
+            return None
+        if s == "OFF":
+            prev_off += 1
+
+    w0 = data.weeks[0]
+    if not w0:
+        return None
+    w0_days = {d + 1 for d in w0}
+    designated = set(data.designated_off_days.get(emp.id, [])) & w0_days
+    special = set(data.special_leaves.get(emp.id, [])) & w0_days
+    forced_off = len(designated)
+    max_possible_off = forced_off + len(w0_days - designated - special)
+    target = max(0, 2 - prev_off)
+    first, last = min(w0_days), max(w0_days)
+
+    if target > max_possible_off:
+        return _cause(
+            "h9_cross_month_off",
+            "critical",
+            (
+                f"{emp.name} 跨月週（{data.month}/{first}~{data.month}/{last}）"
+                f"依上月已休 {prev_off} 天，本月仍需休 {target} 天，"
+                f"但扣除指定休假／請假後最多只能休 {max_possible_off} 天（H9）"
+            ),
+            "調整上月最後一週的休假，或把本月跨月週的請假／指定休假移到其他週",
+        )
+    if forced_off > target:
+        return _cause(
+            "h9_cross_month_off",
+            "critical",
+            (
+                f"{emp.name} 跨月週依上月已休 {prev_off} 天，本月應再休 {target} 天，"
+                f"但指定休假已有 {forced_off} 天，無法再減少（H9）"
+            ),
+            "取消部分指定休假，或調整上月最後一週的休假天數",
+        )
+    return None
+
+
 def diagnose_detailed(data):
     """Return structured diagnostics: {likely_causes, constraint_analysis}."""
     causes = []
@@ -96,6 +157,12 @@ def diagnose_detailed(data):
             causes.append(_cause("designated_over_limit", "warning",
                 f"{emp.name} 指定休假 {len(days)} 天（每月最多 2 天）",
                 f"將指定休假減至 2 天：{days}"))
+
+    # H9：跨月週可休天數不足，或指定休假超過上月留下來的應休額度
+    for emp in data.employees:
+        cause = _h9_cross_month_off(data, emp)
+        if cause:
+            causes.append(cause)
 
     # H3 weekend-off conflict: too many weekday leaves force weekend rest
     for emp in data.employees:

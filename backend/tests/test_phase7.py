@@ -39,6 +39,7 @@ data = data_loader.load(db, year, month)
 assert 11 in data.d_backup_unfillable, "管理職當日請假且無 CD 備援 → 應無法指派"
 result = engine.solve(data)
 assert result.success is False
+assert result.status == "INFEASIBLE", f"備援無法指派應為 INFEASIBLE，實際 {result.status}"
 causes = result.diagnostics["likely_causes"]
 assert any(c["type"] == "d_backup_unfillable" and c.get("day") == 11 for c in causes), "診斷應含 d_backup_unfillable(day=11)"
 print("[PASS] 無 CD 備援 + 管理職請假 → 求解失敗並說明原因")

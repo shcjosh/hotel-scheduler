@@ -12,6 +12,8 @@ class SolveResponse(BaseModel):
     success: bool
     schedule: dict[str, list[str]] | None = None
     error: str | None = None
+    # OPTIMAL / FEASIBLE / INFEASIBLE / UNKNOWN（逾時）/ MODEL_INVALID / NO_EMPLOYEES
+    status: str | None = None
     solve_time: float = 0.0
     violations: list[str] | None = None
     objective_value: float | None = None

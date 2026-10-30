@@ -57,6 +57,7 @@ export interface SolveResponse {
   success: boolean
   schedule: Record<string, string[]> | null
   error: string | null
+  status?: string | null
   solve_time: number
   violations: string[] | null
   objective_value: number | null

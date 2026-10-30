@@ -126,6 +126,7 @@ function SolveSuccess({ result, employees }: { result: SolveResponse; employees:
 function SolveFailure({ result, onRetry, year, month }: { result: SolveResponse; onRetry: () => void; year: number; month: number }) {
   const diag = result.diagnostics as SolveDiagnostics | null
   const supportReqs = result.support_requests ?? []
+  const timedOut = result.status === 'UNKNOWN'
   const [skipping, setSkipping] = useState(false)
   const unfillableDays = (diag?.likely_causes ?? [])
     .filter((c) => c.type === 'd_backup_unfillable' && c.day != null)
@@ -143,10 +144,27 @@ function SolveFailure({ result, onRetry, year, month }: { result: SolveResponse;
     }
   }
   return (
-    <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
-      <div className="flex items-center gap-2 font-semibold text-red-700">
-        <AlertOctagon className="h-5 w-5" /> 排班失敗：無法找到合法解
+    <div
+      className={cn(
+        'space-y-3 rounded-lg border p-4',
+        timedOut ? 'border-amber-200 bg-amber-50' : 'border-red-200 bg-red-50',
+      )}
+    >
+      <div
+        className={cn(
+          'flex items-center gap-2 font-semibold',
+          timedOut ? 'text-amber-700' : 'text-red-700',
+        )}
+      >
+        <AlertOctagon className="h-5 w-5" />
+        {timedOut ? '求解逾時：尚未完成，不代表無解' : '排班失敗：無法找到合法解'}
       </div>
+      {timedOut && (
+        <div className="rounded-md border border-amber-200 bg-white p-3 text-sm text-amber-800">
+          系統在時間上限內沒有完成搜尋，可能只是排班組合較複雜。建議提高「求解時間上限」後重試，
+          不建議直接當成無解調整休假。
+        </div>
+      )}
       {diag?.likely_causes?.map((c, i) => (
         <div key={i} className="rounded-md border border-gray-200 bg-white p-3 text-sm">
           <div className="flex items-center gap-2">

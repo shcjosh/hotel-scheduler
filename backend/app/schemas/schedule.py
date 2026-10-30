@@ -120,6 +120,7 @@ class AdjustApplyRequest(BaseModel):
 class AdjustPreviewResponse(BaseModel):
     success: bool
     error: str | None = None
+    status: str | None = None
     diagnostics: dict | None = None
     schedule: dict[str, list[str]] | None = None
     changes: list[dict] = []
