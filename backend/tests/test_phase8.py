@@ -33,17 +33,29 @@ for day, sh in night.items():
     db.add(ScheduleEntry(employee_id=chen.id, year=2026, month=8, day=day, shift=sh, source="night_input"))
 db.commit()
 
+def solve_with_retry(fn, *args, **kwargs):
+    """CP-SAT 偶發 UNKNOWN（逾時）；加大秒數重試，INFEASIBLE 才視為真失敗。"""
+    result = None
+    for max_time in (30.0, 60.0, 120.0):
+        result = fn(*args, max_time=max_time, **kwargs)
+        if result.success or result.status != "UNKNOWN":
+            return result
+    return result
+
+
 year, month = 2026, 8
 data = data_loader.load(db, year, month)
-result = engine.solve(data)
-assert result.success, "初始求解應成功"
+result = solve_with_retry(engine.solve, data)
+assert result.success, f"初始求解應成功：status={result.status}, error={result.error}"
 current = result.schedule
 
 data.special_leaves.setdefault(lee.id, []).extend([21, 22, 23])
 data.special_leaves[lee.id] = sorted(set(data.special_leaves[lee.id]))
 
-adj = engine.solve_adjust(data, current, lee.id, date(year, month, 20))
-assert adj.success, f"調整求解應成功：{adj.error}"
+adj = solve_with_retry(
+    engine.solve_adjust, data, current, lee.id, date(year, month, 20)
+)
+assert adj.success, f"調整求解應成功：status={adj.status}, error={adj.error}"
 new = adj.schedule
 
 # 請假日 8/21-8/23 應為 SPECIAL

@@ -21,6 +21,17 @@ class SolveResult:
     objective_value: float | None = None
     soft_constraint_stats: dict | None = None
     diagnostics: dict | None = None
+    # CP-SAT 狀態：OPTIMAL / FEASIBLE / INFEASIBLE / UNKNOWN / MODEL_INVALID。
+    # UNKNOWN 是逾時或搜尋中止，不等於無解，呼叫端不可拿來產生支援請求。
+    status: str | None = None
+
+
+def _status_name(status: int) -> str:
+    if status == cp_model.INFEASIBLE:
+        return "INFEASIBLE"
+    if status == cp_model.MODEL_INVALID:
+        return "MODEL_INVALID"
+    return "UNKNOWN"
 
 
 def build_fixed(data: ShiftScheduleData) -> dict[tuple[int, int], str]:
@@ -42,22 +53,56 @@ def build_fixed(data: ShiftScheduleData) -> dict[tuple[int, int], str]:
     return fixed
 
 
-def _build_failure(data: ShiftScheduleData, solve_time: float) -> SolveResult:
+def _build_failure(
+    data: ShiftScheduleData, solve_time: float, status: str = "INFEASIBLE"
+) -> SolveResult:
+    if status == "UNKNOWN":
+        detailed = diagnose_detailed(data)
+        timeout_cause = {
+            "type": "timeout",
+            "severity": "warning",
+            "message": (
+                f"求解在 {solve_time:.1f} 秒內未完成（UNKNOWN），"
+                "這不代表無解"
+            ),
+            "suggestion": "提高求解時間上限後重試；若仍持續，再檢查診斷中的其他衝突",
+        }
+        detailed = {
+            "likely_causes": [timeout_cause],
+            "constraint_analysis": detailed["constraint_analysis"],
+        }
+        return SolveResult(
+            False,
+            None,
+            f"求解逾時（{solve_time:.1f} 秒內未完成，不代表無解）",
+            solve_time,
+            [timeout_cause["message"]],
+            None,
+            None,
+            detailed,
+            "UNKNOWN",
+        )
+
     detailed = diagnose_detailed(data)
     msgs = [c["message"] for c in detailed["likely_causes"]]
-    error = "排班失敗（無合法解）"
+    if status == "MODEL_INVALID":
+        error = "排班模型設定錯誤（MODEL_INVALID）"
+    else:
+        error = "排班失敗（無合法解）"
     if msgs:
         error += "：" + "; ".join(msgs)
-    return SolveResult(False, None, error, solve_time, msgs, None, None, detailed)
+    return SolveResult(
+        False, None, error, solve_time, msgs, None, None, detailed, status
+    )
 
 
 def solve(data: ShiftScheduleData, max_time: float = 30.0) -> SolveResult:
     model = cp_model.CpModel()
     n = len(data.employees)
     if n == 0:
-        return SolveResult(False, None, "無員工資料", 0.0)
+        return SolveResult(False, None, "無員工資料", 0.0, status="NO_EMPLOYEES")
     if data.d_backup_unfillable:
-        return _build_failure(data, 0.0)
+        return _build_failure(data, 0.0, "INFEASIBLE")
 
     x: dict[int, dict[int, dict[str, cp_model.BoolVar]]] = {}
     for i in range(n):
@@ -98,9 +143,10 @@ def solve(data: ShiftScheduleData, max_time: float = 30.0) -> SolveResult:
             None,
             float(solver.ObjectiveValue()),
             stats,
+            status="OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE",
         )
 
-    return _build_failure(data, solve_time)
+    return _build_failure(data, solve_time, _status_name(status))
 
 
 def _first_free_day(data: ShiftScheduleData, today: date | None) -> int:
@@ -131,9 +177,9 @@ def solve_adjust(
     model = cp_model.CpModel()
     n = len(data.employees)
     if n == 0:
-        return SolveResult(False, None, "無員工資料", 0.0)
+        return SolveResult(False, None, "無員工資料", 0.0, status="NO_EMPLOYEES")
     if data.d_backup_unfillable:
-        return _build_failure(data, 0.0)
+        return _build_failure(data, 0.0, "INFEASIBLE")
 
     emp_by_name = {e.name: i for i, e in enumerate(data.employees)}
     idx_by_id = {e.id: i for i, e in enumerate(data.employees)}
@@ -205,9 +251,18 @@ def solve_adjust(
     solve_time = float(solver.WallTime())
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        return SolveResult(True, _extract(solver, x, data), None, solve_time, None, None, None)
+        return SolveResult(
+            True,
+            _extract(solver, x, data),
+            None,
+            solve_time,
+            None,
+            None,
+            None,
+            status="OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE",
+        )
 
-    return _build_failure(data, solve_time)
+    return _build_failure(data, solve_time, _status_name(status))
 
 
 def _extract_soft_stats(solver, trackers) -> dict:

@@ -43,6 +43,8 @@ interface ScheduleSidePanelProps {
   snapshotsLoading: boolean
   onRestoreSnapshot: (id: number) => Promise<void>
   onDiffSnapshots: (aId: number, bId: number) => Promise<{ changes: SnapshotDiffChange[] }>
+  /** 手機唯讀：隱藏支援／大夜／版本還原等寫入操作。 */
+  readOnly?: boolean
 }
 
 interface TabDef {
@@ -80,6 +82,7 @@ export function ScheduleSidePanel({
   snapshotsLoading,
   onRestoreSnapshot,
   onDiffSnapshots,
+  readOnly = false,
 }: ScheduleSidePanelProps) {
   const isFront = group === 'front'
 
@@ -170,6 +173,7 @@ export function ScheduleSidePanel({
           onAdd={onSupportAdd}
           onUpdate={onSupportUpdate}
           onRemove={onSupportRemove}
+          readOnly={readOnly}
         />
       )}
 
@@ -181,6 +185,7 @@ export function ScheduleSidePanel({
           requests={backupRequests}
           onAdd={onBackupAdd}
           onRemove={onBackupRemove}
+          readOnly={readOnly}
         />
       )}
 
@@ -191,6 +196,7 @@ export function ScheduleSidePanel({
           employees={employees}
           onRestore={onRestoreSnapshot}
           onDiff={onDiffSnapshots}
+          readOnly={readOnly}
         />
       )}
     </Drawer>

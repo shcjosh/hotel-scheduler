@@ -4,6 +4,7 @@ import { Database, Upload } from 'lucide-react'
 import { Button } from '../ui/button'
 import { ConfirmDialog } from '../ui/confirm-dialog'
 import { getDatabaseInfo, downloadDatabase, importDatabase } from '../../api/database'
+import { useIsMobile } from '../../hooks/useIsMobile'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -11,6 +12,7 @@ function formatSize(bytes: number): string {
 }
 
 export function DatabaseBackupSection() {
+  const readOnly = useIsMobile()
   const { data, isLoading, isError } = useQuery({
     queryKey: ['database-info'],
     queryFn: () => getDatabaseInfo(),
@@ -66,21 +68,25 @@ export function DatabaseBackupSection() {
           <Button variant="outline" onClick={() => downloadDatabase()} className="text-gray-700">
             <Database className="mr-2 h-4 w-4" /> 下載資料庫
           </Button>
-          <Button
-            variant="outline"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            className="text-gray-700"
-          >
-            <Upload className="mr-2 h-4 w-4" /> {busy ? '匯入中…' : '匯入資料庫'}
-          </Button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".db"
-            className="hidden"
-            onChange={(e) => void handleFile(e.target.files?.[0])}
-          />
+          {!readOnly && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                disabled={busy}
+                className="text-gray-700"
+              >
+                <Upload className="mr-2 h-4 w-4" /> {busy ? '匯入中…' : '匯入資料庫'}
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".db"
+                className="hidden"
+                onChange={(e) => void handleFile(e.target.files?.[0])}
+              />
+            </>
+          )}
         </div>
       </div>
       {message && (

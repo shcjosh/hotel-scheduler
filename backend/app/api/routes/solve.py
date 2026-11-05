@@ -61,7 +61,12 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
     result = engine.solve(data, max_time=req.max_solve_time)
     support_requests = None
 
-    if not result.success and not data.d_backup_unfillable:
+    # UNKNOWN（逾時）不代表無解，不可據此產生支援請求或再排一次。
+    if (
+        not result.success
+        and result.status == "INFEASIBLE"
+        and not data.d_backup_unfillable
+    ):
         gaps = _coverage_gaps(data)
         support_requests = support_service.generate_from_gaps(db, gaps, req.year, req.month)
         if support_requests:
@@ -96,7 +101,11 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
         result.objective_value, result.solve_time, result.soft_constraint_stats,
     )
 
-    if not result.success and support_requests is None:
+    if (
+        not result.success
+        and result.status == "INFEASIBLE"
+        and support_requests is None
+    ):
         support_requests = support_service.auto_generate_from_diagnostics(
             db, result.diagnostics, req.year, req.month
         )
@@ -105,6 +114,7 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
         success=result.success,
         schedule=result.schedule,
         error=result.error,
+        status=result.status,
         solve_time=round(result.solve_time, 3),
         violations=result.violations,
         objective_value=round(result.objective_value, 3)

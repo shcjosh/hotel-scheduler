@@ -6,6 +6,7 @@ import { shutdownServer } from '../../api/lifecycle'
 import { ConfirmDialog } from '../ui/confirm-dialog'
 import { Field, controlClassName } from '../ui/field'
 import { useToast } from '../../hooks/useToast'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import { cn } from '../../utils/cn'
 
 interface SettingRowProps {
@@ -57,6 +58,7 @@ function SettingRow({ label, value, placeholder, allowEmpty = false, onCommit }:
 export function UserMenu() {
   const queryClient = useQueryClient()
   const toast = useToast()
+  const readOnly = useIsMobile()
   const { data } = useQuery({ queryKey: ['settings'], queryFn: () => getSettings() })
   // branch_name 只在列印時使用，GET /settings 未回傳，單獨讀取。
   const { data: branchSetting } = useQuery({
@@ -130,25 +132,34 @@ export function UserMenu() {
             <p className="text-xs text-slate-500">{hotelName}</p>
           </div>
 
-          <div className="space-y-3">
-            <SettingRow
-              label="使用者名稱（製表人）"
-              value={userName}
-              onCommit={(value) => saveMut.mutate({ key: 'user_name', value })}
-            />
-            <SettingRow
-              label="飯店名稱"
-              value={hotelName}
-              onCommit={(value) => saveMut.mutate({ key: 'hotel_name', value })}
-            />
-            <SettingRow
-              label="分館名稱（列印抬頭）"
-              value={branchName}
-              placeholder="例：板橋府中店(一館)"
-              allowEmpty
-              onCommit={(value) => saveMut.mutate({ key: 'branch_name', value })}
-            />
-          </div>
+          {readOnly ? (
+            <div className="space-y-1.5 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <div>使用者：{userName}</div>
+              <div>飯店：{hotelName}</div>
+              <div>分館：{branchName || '—'}</div>
+              <div className="pt-1 text-[11px] text-slate-400">手機版唯讀，請用桌機修改名稱。</div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <SettingRow
+                label="使用者名稱（製表人）"
+                value={userName}
+                onCommit={(value) => saveMut.mutate({ key: 'user_name', value })}
+              />
+              <SettingRow
+                label="飯店名稱"
+                value={hotelName}
+                onCommit={(value) => saveMut.mutate({ key: 'hotel_name', value })}
+              />
+              <SettingRow
+                label="分館名稱（列印抬頭）"
+                value={branchName}
+                placeholder="例：板橋府中店(一館)"
+                allowEmpty
+                onCommit={(value) => saveMut.mutate({ key: 'branch_name', value })}
+              />
+            </div>
+          )}
 
           <div className="mt-4 border-t border-slate-100 pt-3">
             <button

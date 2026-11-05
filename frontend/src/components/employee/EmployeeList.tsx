@@ -13,9 +13,10 @@ interface EmployeeListProps {
   onMoveUp?: (index: number) => void
   onMoveDown?: (index: number) => void
   reorderable?: boolean
+  readOnly?: boolean
 }
 
-export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, onMoveDown, reorderable = true }: EmployeeListProps) {
+export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, onMoveDown, reorderable = true, readOnly = false }: EmployeeListProps) {
   if (employees.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-gray-300 bg-white p-12 text-center text-gray-500">
@@ -29,20 +30,20 @@ export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, 
       <table className="w-full text-sm">
         <thead className="bg-gray-100 text-gray-600">
           <tr>
-            {reorderable && <th className="w-16 px-3 py-2 text-center">順序</th>}
+            {reorderable && !readOnly && <th className="w-16 px-3 py-2 text-center">順序</th>}
             <th className="px-4 py-2 text-left">姓名</th>
             <th className="px-4 py-2 text-left">標籤</th>
             <th className="px-4 py-2 text-left">角色</th>
             <th className="px-4 py-2 text-left">可上班班次</th>
             <th className="px-4 py-2 text-left">偏好班次</th>
             <th className="px-4 py-2 text-left">排班方式</th>
-            <th className="px-4 py-2 text-right">操作</th>
+            {!readOnly && <th className="px-4 py-2 text-right">操作</th>}
           </tr>
         </thead>
         <tbody>
           {employees.map((emp, idx) => (
             <tr key={emp.id} className="border-t border-gray-100 hover:bg-indigo-50/40">
-              {reorderable && (
+              {reorderable && !readOnly && (
                 <td className="px-3 py-2 text-center">
                   <div className="flex items-center justify-center gap-0.5">
                     <button
@@ -132,34 +133,36 @@ export function EmployeeList({ employees, onEdit, onDelete, onResign, onMoveUp, 
               <td className="px-4 py-2 text-gray-600">
                 {emp.tag ? '手動' : emp.scheduling_mode === 'auto' ? '自動' : '手動'}
               </td>
-              <td className="px-4 py-2">
-                <div className="flex justify-end gap-1">
-                  <button
-                    onClick={() => onEdit(emp)}
-                    className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-indigo-600"
-                    aria-label="編輯員工"
-                    title="編輯"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => onResign?.(emp)}
-                    className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-amber-600"
-                    aria-label={emp.resign_date ? '取消離職或修改最後上班日' : '設定離職日'}
-                    title={emp.resign_date ? '取消離職 / 修改最後上班日' : '設離職（保留歷史班表）'}
-                  >
-                    <UserMinus className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => onDelete(emp)}
-                    className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-red-600"
-                    aria-label="刪除員工"
-                    title="刪除（僅限沒有班表紀錄者）"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              </td>
+              {!readOnly && (
+                <td className="px-4 py-2">
+                  <div className="flex justify-end gap-1">
+                    <button
+                      onClick={() => onEdit(emp)}
+                      className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-indigo-600"
+                      aria-label="編輯員工"
+                      title="編輯"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => onResign?.(emp)}
+                      className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-amber-600"
+                      aria-label={emp.resign_date ? '取消離職或修改最後上班日' : '設定離職日'}
+                      title={emp.resign_date ? '取消離職 / 修改最後上班日' : '設離職（保留歷史班表）'}
+                    >
+                      <UserMinus className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => onDelete(emp)}
+                      className="rounded p-1.5 text-gray-500 hover:bg-gray-100 hover:text-red-600"
+                      aria-label="刪除員工"
+                      title="刪除（僅限沒有班表紀錄者）"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

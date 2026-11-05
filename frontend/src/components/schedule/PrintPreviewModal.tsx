@@ -9,6 +9,7 @@ import { buildPrintHtml } from '../../utils/printSchedule'
 import { getMonthDays } from '../../utils/date'
 import { isHousekeeping } from '../../utils/employee'
 import { useFocusTrap } from '../../hooks/useFocusTrap'
+import { useIsMobile } from '../../hooks/useIsMobile'
 import type { OffDate } from '../../utils/offDayMarks'
 import type { Employee, LeaveType, MonthScheduleView } from '../../types'
 
@@ -141,6 +142,7 @@ export function PrintPreviewModal({
 }: PrintPreviewModalProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
+  const readOnly = useIsMobile()
   // 焦點留在預覽對話框內；Esc 與背景捲動由本元件自己的 effect 處理。
   useFocusTrap(dialogRef, open, undefined, { lockScroll: false })
   // xlsx 為整週檢視（含前後月補齊），預設開啟。
@@ -153,6 +155,7 @@ export function PrintPreviewModal({
   const [showHolidayRow, setShowHolidayRow] = useState(true)
   const [showWeekendTint, setShowWeekendTint] = useState(false)
   const [includeOccupancyRow, setIncludeOccupancyRow] = useState(true)
+  const [includeStats, setIncludeStats] = useState(false)
 
   const [frontNeighbors, setFrontNeighbors] = useState<MonthScheduleView[]>([])
   const [housekeepingView, setHousekeepingView] = useState<MonthScheduleView | null>(null)
@@ -260,6 +263,7 @@ export function PrintPreviewModal({
       notesText,
       showWeekendTint,
       includeOccupancyRow,
+      includeStats,
     })
   }, [
     open,
@@ -282,6 +286,7 @@ export function PrintPreviewModal({
     notesText,
     showWeekendTint,
     includeOccupancyRow,
+    includeStats,
   ])
 
   function handlePrint() {
@@ -372,8 +377,19 @@ export function PrintPreviewModal({
               title="新訂加續住空白列"
               description="保留手寫列，之後可再改成系統資料。"
             />
+            <OptionRow
+              checked={includeStats}
+              onChange={setIncludeStats}
+              title="每人上班／休假統計"
+              description="在班表下方加印本月每人上班天數、休假與各假別天數（含房務，不含二館支援）。"
+            />
           </div>
 
+          {readOnly ? (
+            <p className="mt-4 border-t border-gray-200 pt-3 text-[11px] leading-relaxed text-slate-400">
+              手機版唯讀：分館名稱、頁尾注意事項與節日備註請用桌機修改；列印／存 PDF 仍可使用。
+            </p>
+          ) : (
           <div className="mt-4 space-y-2 border-t border-gray-200 pt-3">
             <label className="block">
               <span className="mb-1 block text-xs font-semibold text-gray-600">分館名稱（抬頭第二行）</span>
@@ -406,6 +422,7 @@ export function PrintPreviewModal({
               <CalendarPlus className="mr-2 h-4 w-4" /> 編輯節日／備註
             </Button>
           </div>
+          )}
 
           {saveError && (
             <div className="mt-3 rounded-md bg-red-50 px-2.5 py-2 text-xs text-red-600">{saveError}</div>

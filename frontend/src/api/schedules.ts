@@ -115,6 +115,7 @@ export interface AdjustChangeDetail extends AdjustChange {
 export interface AdjustPreviewResult {
   success: boolean
   error?: string | null
+  status?: string | null
   diagnostics?: {
     likely_causes: { type: string; severity: string; message: string; suggestion: string }[]
   } | null

@@ -76,6 +76,7 @@ def preview(db: Session, year: int, month: int, employee_id: int, days: list[int
         return {
             "success": False,
             "error": result.error,
+            "status": result.status,
             "diagnostics": result.diagnostics,
             "changes": [],
             "affected_employee_ids": [],

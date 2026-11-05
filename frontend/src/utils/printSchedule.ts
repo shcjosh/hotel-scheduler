@@ -79,6 +79,8 @@ export interface PrintScheduleOptions {
   frontView: MonthScheduleView
   /** 顯示房務時，主月份房務班表。 */
   housekeepingView?: MonthScheduleView | null
+  /** 是否加印「每人上班／休假統計」（只算本月、含房務、排除二館支援）。 */
+  includeStats?: boolean
   /** 前後月份（櫃台）班表；用來判斷跨月週的休假日順序。 */
   frontNeighborViews?: MonthScheduleView[]
   /** 前後月份（房務）班表。 */
@@ -227,6 +229,110 @@ function buildRows(view: MonthScheduleView, employees: Employee[]): PrintRow[] {
     })
 }
 
+const STATS_WORK_SHIFTS = new Set(['A', 'B', 'C', 'D', 'M', 'A1', 'C1', 'D1'])
+
+export interface PrintStatColumn {
+  code: string
+  label: string
+}
+
+export interface PrintStatRow {
+  group: string
+  name: string
+  displayName: string
+  workDays: number
+  offDays: number
+  leaveCounts: Record<string, number>
+}
+
+export interface PrintStatsResult {
+  columns: PrintStatColumn[]
+  rows: PrintStatRow[]
+}
+
+/**
+ * 每人上班／休假統計（只算本月）。
+ * 上班＝A/B/C/D/M（含房務 A）；休假＝OFF；請假依 leave_details 的假別分開計。
+ * 二館支援（任何有 tag 的員工）不列入。
+ */
+export function buildPrintStats(
+  frontView: MonthScheduleView,
+  housekeepingView: MonthScheduleView | null | undefined,
+  employees: Employee[],
+  leaveTypes: LeaveType[],
+): PrintStatsResult {
+  const usedCodes = new Set<string>()
+  const rows: PrintStatRow[] = []
+
+  function collect(group: string, view: MonthScheduleView | null | undefined) {
+    if (!view) return
+    for (const { name, employee } of buildRows(view, employees)) {
+      if (employee?.tag) continue
+      const scheduleRow = view.schedule[name] ?? []
+      const details = view.leave_details?.[name] ?? {}
+      let workDays = 0
+      let offDays = 0
+      const leaveCounts: Record<string, number> = {}
+      for (let d = 0; d < view.num_days; d++) {
+        const shift = scheduleRow[d] ?? ''
+        if (STATS_WORK_SHIFTS.has(shift)) {
+          workDays += 1
+        } else if (shift === 'OFF') {
+          offDays += 1
+        } else if (shift === 'SPECIAL') {
+          const code = details[String(d + 1)] ?? 'SPECIAL'
+          leaveCounts[code] = (leaveCounts[code] ?? 0) + 1
+          usedCodes.add(code)
+        }
+      }
+      rows.push({
+        group,
+        name,
+        displayName: printName(employee, name),
+        workDays,
+        offDays,
+        leaveCounts,
+      })
+    }
+  }
+
+  collect('櫃台', frontView)
+  collect('房務', housekeepingView)
+
+  const labelByCode = new Map(leaveTypes.map((lt) => [lt.code, lt.name]))
+  const orderedCodes = [
+    ...leaveTypes.map((lt) => lt.code).filter((code) => usedCodes.has(code)),
+    ...[...usedCodes].filter((code) => !labelByCode.has(code)),
+  ]
+  const columns = orderedCodes.map((code) => ({
+    code,
+    label:
+      labelByCode.get(code) ??
+      (code === 'SPECIAL' ? '特休' : code === 'PERSONAL' ? '事假' : code === 'SICK' ? '病假' : code),
+  }))
+
+  return { columns, rows }
+}
+
+function renderStatsTable(stats: PrintStatsResult): string {
+  if (stats.rows.length === 0) return ''
+  const head = `<tr><th class="st-group">單位</th><th class="st-name">姓名</th><th>上班</th><th>休假</th>${stats.columns
+    .map((col) => `<th>${esc(col.label)}</th>`)
+    .join('')}</tr>`
+  const body = stats.rows
+    .map(
+      (row) =>
+        `<tr><td class="st-group">${esc(row.group)}</td><td class="st-name">${esc(row.displayName)}</td><td>${row.workDays}</td><td>${row.offDays}</td>${stats.columns
+          .map((col) => `<td>${row.leaveCounts[col.code] ?? 0}</td>`)
+          .join('')}</tr>`,
+    )
+    .join('')
+  return `<div class="stats-block">
+  <div class="stats-title">每人上班／休假統計（本月）</div>
+  <table class="stats-table"><thead>${head}</thead><tbody>${body}</tbody></table>
+</div>`
+}
+
 function renderGroupRows(
   groupLabel: string,
   rows: PrintRow[],
@@ -274,7 +380,7 @@ function renderGroupRows(
         }
 
         const offMark = offOrder === null ? '' : renderOffMark(offOrder)
-        return `<td class="${cls}${extraClass}${offOrder === null ? '' : ' off-cell'}">${offMark}${esc(text)}</td>`
+        return `<td class="shift-cell ${cls}${extraClass}${offOrder === null ? '' : ' off-cell'}">${offMark}${esc(text)}</td>`
       })
 
       const groupCell =
@@ -399,6 +505,7 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
     holidayNotes = {},
     showWeekendTint = false,
     includeOccupancyRow = true,
+    includeStats = false,
   } = opts
 
   const { year, month } = frontView
@@ -488,6 +595,12 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
     includeHousekeeping && hkRows.length === 0
       ? '<div class="empty">（本月尚無房務班表）</div>'
       : ''
+  const statsTable =
+    includeStats && (frontRows.length > 0 || hkRows.length > 0)
+      ? renderStatsTable(
+          buildPrintStats(frontView, housekeepingView, employees, leaveTypes),
+        )
+      : ''
 
   const html = `<!doctype html>
 <html lang="zh-TW">
@@ -507,17 +620,18 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
   }
   @media screen { body { padding: 8mm; background: #fff; } }
   .doc-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
     gap: 12px;
     border-bottom: 2px solid #222;
     padding-bottom: 3px;
     margin-bottom: 4px;
   }
+  .doc-title { text-align: center; }
   .hotel { font-size: 16px; font-weight: 700; letter-spacing: 2px; line-height: 1.15; }
   .branch { font-size: 10px; color: #333; margin-top: 1px; }
-  .month { font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .month { justify-self: end; font-size: 14px; font-weight: 700; white-space: nowrap; }
   .range-note { font-size: 8px; color: #666; text-align: right; margin: 1px 0 3px; }
   .empty { font-size: 10px; color: #666; margin: 6px 0; }
   table {
@@ -545,20 +659,22 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
   .weekday-row th { font-size: 8px; color: #555; }
   .day { font-weight: 700; }
   .wk { font-size: 8px; }
-  .grp { width: 22px; font-weight: 700; background: #fafafa; }
-  .tag { width: 34px; font-size: 8px; color: #444; }
+  .grp { width: 18px; font-weight: 700; background: #fafafa; }
+  .tag { width: 28px; font-size: 7.5px; color: #444; }
   .name {
-    width: 100px;
+    width: 76px;
     text-align: left;
-    padding-left: 3px;
+    padding-left: 2px;
+    font-size: 8.5px;
     font-weight: 600;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .c-grp { width: 22px; }
-  .c-tag { width: 34px; }
-  .c-name { width: 100px; }
+  .c-grp { width: 18px; }
+  .c-tag { width: 28px; }
+  .c-name { width: 76px; }
+  td.shift-cell { font-size: 12px; font-weight: 700; }
   .week-start { border-left: 1.5px solid #7030A0; }
   .week-end { border-right: 1.5px solid #7030A0; }
   .weekend { background: #f7f7f7; }
@@ -578,6 +694,25 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
     stroke-width: 0.8;
     vector-effect: non-scaling-stroke;
   }
+  .stats-block { margin-top: 8px; page-break-inside: auto; }
+  .stats-title { margin: 6px 0 4px; font-size: 13px; font-weight: 700; }
+  .stats-table {
+    width: 100%;
+    table-layout: auto;
+    border-collapse: collapse;
+  }
+  .stats-table thead { display: table-header-group; }
+  .stats-table tr { page-break-inside: avoid; }
+  .stats-table th, .stats-table td {
+    height: 22px;
+    padding: 2px 7px;
+    border: 1px solid #999;
+    font-size: 12px;
+    text-align: center;
+  }
+  .stats-table th { background: #f2f2f2; font-weight: 700; }
+  .stats-table .st-group { width: 46px; white-space: nowrap; }
+  .stats-table .st-name { text-align: left; white-space: nowrap; font-weight: 600; }
   .footer {
     margin-top: 4px;
     font-size: 8px;
@@ -614,7 +749,8 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
 </head>
 <body>
   <div class="doc-head">
-    <div>
+    <div aria-hidden="true"></div>
+    <div class="doc-title">
       <div class="hotel">${esc(hotelName)}</div>
       ${branchLine}
     </div>
@@ -623,6 +759,7 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
   ${rangeNote}
   ${table}
   ${hkEmptyNote}
+  ${statsTable}
   ${renderFooter(
     { ...opts, managerBlank: managerBlank && hasManagerRow },
     [...frontViews, ...hkViews],

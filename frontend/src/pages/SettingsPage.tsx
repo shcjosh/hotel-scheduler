@@ -8,6 +8,7 @@ import { CrossMonthPanel } from '../components/settings/CrossMonthPanel'
 import { SolveSettingsPanel } from '../components/settings/SolveSettingsPanel'
 import { PrintSettingsPanel } from '../components/settings/PrintSettingsPanel'
 import { useUIStore } from '../stores/uiStore'
+import { useIsMobile } from '../hooks/useIsMobile'
 import {
   getLeaveTypes,
   createLeaveType,
@@ -34,6 +35,7 @@ export function SettingsPage() {
   const tab: SettingsTab = isSettingsTab(tabParam) ? tabParam : 'leave-types'
   const { currentYear: year, currentMonth: month } = useUIStore()
   const queryClient = useQueryClient()
+  const isMobile = useIsMobile()
 
   const { data: leaveTypes = [], isLoading: leaveTypesLoading } = useQuery({
     queryKey: ['leave-types'],
@@ -71,7 +73,11 @@ export function SettingsPage() {
     <div className="space-y-4">
       <PageHeader
         title="排班規則"
-        description="假別、跨月銜接、求解參數與列印設定；排班相關的設定都集中在這裡"
+        description={
+          isMobile
+            ? '手機版唯讀：可切換分頁檢視，設定修改請使用桌機'
+            : '假別、跨月銜接、求解參數與列印設定；排班相關的設定都集中在這裡'
+        }
       />
 
       <Tabs
@@ -81,21 +87,23 @@ export function SettingsPage() {
         onChange={(next) => setSearchParams({ tab: next }, { replace: true })}
       />
 
-      {tab === 'leave-types' &&
-        (leaveTypesLoading ? (
-          <LoadingState label="載入假別…" />
-        ) : (
-          <LeaveTypesPanel
-            leaveTypes={leaveTypes}
-            onCreate={(name, bg, text) => createMut.mutateAsync({ name, bg, text }).then(() => undefined)}
-            onUpdate={(code, payload) => updateMut.mutateAsync({ code, payload }).then(() => undefined)}
-            onDelete={(code) => deleteMut.mutateAsync(code).then(() => undefined)}
-          />
-        ))}
+      <fieldset disabled={isMobile} className="min-w-0 space-y-4">
+        {tab === 'leave-types' &&
+          (leaveTypesLoading ? (
+            <LoadingState label="載入假別…" />
+          ) : (
+            <LeaveTypesPanel
+              leaveTypes={leaveTypes}
+              onCreate={(name, bg, text) => createMut.mutateAsync({ name, bg, text }).then(() => undefined)}
+              onUpdate={(code, payload) => updateMut.mutateAsync({ code, payload }).then(() => undefined)}
+              onDelete={(code) => deleteMut.mutateAsync(code).then(() => undefined)}
+            />
+          ))}
 
-      {tab === 'cross-month' && <CrossMonthPanel />}
-      {tab === 'solve' && <SolveSettingsPanel />}
-      {tab === 'print' && <PrintSettingsPanel />}
+        {tab === 'cross-month' && <CrossMonthPanel />}
+        {tab === 'solve' && <SolveSettingsPanel />}
+        {tab === 'print' && <PrintSettingsPanel />}
+      </fieldset>
     </div>
   )
 }

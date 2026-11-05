@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
-import { Modal } from '../ui/modal'
+import { useEffect, useId, useState } from 'react'
+import { Drawer } from '../ui/drawer'
+import { Field, controlClassName } from '../ui/field'
 import { Button } from '../ui/button'
 import { getShiftStyle } from '../../utils/shift'
 import { ROLE_DEFAULTS, ROLE_LABELS, ALL_SHIFTS } from '../../utils/roles'
@@ -28,6 +29,7 @@ interface EmployeeFormProps {
 
 export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeFormProps) {
   const { currentYear, currentMonth } = useUIStore()
+  const baseId = useId()
   const [name, setName] = useState('')
   const [nickname, setNickname] = useState('')
   const [tag, setTag] = useState('')
@@ -141,68 +143,92 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
   }
 
   return (
-    <Modal
+    <Drawer
       open={open}
       title={employee ? '編輯員工' : '新增員工'}
+      description="員工資料、角色、可用班次與大夜規則都在這裡設定"
       onClose={onClose}
+      widthClassName="max-w-xl"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            取消
+          </Button>
+          <Button onClick={handleSubmit} loading={saving}>
+            儲存
+          </Button>
+        </>
+      }
     >
       <div className="space-y-4">
-        <Field label="姓名">
+        <Field label="姓名" htmlFor={`${baseId}-name`} required>
           <input
+            id={`${baseId}-name`}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={controlClassName}
             placeholder="請輸入姓名"
           />
         </Field>
 
-        <Field label="暱稱（選填）">
+        <Field label="暱稱（選填）" htmlFor={`${baseId}-nickname`}>
           <input
+            id={`${baseId}-nickname`}
             value={nickname}
             onChange={(e) => setNickname(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={controlClassName}
             placeholder="如：John"
           />
         </Field>
 
-        <Field label="標籤（選填，如「二館」）">
+        <Field
+          label="標籤（選填，如「二館」）"
+          htmlFor={`${baseId}-tag`}
+          hint="有標籤的員工視為二館支援：手動排 A1/C1/D1，不納入自動排班與跨月規則。"
+        >
           <input
+            id={`${baseId}-tag`}
             value={tag}
             onChange={(e) => setTag(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={controlClassName}
             placeholder="如：二館"
           />
         </Field>
 
-        <Field label="到職日（選填）">
+        <Field
+          label="到職日（選填）"
+          htmlFor={`${baseId}-hire-date`}
+          hint="用於自動計算特休週年期間與額度（勞基法）；留空 = 不計算特休。"
+        >
           <input
+            id={`${baseId}-hire-date`}
             type="date"
             value={hireDate}
             onChange={(e) => setHireDate(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={controlClassName}
           />
-          <p className="mt-1 text-xs text-gray-400">
-            用於自動計算特休週年期間與額度（勞基法）；留空 = 不計算特休。
-          </p>
         </Field>
 
-        <Field label="離職日（最後上班日，選填）">
+        <Field
+          label="離職日（最後上班日，選填）"
+          htmlFor={`${baseId}-resign-date`}
+          hint="設定後，離職日之後不再排班；離職月之後的班表不再顯示此人。留空 = 在職。"
+        >
           <input
+            id={`${baseId}-resign-date`}
             type="date"
             value={resignDate}
             onChange={(e) => setResignDate(e.target.value)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={controlClassName}
           />
-          <p className="mt-1 text-xs text-gray-400">
-            設定後，離職日之後不再排班；離職月之後的班表不再顯示此人。留空 = 在職。
-          </p>
         </Field>
 
-        <Field label="角色">
+        <Field label="角色" htmlFor={`${baseId}-role`}>
           <select
+            id={`${baseId}-role`}
             value={role}
             onChange={(e) => handleRoleChange(e.target.value as EmployeeRole)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={controlClassName}
           >
             {(Object.keys(ROLE_LABELS) as EmployeeRole[]).map((r) => (
               <option key={r} value={r}>
@@ -212,8 +238,8 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           </select>
         </Field>
 
-        <Field label="可上班班次">
-          <div className="flex gap-2">
+        <Field label="可上班班次" hint="至少勾選 1 個；房務固定只能上 A。">
+          <div className="flex flex-wrap gap-2">
             {(role === 'housekeeping' ? ['A'] : ALL_SHIFTS).map((s) => {
               const on = shifts.includes(s)
               const style = getShiftStyle(s)
@@ -221,6 +247,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
                 <button
                   key={s}
                   type="button"
+                  aria-pressed={on}
                   onClick={() => toggleShift(s)}
                   className={cn(
                     'flex h-9 w-12 items-center justify-center rounded border-2 text-sm font-semibold transition',
@@ -236,11 +263,12 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           </div>
         </Field>
 
-        <Field label="偏好班次">
+        <Field label="偏好班次" htmlFor={`${baseId}-preferred`}>
           <select
+            id={`${baseId}-preferred`}
             value={preferred ?? ''}
             onChange={(e) => setPreferred(e.target.value || null)}
-            className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+            className={controlClassName}
           >
             <option value="">無</option>
             {shifts.map((s) => (
@@ -251,10 +279,9 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           </select>
         </Field>
 
-        <Field label="排班方式">
-          <div className="rounded-md bg-gray-100 px-3 py-2 text-sm text-gray-600">
+        <Field label="排班方式" hint="依角色自動設定：一般／管理職自動排班，房務／二館支援手動。">
+          <div className="rounded-md bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
             {mode === 'auto' ? '自動排班' : '手動輸入'}
-            <span className="ml-2 text-xs text-gray-400">（依角色自動設定）</span>
           </div>
         </Field>
 
@@ -315,27 +342,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
             {error}
           </div>
         )}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose}>
-            取消
-          </Button>
-          <Button onClick={handleSubmit} disabled={saving}>
-            {saving ? '儲存中…' : '儲存'}
-          </Button>
-        </div>
       </div>
-    </Modal>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <label className="mb-1 block text-sm font-medium text-gray-700">
-        {label}
-      </label>
-      {children}
-    </div>
+    </Drawer>
   )
 }

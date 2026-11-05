@@ -39,6 +39,7 @@ import { ConsecutiveOffCounter } from '../components/off-days/ConsecutiveOffCoun
 import { SolveResult } from '../components/off-days/SolveResult'
 import { AnnualLeavePanel } from '../components/off-days/AnnualLeavePanel'
 import { useToast } from '../hooks/useToast'
+import { useIsMobile } from '../hooks/useIsMobile'
 import { cn } from '../utils/cn'
 import type { LeaveType, SolveResponse } from '../types'
 
@@ -51,6 +52,7 @@ export function OffDaysPage() {
   const { currentYear: year, currentMonth: month, solveMaxTime, solveEnableDBackup } = useUIStore()
   const queryClient = useQueryClient()
   const toast = useToast()
+  const isMobile = useIsMobile()
 
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [mode, setMode] = useState<Mode>('designated')
@@ -94,6 +96,7 @@ export function OffDaysPage() {
   const numDays = getMonthDays(year, month)
   const monthStatus = statusData?.status ?? 'draft'
   const locked = monthStatus === 'locked'
+  const readOnly = locked || isMobile
 
   const designatedSet = useMemo(
     () => new Set((empKey && offDays?.designated_off_days[empKey]) || []),
@@ -156,6 +159,7 @@ export function OffDaysPage() {
 
   async function toggleDay(day: number) {
     if (empId === null) return
+    if (isMobile) return
     if (locked) {
       setError('本月班表已鎖定，請先到班表頁解鎖')
       return
@@ -188,6 +192,7 @@ export function OffDaysPage() {
   }
 
   function handleSolve() {
+    if (isMobile) return
     if (locked) {
       setError('本月班表已鎖定，請先解鎖再重新排班')
       return
@@ -227,7 +232,11 @@ export function OffDaysPage() {
     <div className="space-y-4">
       <PageHeader
         title={`${year} 年 ${month} 月 休假與排班`}
-        description="點月曆指定休假或請假，完成後按「開始排班」；求解參數與假別管理在排班規則頁"
+        description={
+          isMobile
+            ? '手機版唯讀：可檢視休假與班表；修改休假或排班請使用桌機'
+            : '點月曆指定休假或請假，完成後按「開始排班」；求解參數與假別管理在排班規則頁'
+        }
         meta={empSummary && <ConsecutiveOffCounter count={empSummary.consecutive_off_count} />}
         actions={
           <>
@@ -236,14 +245,16 @@ export function OffDaysPage() {
                 <Settings2 className="mr-2 h-4 w-4" /> 求解參數
               </Button>
             </Link>
-            <Button onClick={handleSolve} disabled={solving || locked}>
-              {solving ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              {solving ? '排班中…' : '開始排班'}
-            </Button>
+            {!isMobile && (
+              <Button onClick={handleSolve} disabled={solving || locked}>
+                {solving ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                {solving ? '排班中…' : '開始排班'}
+              </Button>
+            )}
           </>
         }
       />
@@ -254,6 +265,7 @@ export function OffDaysPage() {
         </div>
       )}
 
+      {!isMobile && (
       <Toolbar>
         <div className="flex flex-wrap items-center gap-1.5">
           <button
@@ -322,6 +334,7 @@ export function OffDaysPage() {
           </Button>
         </Link>
       </Toolbar>
+      )}
 
       {error && <div className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-700">{error}</div>}
       {solveError && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">{solveError}</div>}
@@ -415,6 +428,7 @@ export function OffDaysPage() {
                 leaveInfoByDay={leaveInfoByDay}
                 runDays={runDays}
                 onToggleDay={toggleDay}
+                readOnly={readOnly}
               />
             ) : (
               <EmptyState title="請選擇員工" description="從左側選擇要設定休假的員工" />
@@ -515,7 +529,7 @@ export function OffDaysPage() {
             <EmptyState title="尚無休假統計" description="選擇員工並設定休假後即可看到統計" />
           )
         ) : (
-          <AnnualLeavePanel employee={selectedEmp} />
+          <AnnualLeavePanel employee={selectedEmp} readOnly={readOnly} />
         )}
       </Section>
 

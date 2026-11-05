@@ -22,8 +22,13 @@ os.environ["DATA_DIR"] = tmp
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from app.database.connection import SessionLocal, init_db
-from app.database.models import Employee, PreviousMonthLink, ScheduleEntry
-from app.scheduler import data_loader, validator
+from app.database.models import (
+    DesignatedOffDay,
+    Employee,
+    PreviousMonthLink,
+    ScheduleEntry,
+)
+from app.scheduler import data_loader, diagnostics, validator
 from app.services import cross_month_service
 
 init_db()
@@ -102,6 +107,43 @@ row2 = next(s for s in preview2["cross_month_week_summary"] if s["employee_id"] 
 check(row2["remaining_off"] is None, "缺 day_6 → 本月可休顯示未知（None）")
 v_off = [x for x in validator.validate(data2, {emp.id: ["OFF"] * ND}) if x["rule"] == "H9"]
 check(v_off == [], "缺 day_6 → 驗證器不報 H9（資料不足）")
+
+# 6. H9 求解失敗診斷：跨月週可休天數不足 / 指定休假超過應休
+#    2026-03-01 為週日，跨月週只剩 3/1 一天。
+yi = Employee(
+    name="乙", role="general", available_shifts='["A","B","C"]',
+    preferred_shift=None, scheduling_mode="auto",
+)
+bing = Employee(
+    name="丙", role="general", available_shifts='["A","B","C"]',
+    preferred_shift=None, scheduling_mode="auto",
+)
+db.add_all([yi, bing])
+db.commit()
+
+# 乙：上月最後 6 天全上班（0 休）→ 本月跨月週需休 2 天，但只剩 3/1 一天。
+for d in (23, 24, 25, 26, 27, 28):
+    db.add(ScheduleEntry(employee_id=yi.id, year=2026, month=2, day=d, shift="A", source="auto"))
+# 丙：上月已休 2 天（2/23、2/27）→ 本月跨月週應休 0 天，但 3/1 指定休假。
+for d in (23, 27):
+    db.add(ScheduleEntry(employee_id=bing.id, year=2026, month=2, day=d, shift="OFF", source="auto"))
+for d in (24, 25, 26, 28):
+    db.add(ScheduleEntry(employee_id=bing.id, year=2026, month=2, day=d, shift="A", source="auto"))
+db.add(DesignatedOffDay(employee_id=bing.id, year=Y, month=M, day=1))
+db.commit()
+
+cross_month_service.auto_load_from_prev_month(db, Y, M)
+data3 = data_loader.load(db, Y, M)
+h9_causes = [
+    c for c in diagnostics.diagnose_detailed(data3)["likely_causes"]
+    if c["type"] == "h9_cross_month_off"
+]
+yi_msg = next((c["message"] for c in h9_causes if "乙" in c["message"]), "")
+bing_msg = next((c["message"] for c in h9_causes if "丙" in c["message"]), "")
+check("仍需休 2 天" in yi_msg and "最多只能休 1 天" in yi_msg,
+      "H9 診斷：跨月週剩餘天數不足")
+check("應再休 0 天" in bing_msg and "指定休假已有 1 天" in bing_msg,
+      "H9 診斷：指定休假超過上月留下來的應休額度")
 
 print("=" * 70)
 if fails:
