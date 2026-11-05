@@ -278,6 +278,31 @@ def add_h13_night_manual(model, x, data, fixed):
                 model.Add(x[i][d][shift] == 1)
 
 
+def add_h15_trainee_mentor(model, x, data, fixed):
+    """H15 見習同行：見習生不能單獨卡班。
+
+    - A 班：同日 A 班需有非見習人員（A 07:30-15:30 的上午無人重疊）。
+    - C 班：同日 C 班需有非見習人員（C 15:30-23:30 的晚間無人重疊）。
+    - B 班：B 11:30-19:30 與 A（至 15:30）及 C（15:30 起）重疊，
+      因此同日 A、C 都要有非見習人員；B 本身仍維持最多 1 人。
+    """
+    mentor_idx = [
+        j
+        for j, emp in enumerate(data.employees)
+        if emp.role not in ("trainee", "night")
+    ]
+    for i, emp in enumerate(data.employees):
+        if emp.role != "trainee":
+            continue
+        for d in range(data.num_days):
+            mentor_a = sum(x[j][d]["A"] for j in mentor_idx)
+            mentor_c = sum(x[j][d]["C"] for j in mentor_idx)
+            model.Add(x[i][d]["A"] <= mentor_a)
+            model.Add(x[i][d]["C"] <= mentor_c)
+            model.Add(x[i][d]["B"] <= mentor_a)
+            model.Add(x[i][d]["B"] <= mentor_c)
+
+
 def add_manager_backup_cap(model, x, data, fixed):
     """店長（管理職）每月排 A/C 的格數上限（每位管理職各自計算）。
 
@@ -321,6 +346,7 @@ CONSTRAINT_FUNCTIONS = [
     ("H11", add_h11_d_backup),
     ("H12", add_h12_consecutive_off),
     ("H13", add_h13_night_manual),
+    ("H15", add_h15_trainee_mentor),
     ("MCAP", add_manager_backup_cap),
     ("RESIGN", add_resign_cutoff),
 ]

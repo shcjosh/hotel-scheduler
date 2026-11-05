@@ -55,6 +55,11 @@ export function targetForTool(
     return tool.shift === 'D' || tool.shift === 'OFF' ? { shift: tool.shift } : null
   }
 
+  // 見習生只能上日班櫃台 A/B/C（不能 M）。
+  if (employee.role === 'trainee') {
+    return ['A', 'B', 'C', 'OFF'].includes(tool.shift) ? { shift: tool.shift } : null
+  }
+
   return tool.shift === 'D' ? null : { shift: tool.shift }
 }
 

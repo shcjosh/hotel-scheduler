@@ -26,6 +26,11 @@ def _ignored_night(data, emp):
     return emp.role == "night" and emp.id in getattr(data, "night_ignore_all", set())
 
 
+def _mentor_eligible(emp):
+    """可帶見習生的非見習人員。大夜只上 D，不列入 A/B/C 同行判定。"""
+    return emp.role not in ("trainee", "night")
+
+
 def _partial_resign(data, emp):
     """月中離職：該員當月最後上班日後固定不排班，週休/連休計數不完整，跳過個人規則。"""
     return emp.id in getattr(data, "resign_cutoff", {})
@@ -66,6 +71,41 @@ def validate(data, schedule):
             violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} B 班超過 1 人"))
         if counts["D"] > 1:
             violations.append(_v("H1", None, d + 1, f"{data.month}/{d+1} D 班超過 1 人"))
+
+    # H15 見習同行：A/C 同班需有非見習；B 需 A、C 都有非見習（B 時段與 A/C 重疊）。
+    for emp in data.employees:
+        if emp.role != "trainee":
+            continue
+        for d in range(data.num_days):
+            s = _shift_at(schedule, emp.id, d)
+            if s not in ("A", "B", "C"):
+                continue
+            mentor_a = sum(
+                1
+                for other in data.employees
+                if other.id != emp.id
+                and _mentor_eligible(other)
+                and _shift_at(schedule, other.id, d) == "A"
+            )
+            mentor_c = sum(
+                1
+                for other in data.employees
+                if other.id != emp.id
+                and _mentor_eligible(other)
+                and _shift_at(schedule, other.id, d) == "C"
+            )
+            if s == "A" and mentor_a < 1:
+                violations.append(
+                    _v("H15", emp, d + 1, "A 班見習生需要同班非見習人員")
+                )
+            elif s == "C" and mentor_c < 1:
+                violations.append(
+                    _v("H15", emp, d + 1, "C 班見習生需要同班非見習人員")
+                )
+            elif s == "B" and (mentor_a < 1 or mentor_c < 1):
+                violations.append(
+                    _v("H15", emp, d + 1, "B 班見習生需要 A、C 班各有非見習人員")
+                )
 
     prev_cache = {}
     for emp in data.employees:
@@ -375,6 +415,7 @@ RULE_DESCRIPTIONS = {
     "H7": "可用班次限制", "H8": "跨月班次銜接", "H9": "跨月週連續性",
     "H10": "一天一班", "H11": "D 班備援邏輯", "H12": "連休 1~2 次",
     "H13": "大夜專職手動", "H14": "一天最多一個支援請求",
+    "H15": "見習同行（見習生不能單獨卡班）",
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
     "S7": "D 班備援最小化", "S8": "管理職備援最小化",

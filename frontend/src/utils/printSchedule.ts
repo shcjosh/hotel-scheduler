@@ -42,6 +42,8 @@ function roleTag(employee: Employee | undefined): string {
       return '大夜'
     case 'cd_backup':
       return 'C+D'
+    case 'trainee':
+      return '見習'
     default:
       return ''
   }

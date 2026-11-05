@@ -131,18 +131,45 @@ def diagnose_detailed(data):
     """Return structured diagnostics: {likely_causes, constraint_analysis}."""
     causes = []
     idx = data.emp_index()
-    a_capable = [e for e in data.employees if "A" in e.available_shifts and e.role != "night"]
-    c_capable = [e for e in data.employees if "C" in e.available_shifts and e.role != "night"]
+    mentors = [e for e in data.employees if e.role not in ("night", "trainee")]
+    a_capable = [e for e in mentors if "A" in e.available_shifts]
+    c_capable = [e for e in mentors if "C" in e.available_shifts]
     non_night = [e for e in data.employees if e.role != "night"]
+    trainees = [e for e in data.employees if e.role == "trainee"]
 
     if len(a_capable) < 1:
         causes.append(_cause("coverage_gap", "critical",
-            "無員工可上 A 班，每日 A 班覆蓋不可能",
-            "新增可上 A 班的日班櫃台"))
+            "無可獨立上 A 班的非見習員工（見習生需有人帶，不能單獨卡 A 班）",
+            "新增可上 A 班的日班櫃台或管理職"))
     if len(c_capable) < 1:
         causes.append(_cause("coverage_gap", "critical",
-            "無員工可上 C 班，每日 C 班覆蓋不可能",
-            "新增可上 C 班的員工（日班櫃台或 C+D 備援）"))
+            "無可獨立上 C 班的非見習員工（見習生需有人帶，不能單獨卡 C 班）",
+            "新增可上 C 班的員工（日班櫃台、C+D 備援或管理職）"))
+
+    # H15：見習生需要非見習人員同行；若某天可帶人的 A/C 人力不足，直接指出原因。
+    if trainees and a_capable and c_capable:
+        shortage_days = []
+        for d in range(data.num_days):
+            day = d + 1
+
+            def available(emp):
+                return (
+                    day not in data.designated_off_days.get(emp.id, [])
+                    and day not in data.special_leaves.get(emp.id, [])
+                    and day <= data.resign_cutoff.get(emp.id, data.num_days)
+                )
+
+            day_a = [e for e in a_capable if available(e)]
+            day_c = [e for e in c_capable if available(e)]
+            day_mentors = {e.id for e in day_a} | {e.id for e in day_c}
+            if not day_a or not day_c or len(day_mentors) < 2:
+                shortage_days.append(day)
+        if shortage_days:
+            shown = "、".join(str(d) for d in shortage_days[:5])
+            more = "" if len(shortage_days) <= 5 else f" 等 {len(shortage_days)} 天"
+            causes.append(_cause("trainee_mentor_gap", "critical",
+                f"見習同行人力不足（{data.month}/{shown}{more}）：這些日期缺少可帶人的 A 或 C 班非見習人員（H15）",
+                "調整這些日期的休假，或新增可上 A/C 的非見習員工"))
 
     # capacity: non-night work slots per week <= 35 (5/day * 7); each works 5/week
     max_non_night = 7
@@ -257,6 +284,7 @@ def diagnose_detailed(data):
             "c_capable": len(c_capable),
             "night_count": len([e for e in data.employees if e.role == "night"]),
             "cd_backup_count": len([e for e in data.employees if e.role == "cd_backup"]),
+            "trainee_count": len(trainees),
         },
     }
 

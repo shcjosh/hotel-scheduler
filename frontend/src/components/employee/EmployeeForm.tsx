@@ -238,9 +238,14 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           </select>
         </Field>
 
-        <Field label="可上班班次" hint="至少勾選 1 個；房務固定只能上 A。">
+        <Field label="可上班班次" hint="至少勾選 1 個；房務固定只能上 A，見習生只能上 A/B/C。">
           <div className="flex flex-wrap gap-2">
-            {(role === 'housekeeping' ? ['A'] : ALL_SHIFTS).map((s) => {
+            {(role === 'housekeeping'
+              ? ['A']
+              : role === 'trainee'
+                ? ['A', 'B', 'C']
+                : ALL_SHIFTS
+            ).map((s) => {
               const on = shifts.includes(s)
               const style = getShiftStyle(s)
               return (
@@ -279,7 +284,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           </select>
         </Field>
 
-        <Field label="排班方式" hint="依角色自動設定：一般／管理職自動排班，房務／二館支援手動。">
+        <Field label="排班方式" hint="依角色自動設定：一般／管理職／見習生自動排班，房務／二館支援手動。">
           <div className="rounded-md bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
             {mode === 'auto' ? '自動排班' : '手動輸入'}
           </div>

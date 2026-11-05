@@ -23,6 +23,22 @@ from app.schemas.employee import (
 
 
 HOUSEKEEPING_ROLE = "housekeeping"
+TRAINEE_ROLE = "trainee"
+TRAINEE_SHIFTS = {"A", "B", "C"}
+
+
+def validate_role_shifts(role: str, shifts: list[str], mode: str | None = None) -> None:
+    """角色與可上班班次／排班方式的相容性檢查。
+
+    見習生只處理日班櫃台 A/B/C，且目前僅支援自動排班（手動改格仍可用）；
+    D 由大夜/備援處理，M 為管理職。
+    """
+    if role == TRAINEE_ROLE:
+        invalid = [s for s in shifts if s not in TRAINEE_SHIFTS]
+        if invalid:
+            raise ValueError("見習生只能排 A / B / C")
+        if mode is not None and mode != "auto":
+            raise ValueError("見習生目前僅支援自動排班")
 
 
 def month_key(year: int, month: int) -> str:
@@ -95,6 +111,7 @@ def _apply_defaults(
     mode = scheduling_mode or defaults["scheduling_mode"]
     if pref is not None and pref not in shifts:
         raise ValueError(f"preferred_shift '{pref}' not in available_shifts")
+    validate_role_shifts(role, shifts, mode)
     return shifts, pref, mode
 
 
@@ -172,6 +189,8 @@ def update_employee(db: Session, employee: Employee, data: EmployeeUpdate) -> Em
 
     if pref is not None and pref not in shifts:
         raise ValueError(f"preferred_shift '{pref}' not in available_shifts")
+
+    validate_role_shifts(employee.role, shifts, mode)
 
     if "name" in payload:
         employee.name = payload["name"]

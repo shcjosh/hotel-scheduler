@@ -242,6 +242,7 @@ def upsert_cell(
     is_support = bool(emp.tag)
     is_night = emp.role == "night"
     is_housekeeping = emp.role == HOUSEKEEPING_ROLE
+    is_trainee = emp.role == "trainee"
     if is_support:
         # 二館支援人員只能排 A1/C1/D1 或空（tag 優先於角色，如大夜專職的二館支援）
         if shift not in ("A1", "C1", "D1", "EMPTY"):
@@ -257,6 +258,10 @@ def upsert_cell(
         # 大夜專職可排 D / OFF / 假別 / 空（來源一律 night_input）
         if shift not in ("D", "OFF", "SPECIAL", "EMPTY"):
             raise ValueError("大夜專職人員只能排 D、休或假別")
+    elif is_trainee:
+        # 見習生只處理日班櫃台 A/B/C；D 由大夜/備援處理，M 為管理職。
+        if shift not in ("A", "B", "C", "OFF", "SPECIAL", "EMPTY"):
+            raise ValueError("見習生只能排 A、B、C、休或假別")
     elif shift == "D":
         raise ValueError("僅大夜專職人員可排 D 班（D 班備援由系統自動指派）")
 
@@ -420,6 +425,60 @@ def validate_cell(
     # H7
     if new_shift in WORK_SHIFTS_SET and new_shift not in avail:
         v("H7", f"{new_shift} 不在 {emp.name} 的可用班次")
+
+    # H1 每日上限 + H15 見習同行：需要同日所有櫃台員工的班別。
+    day_shifts = {
+        row.employee_id: row.shift
+        for row in db.scalars(
+            select(ScheduleEntry).where(
+                ScheduleEntry.year == year,
+                ScheduleEntry.month == month,
+                ScheduleEntry.day == day,
+            )
+        )
+    }
+    if new_shift == "EMPTY":
+        day_shifts.pop(emp_id, None)
+    else:
+        day_shifts[emp_id] = new_shift
+
+    a_total = c_total = b_total = d_total = 0
+    mentor_a = mentor_c = 0
+    for other in db.scalars(select(Employee).where(Employee.is_active == 1)):
+        # 二館支援（tag）與房務不計入櫃台每日覆蓋；大夜只處理 D。
+        if other.tag or other.role == HOUSEKEEPING_ROLE:
+            continue
+        other_shift = day_shifts.get(other.id)
+        is_mentor = other.id != emp_id and other.role not in ("trainee", "night")
+        if other_shift == "A":
+            a_total += 1
+            if is_mentor:
+                mentor_a += 1
+        elif other_shift == "C":
+            c_total += 1
+            if is_mentor:
+                mentor_c += 1
+        elif other_shift == "B":
+            b_total += 1
+        elif other_shift == "D":
+            d_total += 1
+
+    if a_total > 2:
+        v("H1", f"{month}/{day} A 班超過 2 人")
+    if c_total > 2:
+        v("H1", f"{month}/{day} C 班超過 2 人")
+    if b_total > 1:
+        v("H1", f"{month}/{day} B 班超過 1 人")
+    if d_total > 1:
+        v("H1", f"{month}/{day} D 班超過 1 人")
+
+    if emp.role == "trainee":
+        if new_shift == "A" and mentor_a < 1:
+            v("H15", "A 班見習生需要同班非見習人員")
+        elif new_shift == "C" and mentor_c < 1:
+            v("H15", "C 班見習生需要同班非見習人員")
+        elif new_shift == "B" and (mentor_a < 1 or mentor_c < 1):
+            v("H15", "B 班見習生需要 A、C 班各有非見習人員")
 
     # H5 prev -> cell, cell -> next
     if prev_shift == "C" and new_shift == "A":

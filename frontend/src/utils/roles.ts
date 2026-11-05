@@ -6,6 +6,7 @@ export const ROLE_LABELS: Record<EmployeeRole, string> = {
   cd_backup: 'C+D 備援',
   manager: '管理職',
   housekeeping: '房務',
+  trainee: '見習生',
 }
 
 export const ROLE_DEFAULTS: Record<
@@ -18,6 +19,8 @@ export const ROLE_DEFAULTS: Record<
   manager: { shifts: ['M', 'A', 'B', 'C', 'D'], preferred: 'M', mode: 'auto' },
   // 房務：只上 A（09:00-18:00），完全手動、與櫃台互不干涉。
   housekeeping: { shifts: ['A'], preferred: 'A', mode: 'manual' },
+  // 見習生：日班 A/B/C，全職自動排班；不能單獨卡班（H15），需非見習同行。
+  trainee: { shifts: ['A', 'B', 'C'], preferred: null, mode: 'auto' },
 }
 
 export const ALL_SHIFTS = ['A', 'B', 'C', 'D', 'M']

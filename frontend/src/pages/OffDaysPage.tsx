@@ -498,7 +498,9 @@ export function OffDaysPage() {
                               ? '管理職'
                               : employee.role === 'cd_backup'
                                 ? 'C+D 備援'
-                                : '日班櫃台'}
+                                : employee.role === 'trainee'
+                                  ? '見習生'
+                                  : '日班櫃台'}
                         </td>
                         <td className="px-3 py-2 text-right">{stats?.designated_count ?? 0} / 2</td>
                         <td className="px-3 py-2 text-right">{stats?.total_leave_days ?? 0}</td>

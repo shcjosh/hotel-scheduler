@@ -29,12 +29,18 @@ def _coverage_gaps(data) -> list[dict]:
     由內部人力吸收另一班）。
     """
     gaps: list[dict] = []
-    capable_a = any("A" in e.available_shifts and e.role != "night" for e in data.employees)
-    capable_c = any("C" in e.available_shifts and e.role != "night" for e in data.employees)
+    capable_a = any(
+        "A" in e.available_shifts and e.role not in ("night", "trainee")
+        for e in data.employees
+    )
+    capable_c = any(
+        "C" in e.available_shifts and e.role not in ("night", "trainee")
+        for e in data.employees
+    )
     if not capable_a:
-        gaps.append({"day": 0, "shift": "A", "reason": "全月無員工可上 A 班"})
+        gaps.append({"day": 0, "shift": "A", "reason": "全月無可獨立上 A 班的非見習員工"})
     if not capable_c:
-        gaps.append({"day": 0, "shift": "C", "reason": "全月無員工可上 C 班"})
+        gaps.append({"day": 0, "shift": "C", "reason": "全月無可獨立上 C 班的非見習員工"})
 
     if capable_a or capable_c:
         diag = engine.diagnose_support_needs(data)

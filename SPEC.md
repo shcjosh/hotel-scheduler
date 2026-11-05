@@ -55,6 +55,7 @@
 | 大夜專職 | `night` | 手動（格位輸入，source=night_input） | D/OFF/假別 | 班表上直接輸入；假別寫入 `SPECIAL` + `special_leaves`（含颱風假等自訂假別）；求解器豁免 H2/H3/H4/H8/H9/H12（格位固定，見 §4 末） |
 | C+D 備援 | `cd_backup` | 自動 | C/D（偏好 C） | D 備援日被指派時固定排 D |
 | 管理職 | `manager` | 自動 | M/ABCD（偏好 M） | S8 權重鼓勵上 M；覆蓋不足時可備援（受店長卡班上限約束，見 §4） |
+| 見習生 | `trainee` | 自動（可手動改格） | A/B/C | 全職，休假規則比照一般櫃台；**不能單獨卡班（H15）**：A/C 同班需有非見習人員，B 班需同日 A、C 都有非見習人員；仍受 A≤2、C≤2、B≤1 人數上限（見 §4） |
 | 外部支援 | 任意 + `tag` | 完全手動 | A1/C1/D1 | 帶標籤（如「二館」）員工：豁免所有個人規則、不參與求解，其支援班次計入當日覆蓋 |
 | 房務 | `housekeeping` | 完全手動（畫筆） | A | 只上 A（09:00-18:00）／假別（SPECIAL）／休；與櫃台互不干涉：不進求解/驗證/統計/休假/跨月，分群查詢（見 §11）；支援假別，現階段僅特休（SPECIAL）計入週年制/統計（見 §7.1） |
 
@@ -78,7 +79,7 @@
   軟刪除（`is_active=0`）的員工復原為可見，讓歷史班表回來。
 - `is_active` 保留為軟刪除欄位（向後相容），新流程不再使用。
 
-## 4. 硬性約束（H1~H14，必須滿足）
+## 4. 硬性約束（H1~H15，必須滿足）
 
 實作於 `backend/app/scheduler/constraints/hard.py`。
 
@@ -111,10 +112,19 @@
   另一班（店長等內部人力優先補 C）必須由求解器在日內自行吸收，
   真的排不出就求解失敗並在診斷/驗證中呈現。手動/自動建立請求皆受此限制（同日已有請求 → 擋下）；
   全月請求（day=0）不受限。驗證報告以 H14 列出違規。
+- **H15 見習同行**：見習生不能單獨卡班。
+  - A 班（07:30–15:30）：同日 A 班至少一位非見習人員（上午時段無其他班可重疊）。
+  - C 班（15:30–23:30）：同日 C 班至少一位非見習人員（晚間時段無其他班可重疊）。
+  - B 班（11:30–19:30）：與 A（至 15:30）及 C（15:30 起）重疊，因此同日 A、C
+    都要有非見習人員；B 班本身仍維持最多 1 人（可以是見習生）。
+  - 導師不指定專人：`general`／`manager` 可帶 A/B/C；`cd_backup` 可在 C 班帶。
+    另一位見習生、大夜、房務、二館支援（tag）都不算同行人員。
+  - 因見習生佔名額，A/C 最多 2 人（含見習生）、B 最多 1 人；每個班別每天最多
+    一位見習生。
 - **店長卡班上限（MCAP；非 H 編號）**：每月設定 `manager_backup_cap:{y}:{m}` =
   每位管理職（店長）可被排 A/C 的格數上限，留空 = 不限制。求解時為硬性上限；
   超過上限的缺口由 solve 流程自動轉為支援請求（見 §13.3）。僅約束求解，
-  不列入驗證報告（validator 的 H1~H14）。
+  不列入驗證報告（validator 的 H1~H15）。
 
 **大夜規則開關**（`night_rule_overrides` 表，UI 在員工管理編輯表單）：
 - 逐人逐條 H2/H3/H4/H12 開關 + 「無視所有規則」（rule_name='ALL'）
@@ -139,6 +149,8 @@
 | S8 | 管理職備援最小化 | -15 | manager 排 A/B/C/D（>S5，確保優先上 M；覆蓋不足仍可備援）；另受 §4 店長卡班上限硬性約束 |
 | S9 | 連休 2 次優先 | +8 | 每人連休次數；**跨月公平（K.1 B 級）**：上月連休 <2 次者權重提高為 +14 |
 | S10 | 白天班組合 | 見下 | 五六：恰 2A+2C（B=0）+18、恰 1A+1B+1C +15、M 每人 +6；平日：恰 1A+1B+1C +5、白天班 ≥4 人 -10 |
+
+- 見習生視為全職一般人力，計入 S6 公平分配與 S10 白天班組合。
 
 ## 6. 班次銜接矩陣
 
@@ -234,7 +246,7 @@
 
 | 表 | 用途 / 重點欄位 |
 |---|---|
-| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`\|`housekeeping`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, hire_date（到職日，見 §7.1）, is_active（軟刪除，向後相容） |
+| `employees` | name, nickname, tag, sort_order, role(`general`\|`night`\|`cd_backup`\|`manager`\|`housekeeping`\|`trainee`), available_shifts(JSON), preferred_shift, scheduling_mode(`auto`\|`manual`), resign_date（最後上班日，見 §3.1）, hire_date（到職日，見 §7.1）, is_active（軟刪除，向後相容） |
 | `schedule_entries` | employee_id, y/m/d, shift, source(`auto`\|`manual`\|`night_input`\|`backup`\|`designated`\|`special`)；UNIQUE(emp,y,m,d) |
 | `designated_off_days` | 指定休假；每人每月 ≤2（應用層驗證）；UNIQUE(emp,y,m,d) |
 | `special_leaves` | 請假；+ `leave_type`（預設 SPECIAL）；UNIQUE(emp,y,m,d) |
@@ -348,7 +360,7 @@ v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書
 - **主管班**：`role=manager` 的 `M`／`EMPTY` 預設留白；頁尾圖例
   「空白＝M 主管班 09:00-17:00」；可勾選顯示 `M`
 - **版面**：A4 橫式、8mm 邊界；兩列日期/星期、粗週框線（`#7030A0`）、
-  左側單位（櫃台/房務）＋類別（`tag` 或 店長/大夜/C+D）＋姓名（中文名＋暱稱）；
+  左側單位（櫃台/房務）＋類別（`tag` 或 店長/大夜/C+D/見習）＋姓名（中文名＋暱稱）；
   櫃台與房務同一張表；表頭 `thead` 跨頁重複
 - **頁尾**：上班時段、休假/假別圖例、`print_notes` 注意事項、
   製表人（`user_name`）／單位主管／會計簽名欄、列印日期
@@ -377,7 +389,7 @@ v1.3.0 起房務班表併入班表頁分頁，`/housekeeping` 轉址保留舊書
    皆視為有人；ignored 不算）、規則開關、上月每人連休次數
 2. `build_fixed`：固定格 = 大夜全部格位（D/OFF/SPECIAL）、指定休=OFF、請假=SPECIAL、備援日=D
 3. 建變數：每格 ALL_SHIFTS 各一 BoolVar（固定格不省略變數，用約束鎖定）
-4. H1~H13 → S1~S10 → `model.Maximize`
+4. H1~H15 → S1~S10 → `model.Maximize`
 5. 求解：`max_time_in_seconds`（預設 30s，請求可調）、8 workers、
    `SCHEDULER_LOG_SEARCH_PROGRESS=1` 可開求解 log
 6. 成功：提取班表 + 軟性約束統計；失敗：`diagnose_detailed` 結構化診斷。
@@ -413,13 +425,14 @@ cause 類型：`coverage_gap`（無人可上 A/C）、`over_capacity`（非大�
 被迫週末休 >2）、`weekly_off_shortage`（請假涵蓋整週導致無天數排 OFF）、
 `d_backup_gap`（備援日無人遞補 C）、`d_backup_unfillable`（備援無法指派）、
 `cross_month_conflict`（上月末班次與本月 1 日固定格衝突）、`night_violation`、
-`unknown`。各 cause 含 severity/message/suggestion。
+`trainee_mentor_gap`（見習生缺少可帶人的非見習 A/C 人力）、`unknown`。
+各 cause 含 severity/message/suggestion。
 
 ### 13.5 規則驗證器（`validator.py`）
 
-`validate()`（H1~H14 結構化違規）+ `validate_soft()`（S1/S2/S3/S7/S8/S9/S10 警告；
+`validate()`（H1~H15 結構化違規）+ `validate_soft()`（S1/S2/S3/S7/S8/S9/S10 警告；
 S5/S6 由 `count_preferred_unsatisfied` / `compute_fairness_spread` 另算）+
-`RULE_DESCRIPTIONS`（H1~H14 + S1~S3、S5~S10 共 23 條）。用於整月驗證報告、
+`RULE_DESCRIPTIONS`（H1~H15 + S1~S3、S5~S10 共 24 條）。用於整月驗證報告、
 大夜驗證、validate-cell、診斷。全部尊重「無視所有規則」的排除。
 H14 由 `data.support_requests`（非 ignored 的每日班次集合）判定同日 ≥2 班。
 
@@ -466,7 +479,7 @@ cd frontend && npm run dev
 # 單一後端模式（服務前端 build）
 cd frontend && npm run build && cd ../backend && .venv/bin/python run.py
 # 測試（逐檔執行，各自帶 assert 與 temp DB_PATH，非 pytest）
-cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_night_leave、test_manager_cap、test_resign、test_annual_leave、test_database_export、test_database_import）
+cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_night_leave、test_manager_cap、test_resign、test_annual_leave、test_trainee、test_database_export、test_database_import）
 # 測試資料
 cd backend && .venv/bin/python tests/seed_dev.py
 ```
@@ -489,3 +502,6 @@ cd backend && .venv/bin/python tests/seed_dev.py
    未做小螢幕完整編輯。
 7. `tests/test_phase8.py` 的調整求解仍可能遇到 CP-SAT `UNKNOWN`（逾時）；
    測試會自動加大秒數重試（30→60→120 秒），`INFEASIBLE` 才視為真失敗。
+8. **見習生需有非見習人員同行（H15）**：A/C 同班、B 班需同日 A/C 都有非見習人員。
+   若某天沒有可帶人的非見習人力，見習生只能排休；整體排不出時診斷會回報
+   `trainee_mentor_gap`，需調整休假或新增可上 A/C 的非見習員工。
