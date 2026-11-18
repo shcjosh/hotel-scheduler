@@ -216,7 +216,9 @@ def diagnose_detailed(data):
             causes.append(_cause("d_backup_gap", "critical",
                 f"{day} 號備援日指派員工不存在", "重新指派備援人員"))
             continue
-        candidates = [e for e in data.employees if e.id != emp_id and "C" in e.available_shifts and e.role != "night"]
+        if data.is_external(day, "C"):
+            continue
+        candidates = [e for e in data.employees if e.id != emp_id and "C" in e.available_shifts and e.role not in ("night", "trainee")]
         fixed = [e.name for e in candidates if day in data.special_leaves.get(e.id, []) or day in data.designated_off_days.get(e.id, [])]
         if len(candidates) - len(fixed) < 1:
             causes.append(_cause("d_backup_gap", "critical",
@@ -241,7 +243,7 @@ def diagnose_detailed(data):
             forced.append("OFF")
         if day_in(emp.id, 1, data.special_leaves):
             forced.append("SPECIAL")
-        if emp.role == "cd_backup" and data.d_backup_assignments.get(1) == emp.id:
+        if data.d_backup_assignments.get(1) == emp.id:
             forced.append("D")
         if not forced:
             continue

@@ -262,8 +262,8 @@ def upsert_cell(
         # 見習生只處理日班櫃台 A/B/C；D 由大夜/備援處理，M 為管理職。
         if shift not in ("A", "B", "C", "OFF", "SPECIAL", "EMPTY"):
             raise ValueError("見習生只能排 A、B、C、休或假別")
-    elif shift == "D":
-        raise ValueError("僅大夜專職人員可排 D 班（D 班備援由系統自動指派）")
+    elif shift == "D" and emp.role != "manager":
+        raise ValueError("僅大夜專職與管理職人員可手動排 D 班（D 班備援由系統自動指派）")
 
     from app.services import status_service
 
@@ -409,6 +409,8 @@ def validate_cell(
 
     shifts[day - 1] = new_shift
     avail = set(json.loads(emp.available_shifts)) if emp.available_shifts else set()
+    if emp.role == "manager":
+        avail.add("D")
     idx = day - 1
     prev_shift = shifts[idx - 1] if day > 1 else prev_shifts[-1]
     next_shift = shifts[idx + 1] if day < num_days else None

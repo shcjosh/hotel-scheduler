@@ -206,7 +206,7 @@ def add_h10_one_shift_per_day(model, x, data, fixed):
             model.Add(sum(x[i][d][s] for s in ALL_SHIFTS) == 1)
 
 
-def add_h11_d_backup(model, x, data, fixed):
+def add_h11_d_backup(model, x, data, fixed, require_c_coverage=True):
     idx = data.emp_index()
     n = len(data.employees)
     for day, emp_id in data.d_backup_assignments.items():
@@ -215,9 +215,10 @@ def add_h11_d_backup(model, x, data, fixed):
             continue
         d = day - 1
         model.Add(x[i][d]["D"] == 1)
-        others = [k for k in range(n) if k != i]
-        if others:
-            model.Add(sum(x[k][d]["C"] for k in others) >= 1)
+        if require_c_coverage and not data.is_external(day, "C"):
+            others = [k for k in range(n) if k != i]
+            if others:
+                model.Add(sum(x[k][d]["C"] for k in others) >= 1)
 
 
 def build_off_block_counters(model, x, i, num_days):

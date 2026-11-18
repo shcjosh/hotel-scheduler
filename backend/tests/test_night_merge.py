@@ -116,13 +116,26 @@ except ValueError:
 schedule_service.upsert_cell(db, chen.id, 2026, 8, 1, "EMPTY")
 check("5. 大夜 EMPTY 刪除紀錄", entry(chen.id, 1) is None)
 
-# 6. 非大夜排 D → 擋（general / cd_backup 都不行）
+# 6. 非大夜/非管理職排 D → 擋（general / cd_backup 都不行）；管理職可手動排 D
 for emp in (wang, lin):
     try:
         schedule_service.upsert_cell(db, emp.id, 2026, 8, 3, "D")
         check(f"6. {emp.name}（{emp.role}）排 D 被擋", False)
     except ValueError:
         check(f"6. {emp.name}（{emp.role}）排 D 被擋", True)
+
+mgr = Employee(name="王店長", role="manager", available_shifts='["A","C","M"]', preferred_shift="M", scheduling_mode="auto")
+db.add(mgr)
+db.commit()
+schedule_service.upsert_cell(db, mgr.id, 2026, 8, 3, "D")
+e_mgr = entry(mgr.id, 3)
+check("6b. 管理職手動排 D 成功且 source=manual", e_mgr is not None and e_mgr.shift == "D" and e_mgr.source == "manual")
+v_mgr = schedule_service.validate_cell(db, mgr.id, 2026, 8, 3, "D")
+check("6c. 管理職即使 available_shifts 未勾 D，手動排 D 不觸發 H7 違規",
+      not any(v["rule"] == "H7" for v in v_mgr["violations"]))
+db.delete(e_mgr)
+db.delete(mgr)
+db.commit()
 
 # 7. 回歸：一般員工排 A → source=manual
 schedule_service.upsert_cell(db, wang.id, 2026, 8, 3, "A")

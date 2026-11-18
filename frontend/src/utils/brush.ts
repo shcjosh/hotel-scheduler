@@ -32,6 +32,8 @@ export function toolFromKey(key: string | null): BrushTool | null {
  * - 房務：只允許 A / OFF / 假別
  * - 二館支援（tag）：只允許 A1 / C1 / D1，不能塗假別
  * - 大夜：只允許 D / OFF / 假別
+ * - 見習生：只允許 A / B / C / OFF / 假別
+ * - 管理職：允許 A / B / C / D / M / OFF / 假別（可手動排 D）
  * - 其他：不可塗 D（D 由大夜或備援指派）
  */
 export function targetForTool(
@@ -58,6 +60,11 @@ export function targetForTool(
   // 見習生只能上日班櫃台 A/B/C（不能 M）。
   if (employee.role === 'trainee') {
     return ['A', 'B', 'C', 'OFF'].includes(tool.shift) ? { shift: tool.shift } : null
+  }
+
+  // 管理職可手動排 A/B/C/D/M/OFF。
+  if (employee.role === 'manager') {
+    return { shift: tool.shift }
   }
 
   return tool.shift === 'D' ? null : { shift: tool.shift }

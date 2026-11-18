@@ -208,9 +208,13 @@ def validate(data, schedule):
         if _ignored_night(data, emp):
             continue
         avail = set(emp.available_shifts)
+        if emp.role == "manager":
+            avail = avail | {"D"}
         for d in range(data.num_days):
             s = _shift_at(schedule, emp.id, d)
             if s is None or s == "OFF" or s == "SPECIAL":
+                continue
+            if s == "D" and data.d_backup_assignments.get(d + 1) == emp.id:
                 continue
             if s not in avail:
                 violations.append(_v("H7", emp, d + 1, f"排 {s} 不在可用班次"))
@@ -251,7 +255,7 @@ def validate(data, schedule):
             1 for other in data.employees
             if other.id != emp_id and _shift_at(schedule, other.id, day - 1) == "C"
         )
-        if c_count < 1:
+        if c_count < 1 and not data.is_external(day, "C"):
             violations.append(_v("H11", None, day, f"{day} 號備援日無人遞補 C 班"))
 
     for emp in data.employees:

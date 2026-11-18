@@ -46,7 +46,7 @@ def build_fixed(data: ShiftScheduleData) -> dict[tuple[int, int], str]:
                 shift = "OFF"
             elif day in data.special_leaves.get(emp.id, []):
                 shift = "SPECIAL"
-            elif emp.role == "cd_backup" and data.d_backup_assignments.get(day) == emp.id:
+            elif data.d_backup_assignments.get(day) == emp.id:
                 shift = "D"
             if shift is not None:
                 fixed[(i, d)] = shift
@@ -344,6 +344,9 @@ def diagnose_support_needs(data: ShiftScheduleData, max_time: float = 15.0):
 
     for code, fn in hard.CONSTRAINT_FUNCTIONS:
         if code == "H1":
+            continue
+        if code == "H11":
+            fn(model, x, data, fixed, require_c_coverage=False)
             continue
         fn(model, x, data, fixed)
 

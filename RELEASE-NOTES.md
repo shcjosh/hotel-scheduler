@@ -1,5 +1,30 @@
 # 飯店排班系統 — Release Notes
 
+## v1.3.3-beta（2026-11-18 beta）
+
+> 對應 branch：`v1.3.3-beta`（尚未定版、未打 tag）
+> 以 `v1.3.2-beta` 為基礎，讓 D 班備援日的 C 班缺口納入「自動請求二館支援並繼續求解」流程，並開放管理職於班表手動排 D 班（畫筆模式與點擊修改）。
+> 後端 API、SQLite schema 皆向後相容；既有資料不需 migration。
+
+### 本版重點
+
+- **D 班備援日缺 C 班自動轉二館支援並繼續求解**
+  - `H11（D 班備援）` 連動外部支援（`data.is_external(day, "C")`）與自動支援診斷（`engine.diagnose_support_needs`）
+  - 當備援日被指派者（CD 備援或管理職）排 D 班後，若館內其他可上 C 班人員剛好排休導致 C 班無人可遞補，系統會自動產生該日 C 班的二館支援請求，並自動重跑求解器直接產出完整班表
+  - 修正管理職（`manager`）被指派 D 班備援時未寫入 `build_fixed` 的問題：即使管理職的 `available_shifts` 未勾選 `D`（避免平日被自動排 D），在備援日仍可正常鎖定為 `D` 而不觸發 `H7` 衝突
+  - `validator.py` 與 `diagnostics.py` 的 H11／`d_backup_gap` 檢查同步納入外部支援與非見習判定
+- **管理職（`manager`）開放手動排 D 班（畫筆模式 & 點擊格位修改）**
+  - 畫筆模式（`brush.ts`）：開放 `D` 畫筆可塗在管理職格位（單擊或拖曳連塗皆可）
+  - 點擊格位修改（`CellEditModal`）：管理職格位彈窗一律提供 `D` 班選項（即使員工設定的 `available_shifts` 未勾 `D`，仍可手動選取 D 班，不影響自動排班設定）
+  - 後端格位寫入（`upsert_cell`）與驗證（`validate_cell`、`validator.validate`）：開放管理職手動寫入 `D` 班（`source="manual"`），且 `H7` 可用班次檢查對管理職排 `D` 視為合規（`H1` 同日 D 上限、`H4` 連上、`H5` D 隔天銜接、`S8` 備援提醒等照常檢查）
+
+### 測試與相容性
+
+- 更新 `backend/tests/test_phase7.py` 與 `backend/tests/test_night_merge.py`：覆蓋管理職備援 D 班自動轉 C 班支援請求並繼續求解、管理職手動排 D 班與 H7 合規驗證
+- 後端 `backend/tests/test_*.py` 全數通過
+- `npm run lint`、`npm run build` 通過
+- 與 `v1.3.1` / `v1.3.2-beta` 共用同一份資料庫；無 migration
+
 ## v1.3.2-beta（2026-11-05 beta）
 
 > 對應 branch：`v1.3.2-beta`（尚未定版、未打 tag）
