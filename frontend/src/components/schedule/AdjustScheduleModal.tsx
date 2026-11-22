@@ -25,9 +25,9 @@ interface AdjustScheduleModalProps {
 export function AdjustScheduleModal({
   year, month, employees, leaveTypes, numDays, onClose, onApplied,
 }: AdjustScheduleModalProps) {
-  const nonNight = employees.filter((e) => e.role !== 'night')
+  const autoStaff = employees.filter((e) => e.scheduling_mode === 'auto' && !e.tag)
   const names = nameMap(employees)
-  const [empId, setEmpId] = useState<number>(nonNight[0]?.id ?? 0)
+  const [empId, setEmpId] = useState<number>(autoStaff[0]?.id ?? 0)
   const [startDay, setStartDay] = useState(1)
   const [endDay, setEndDay] = useState(1)
   const [leaveType, setLeaveType] = useState('SPECIAL')
@@ -69,8 +69,8 @@ export function AdjustScheduleModal({
   return (
     <Modal open title="臨時異動排班" onClose={onClose}>
       <div className="space-y-4">
-        {nonNight.length === 0 ? (
-          <div className="text-sm text-gray-500">沒有可調整的員工</div>
+        {autoStaff.length === 0 ? (
+          <div className="text-sm text-gray-500">沒有可調整的自動排班員工</div>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -81,7 +81,7 @@ export function AdjustScheduleModal({
                   onChange={(e) => setEmpId(Number(e.target.value))}
                   className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
                 >
-                  {nonNight.map((e) => (
+                  {autoStaff.map((e) => (
                     <option key={e.id} value={e.id}>
                       {displayName(e)}（{ROLE_LABELS[e.role] ?? e.role}）
                     </option>

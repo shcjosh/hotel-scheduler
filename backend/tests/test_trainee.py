@@ -56,23 +56,22 @@ trainee = employee_service.create_employee(
 check(trainee.available_shifts == '["A", "B", "C"]', "建立見習生後 available_shifts = A/B/C")
 check(trainee.scheduling_mode == "auto", "建立見習生後為自動排班")
 
-try:
-    employee_service.create_employee(
-        db,
-        EmployeeCreate(name="見習乙", role="trainee", available_shifts=["A", "D"]),
-    )
-    check(False, "見習生不可設定 D 班")
-except ValueError:
-    check(True, "見習生不可設定 D 班")
-
-try:
-    employee_service.create_employee(
-        db,
-        EmployeeCreate(name="見習乙", role="trainee", scheduling_mode="manual"),
-    )
-    check(False, "見習生目前僅支援自動排班")
-except ValueError:
-    check(True, "見習生目前僅支援自動排班")
+# v1.4.0：見習生與班別/模式脫鉤，可自由勾選 D/M 或切換手動
+trainee_flex = employee_service.create_employee(
+    db,
+    EmployeeCreate(
+        name="見習乙",
+        role="trainee",
+        available_shifts=["A", "B", "C", "D"],
+        scheduling_mode="manual",
+    ),
+)
+check(
+    trainee_flex.scheduling_mode == "manual",
+    "v1.4.0 見習生可自由設定 D 班與切換手動模式",
+)
+db.delete(trainee_flex)
+db.commit()
 
 
 def add_general(name, pref=None):
@@ -222,13 +221,16 @@ check(
     "格位驗證：B 班超過 1 人會報 H1",
 )
 
-# --- 4. API 寫入限制 ---
+# --- 4. API 寫入（v1.4.0：畫筆/點格每個人每種班都可排；不在 available_shifts 報 H7 警告）---
 for shift in ("D", "M"):
-    try:
-        schedule_service.upsert_cell(db, trainee.id, Y, M, 2, shift)
-        check(False, f"見習生寫入 {shift} 應被擋")
-    except ValueError:
-        check(True, f"見習生寫入 {shift} 被擋")
+    schedule_service.upsert_cell(db, trainee.id, Y, M, 2, shift)
+    vc = schedule_service.validate_cell(db, trainee.id, Y, M, 2, shift)
+    check(
+        not any(v["rule"] == "H7" for v in vc["violations"])
+        and any(w["rule"] == "H7" for w in vc["warnings"]),
+        f"見習生可手動寫入 {shift} 且報 H7 警告（可略過）",
+    )
+schedule_service.upsert_cell(db, trainee.id, Y, M, 2, "OFF")
 
 # --- 5. 診斷：缺少可帶人的非見習 A/C 人力 ---
 diagnostic_data = copy.deepcopy(data)

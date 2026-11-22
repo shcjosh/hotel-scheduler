@@ -30,15 +30,16 @@ TRAINEE_SHIFTS = {"A", "B", "C"}
 def validate_role_shifts(role: str, shifts: list[str], mode: str | None = None) -> None:
     """角色與可上班班次／排班方式的相容性檢查。
 
-    見習生只處理日班櫃台 A/B/C，且目前僅支援自動排班（手動改格仍可用）；
-    D 由大夜/備援處理，M 為管理職。
+    v1.4.0 起櫃台身分與可上班班次／自動手動模式完全脫鉤：
+    所有櫃台角色皆可自由勾選 A/B/C/D/M 與切換自動/手動。
+    房務仍固定只上 A 且為手動排班。
     """
-    if role == TRAINEE_ROLE:
-        invalid = [s for s in shifts if s not in TRAINEE_SHIFTS]
+    if role == HOUSEKEEPING_ROLE:
+        invalid = [s for s in shifts if s != "A"]
         if invalid:
-            raise ValueError("見習生只能排 A / B / C")
-        if mode is not None and mode != "auto":
-            raise ValueError("見習生目前僅支援自動排班")
+            raise ValueError("房務人員只能排 A 班")
+        if mode is not None and mode != "manual":
+            raise ValueError("房務人員僅支援手動排班")
 
 
 def month_key(year: int, month: int) -> str:

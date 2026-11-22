@@ -699,11 +699,9 @@ export function SchedulePage() {
           availableShifts={
             editingEmp.tag
               ? ['A1', 'C1', 'D1']
-              : editingEmp.role === 'night'
-                ? editingEmp.available_shifts
-                : editingEmp.role === 'manager'
-                  ? Array.from(new Set([...editingEmp.available_shifts, 'D']))
-                  : editingEmp.available_shifts.filter((shift) => shift !== 'D')
+              : group === 'housekeeping'
+                ? ['A']
+                : ['A', 'B', 'C', 'D', 'M']
           }
           leaveTypes={editingEmp.tag ? [] : leaveTypes}
           isPublished={status === 'published'}

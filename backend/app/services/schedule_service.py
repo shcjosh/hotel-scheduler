@@ -111,13 +111,27 @@ def replace_month_schedule(
     year: int,
     month: int,
     entries: list[dict],
+    employee_ids: list[int] | None = None,
 ) -> None:
-    """Delete all schedule entries for the month and insert the given entries."""
-    db.execute(
-        delete(ScheduleEntry).where(
-            ScheduleEntry.year == year, ScheduleEntry.month == month
+    """Replace schedule entries for the month.
+
+    When `employee_ids` is provided, only deletes & replaces entries for those
+    employees (preserving manual-mode staff, housekeeping, and support entries).
+    """
+    if employee_ids is None:
+        db.execute(
+            delete(ScheduleEntry).where(
+                ScheduleEntry.year == year, ScheduleEntry.month == month
+            )
         )
-    )
+    elif employee_ids:
+        db.execute(
+            delete(ScheduleEntry).where(
+                ScheduleEntry.year == year,
+                ScheduleEntry.month == month,
+                ScheduleEntry.employee_id.in_(employee_ids),
+            )
+        )
     for e in entries:
         db.add(
             ScheduleEntry(
@@ -242,7 +256,6 @@ def upsert_cell(
     is_support = bool(emp.tag)
     is_night = emp.role == "night"
     is_housekeeping = emp.role == HOUSEKEEPING_ROLE
-    is_trainee = emp.role == "trainee"
     if is_support:
         # 二館支援人員只能排 A1/C1/D1 或空（tag 優先於角色，如大夜專職的二館支援）
         if shift not in ("A1", "C1", "D1", "EMPTY"):
@@ -254,16 +267,7 @@ def upsert_cell(
         # 不做任何規則檢測。
         if shift not in ("A", "OFF", "SPECIAL", "EMPTY"):
             raise ValueError("房務人員只能排 A、假別或休")
-    elif is_night:
-        # 大夜專職可排 D / OFF / 假別 / 空（來源一律 night_input）
-        if shift not in ("D", "OFF", "SPECIAL", "EMPTY"):
-            raise ValueError("大夜專職人員只能排 D、休或假別")
-    elif is_trainee:
-        # 見習生只處理日班櫃台 A/B/C；D 由大夜/備援處理，M 為管理職。
-        if shift not in ("A", "B", "C", "OFF", "SPECIAL", "EMPTY"):
-            raise ValueError("見習生只能排 A、B、C、休或假別")
-    elif shift == "D" and emp.role != "manager":
-        raise ValueError("僅大夜專職與管理職人員可手動排 D 班（D 班備援由系統自動指派）")
+    # v1.4.0：所有本館櫃台人員（含一般/管理職/見習/大夜）於畫筆與點格編輯皆可排 A/B/C/D/M/OFF/假別/空
 
     from app.services import status_service
 
@@ -323,7 +327,7 @@ def upsert_cell(
         if sl is not None:
             db.delete(sl)
 
-    source = "night_input" if is_night else "manual"
+    source = "night_input" if (is_night and emp.scheduling_mode == "manual") else "manual"
     if existing is not None:
         existing.shift = shift
         existing.source = source
@@ -368,9 +372,11 @@ def validate_cell(
     if emp.role == HOUSEKEEPING_ROLE:
         return {"violations": [], "warnings": []}
 
-    # 大夜專職：尊重逐人規則開關（無視所有規則 → 不檢查；H4/H12 可關閉）
+    # 手動模式員工豁免規則檢驗；大夜專職若明確關閉「無視所有規則」才依開關檢查
     disabled_night: set[str] = set()
-    if emp.role == "night":
+    if emp.scheduling_mode == "manual":
+        if emp.role != "night":
+            return {"violations": [], "warnings": []}
         overrides = {
             r.rule_name: bool(r.enabled)
             for r in db.scalars(
@@ -379,9 +385,9 @@ def validate_cell(
                 )
             )
         }
-        if overrides.get("ALL"):
+        if overrides.get("ALL", True):
             return {"violations": [], "warnings": []}
-        disabled_night = {r for r in ("H4", "H12") if not overrides.get(r, True)}
+        disabled_night = {r for r in ("H4", "H12") if not overrides.get(r, False)}
 
     num_days = calendar.monthrange(year, month)[1]
     entries = {
@@ -409,8 +415,6 @@ def validate_cell(
 
     shifts[day - 1] = new_shift
     avail = set(json.loads(emp.available_shifts)) if emp.available_shifts else set()
-    if emp.role == "manager":
-        avail.add("D")
     idx = day - 1
     prev_shift = shifts[idx - 1] if day > 1 else prev_shifts[-1]
     next_shift = shifts[idx + 1] if day < num_days else None
@@ -424,9 +428,9 @@ def validate_cell(
     def w(rule, msg):
         warnings.append({"rule": rule, "severity": "soft", "message": msg})
 
-    # H7
+    # H7：手動排了未勾選的班別 → 顯示為軟性警告（可略過、不擋存檔）
     if new_shift in WORK_SHIFTS_SET and new_shift not in avail:
-        v("H7", f"{new_shift} 不在 {emp.name} 的可用班次")
+        w("H7", f"{new_shift} 不在 {emp.name} 的可上班班次（可略過）")
 
     # H1 每日上限 + H15 見習同行：需要同日所有櫃台員工的班別。
     day_shifts = {
@@ -447,11 +451,11 @@ def validate_cell(
     a_total = c_total = b_total = d_total = 0
     mentor_a = mentor_c = 0
     for other in db.scalars(select(Employee).where(Employee.is_active == 1)):
-        # 二館支援（tag）與房務不計入櫃台每日覆蓋；大夜只處理 D。
+        # 二館支援（tag）與房務不計入櫃台每日覆蓋；本館非見習人員（含手動 PT）皆計入覆蓋與同行。
         if other.tag or other.role == HOUSEKEEPING_ROLE:
             continue
         other_shift = day_shifts.get(other.id)
-        is_mentor = other.id != emp_id and other.role not in ("trainee", "night")
+        is_mentor = other.id != emp_id and other.role != "trainee"
         if other_shift == "A":
             a_total += 1
             if is_mentor:
@@ -592,7 +596,9 @@ def get_validation_report(db: Session, year: int, month: int) -> dict:
 
     per_rule: dict[str, dict] = {}
     for rule, desc in validator.RULE_DESCRIPTIONS.items():
-        if rule.startswith("H"):
+        if rule == "H7":
+            cnt = sum(1 for s in soft if s["rule"] == "H7")
+        elif rule.startswith("H"):
             cnt = sum(1 for h in hard if h["rule"] == rule)
         elif rule == "S5":
             cnt = s5_count

@@ -72,7 +72,7 @@ def _h9_cross_month_off(data, emp) -> dict | None:
     solver 的 H9 只套用在非大夜、非月中離職員工（hard._rule_enabled），
     這裡必須用同一範圍，避免把不會造成求解失敗的情境報成原因。
     """
-    if emp.role == "night" or emp.id in getattr(data, "resign_cutoff", {}):
+    if getattr(emp, "scheduling_mode", "auto") == "manual" or emp.id in getattr(data, "resign_cutoff", {}):
         return None
     if not data.weeks:
         return None
@@ -131,23 +131,29 @@ def diagnose_detailed(data):
     """Return structured diagnostics: {likely_causes, constraint_analysis}."""
     causes = []
     idx = data.emp_index()
-    mentors = [e for e in data.employees if e.role not in ("night", "trainee")]
+    auto_emps = [e for e in data.employees if getattr(e, "scheduling_mode", "auto") == "auto"]
+    mentors = [e for e in auto_emps if e.role != "trainee"]
     a_capable = [e for e in mentors if "A" in e.available_shifts]
     c_capable = [e for e in mentors if "C" in e.available_shifts]
-    non_night = [e for e in data.employees if e.role != "night"]
-    trainees = [e for e in data.employees if e.role == "trainee"]
+    non_night = auto_emps
+    trainees = [e for e in auto_emps if e.role == "trainee"]
 
     if len(a_capable) < 1:
         causes.append(_cause("coverage_gap", "critical",
-            "無可獨立上 A 班的非見習員工（見習生需有人帶，不能單獨卡 A 班）",
-            "新增可上 A 班的日班櫃台或管理職"))
+            "無可獨立上 A 班的非見習自動排班員工（見習生需有人帶，不能單獨卡 A 班）",
+            "新增或勾選可上 A 班的一般櫃台或管理職"))
     if len(c_capable) < 1:
         causes.append(_cause("coverage_gap", "critical",
-            "無可獨立上 C 班的非見習員工（見習生需有人帶，不能單獨卡 C 班）",
-            "新增可上 C 班的員工（日班櫃台、C+D 備援或管理職）"))
+            "無可獨立上 C 班的非見習自動排班員工（見習生需有人帶，不能單獨卡 C 班）",
+            "新增或勾選可上 C 班的自動排班員工"))
 
     # H15：見習生需要非見習人員同行；若某天可帶人的 A/C 人力不足，直接指出原因。
     if trainees and a_capable and c_capable:
+        manual_all = getattr(data, "manual_schedule", {})
+        manual_mentors = [
+            e for e in data.employees
+            if getattr(e, "scheduling_mode", "auto") == "manual" and e.role != "trainee"
+        ]
         shortage_days = []
         for d in range(data.num_days):
             day = d + 1
@@ -159,8 +165,12 @@ def diagnose_detailed(data):
                     and day <= data.resign_cutoff.get(emp.id, data.num_days)
                 )
 
-            day_a = [e for e in a_capable if available(e)]
-            day_c = [e for e in c_capable if available(e)]
+            day_a = [e for e in a_capable if available(e)] + [
+                e for e in manual_mentors if manual_all.get(e.id, {}).get(day) == "A"
+            ]
+            day_c = [e for e in c_capable if available(e)] + [
+                e for e in manual_mentors if manual_all.get(e.id, {}).get(day) == "C"
+            ]
             day_mentors = {e.id for e in day_a} | {e.id for e in day_c}
             if not day_a or not day_c or len(day_mentors) < 2:
                 shortage_days.append(day)
@@ -171,14 +181,14 @@ def diagnose_detailed(data):
                 f"見習同行人力不足（{data.month}/{shown}{more}）：這些日期缺少可帶人的 A 或 C 班非見習人員（H15）",
                 "調整這些日期的休假，或新增可上 A/C 的非見習員工"))
 
-    # capacity: non-night work slots per week <= 35 (5/day * 7); each works 5/week
+    # capacity: auto work slots per week <= 35 (5/day * 7); each works 5/week
     max_non_night = 7
     if len(non_night) > max_non_night:
         causes.append(_cause("over_capacity", "critical",
-            f"非大夜員工 {len(non_night)} 人，超過每日上班上限（A2+B1+C2=5/天，每週最多約 {max_non_night} 人可行）",
-            "減少員工人數或放寬班次覆蓋上限"))
+            f"自動排班員工 {len(non_night)} 人，超過每日上班上限（A2+B1+C2=5/天，每週最多約 {max_non_night} 人可行）",
+            "減少自動排班員工人數或將部分員工切換為手動模式"))
 
-    for emp in data.employees:
+    for emp in auto_emps:
         days = data.designated_off_days.get(emp.id, [])
         if len(days) > 2:
             causes.append(_cause("designated_over_limit", "warning",
@@ -186,13 +196,13 @@ def diagnose_detailed(data):
                 f"將指定休假減至 2 天：{days}"))
 
     # H9：跨月週可休天數不足，或指定休假超過上月留下來的應休額度
-    for emp in data.employees:
+    for emp in auto_emps:
         cause = _h9_cross_month_off(data, emp)
         if cause:
             causes.append(cause)
 
     # H3 weekend-off conflict: too many weekday leaves force weekend rest
-    for emp in data.employees:
+    for emp in auto_emps:
         mandatory = _mandatory_weekend_off(data, emp.id)
         if mandatory > 2:
             causes.append(_cause("leave_weekend_conflict", "critical",
@@ -200,9 +210,7 @@ def diagnose_detailed(data):
                 "減少平日請假，或將部分請假改到週末/特休"))
 
     # H2 weekly-off shortage: special leave covering a whole week leaves no OFF
-    for emp in data.employees:
-        if emp.role == "night":
-            continue
+    for emp in auto_emps:
         for issue in _weekly_off_shortage(data, emp.id):
             days = issue["days"]
             first, last = days[0], days[-1]
@@ -210,6 +218,7 @@ def diagnose_detailed(data):
                 f"{emp.name} 特休涵蓋 {data.month}/{first}~{data.month}/{last} 整個完整週，該週無足夠天數排一般休（H2 每週需 2 天，特休不計入）",
                 "將該週其中 2 天改為指定休假（即可連休），或把部分特休挪到其他週"))
 
+    manual_all = getattr(data, "manual_schedule", {})
     for day, emp_id in data.d_backup_assignments.items():
         i = idx.get(emp_id)
         if i is None:
@@ -218,7 +227,19 @@ def diagnose_detailed(data):
             continue
         if data.is_external(day, "C"):
             continue
-        candidates = [e for e in data.employees if e.id != emp_id and "C" in e.available_shifts and e.role not in ("night", "trainee")]
+        manual_c = any(
+            e.id != emp_id
+            and getattr(e, "scheduling_mode", "auto") == "manual"
+            and e.role != "trainee"
+            and manual_all.get(e.id, {}).get(day) == "C"
+            for e in data.employees
+        )
+        if manual_c:
+            continue
+        candidates = [
+            e for e in auto_emps
+            if e.id != emp_id and "C" in e.available_shifts and e.role != "trainee"
+        ]
         fixed = [e.name for e in candidates if day in data.special_leaves.get(e.id, []) or day in data.designated_off_days.get(e.id, [])]
         if len(candidates) - len(fixed) < 1:
             causes.append(_cause("d_backup_gap", "critical",
@@ -229,11 +250,11 @@ def diagnose_detailed(data):
         causes.append({
             **_cause("d_backup_unfillable", "critical",
                 f"{data.month}/{day} D 班備援無法指派：{reason}",
-                "指派其他 CD 備援/管理職，或略過此備援日"),
+                "勾選其他自動排班人員的 D 班，或略過此備援日"),
             "day": day,
         })
 
-    for emp in data.employees:
+    for emp in auto_emps:
         prev = data.previous_month.get(emp.id)
         if not prev:
             continue

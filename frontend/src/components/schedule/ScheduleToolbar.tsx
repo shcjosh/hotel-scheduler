@@ -147,7 +147,6 @@ export function ScheduleToolbar({
                             ? 'ring-2 ring-brand-600 ring-offset-1'
                             : 'opacity-80 hover:opacity-100',
                         )}
-                        title={shift === 'D' ? '只能塗在大夜專職或管理職格位' : undefined}
                       >
                         {style.label}
                       </button>

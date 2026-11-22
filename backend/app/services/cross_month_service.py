@@ -241,17 +241,17 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
             link.day_1_shift,
         ]
         c1 = curr_day1.get(emp.id)
-        is_night = emp.role == "night"
+        is_manual = emp.scheduling_mode == "manual"
 
         prev_day1 = link.day_1_shift
-        if not is_night and prev_day1 == "C":
+        if not is_manual and prev_day1 == "C":
             if c1 == "A":
                 violations.append(_v(emp, "shift_transition", "H5",
                     f"{last_date_str} C → {month}/1 A 違規：C 班隔天不可接 A 班"))
             elif c1 is None:
                 violations.append(_v(emp, "shift_transition", "H5",
                     f"{last_date_str} 為 C 班，{month}/1 不可排 A 班"))
-        elif not is_night and prev_day1 == "D":
+        elif not is_manual and prev_day1 == "D":
             if c1 == "A":
                 violations.append(_v(emp, "shift_transition", "H5",
                     f"{last_date_str} D → {month}/1 A 違規：D 班隔天不可接 A 班"))
@@ -271,7 +271,7 @@ def get_cross_month_preview(db: Session, year: int, month: int) -> dict:
                 consec += 1
             else:
                 break
-        if not is_night and consec >= 5:
+        if not is_manual and consec >= 5:
             if c1 in WORK_SHIFTS:
                 violations.append(_v(emp, "consecutive_work", "H4",
                     f"上月最後 {consec} 天連續上班，{month}/1 必須休假"))

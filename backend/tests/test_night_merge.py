@@ -105,24 +105,27 @@ check("3. 大夜排颱風假成功且寫入 special_leaves",
       e_leave is not None and e_leave.shift == "SPECIAL" and e_leave.source == "night_input"
       and leave is not None and leave.leave_type == "custom_typhoon")
 
-# 4. 大夜排 A → 擋
-try:
-    schedule_service.upsert_cell(db, chen.id, 2026, 8, 2, "A")
-    check("4. 大夜排 A 被擋", False)
-except ValueError:
-    check("4. 大夜排 A 被擋", True)
+# 4. v1.4.0：大夜於格位編輯亦可排 A（本館每個人每種班都可手動排）
+schedule_service.upsert_cell(db, chen.id, 2026, 8, 2, "A")
+e_a = entry(chen.id, 2)
+check("4. 大夜可手動排 A 且維持 source=night_input", e_a is not None and e_a.shift == "A" and e_a.source == "night_input")
+schedule_service.upsert_cell(db, chen.id, 2026, 8, 2, "OFF")
 
 # 5. 大夜排 EMPTY → 刪除紀錄（engine 預設 OFF）
 schedule_service.upsert_cell(db, chen.id, 2026, 8, 1, "EMPTY")
 check("5. 大夜 EMPTY 刪除紀錄", entry(chen.id, 1) is None)
 
-# 6. 非大夜/非管理職排 D → 擋（general / cd_backup 都不行）；管理職可手動排 D
+# 6. v1.4.0：所有本館櫃台人員（general / cd_backup / manager）皆可手動排 D；
+#    不在 available_shifts 時 validate_cell 報 H7 軟性警告（非硬性違規）
 for emp in (wang, lin):
-    try:
-        schedule_service.upsert_cell(db, emp.id, 2026, 8, 3, "D")
-        check(f"6. {emp.name}（{emp.role}）排 D 被擋", False)
-    except ValueError:
-        check(f"6. {emp.name}（{emp.role}）排 D 被擋", True)
+    schedule_service.upsert_cell(db, emp.id, 2026, 8, 3, "D")
+    e_d = entry(emp.id, 3)
+    check(f"6. {emp.name}（{emp.role}）可手動排 D", e_d is not None and e_d.shift == "D")
+    v_d = schedule_service.validate_cell(db, emp.id, 2026, 8, 3, "D")
+    check(f"6a. {emp.name} 手動排 D 不報 H7 硬性違規", not any(v["rule"] == "H7" for v in v_d["violations"]))
+    if emp.id == wang.id:
+        check("6a2. 未勾選 D 之一般櫃台排 D 顯示 H7 警告", any(w["rule"] == "H7" for w in v_d["warnings"]))
+    schedule_service.upsert_cell(db, emp.id, 2026, 8, 3, "EMPTY")
 
 mgr = Employee(name="王店長", role="manager", available_shifts='["A","C","M"]', preferred_shift="M", scheduling_mode="auto")
 db.add(mgr)
@@ -131,8 +134,9 @@ schedule_service.upsert_cell(db, mgr.id, 2026, 8, 3, "D")
 e_mgr = entry(mgr.id, 3)
 check("6b. 管理職手動排 D 成功且 source=manual", e_mgr is not None and e_mgr.shift == "D" and e_mgr.source == "manual")
 v_mgr = schedule_service.validate_cell(db, mgr.id, 2026, 8, 3, "D")
-check("6c. 管理職即使 available_shifts 未勾 D，手動排 D 不觸發 H7 違規",
-      not any(v["rule"] == "H7" for v in v_mgr["violations"]))
+check("6c. 管理職未勾 D 手動排 D：無 H7 硬性違規，改顯示 H7 軟性警告",
+      not any(v["rule"] == "H7" for v in v_mgr["violations"])
+      and any(w["rule"] == "H7" for w in v_mgr["warnings"]))
 db.delete(e_mgr)
 db.delete(mgr)
 db.commit()
@@ -191,21 +195,23 @@ print("=" * 70)
 print("E. validate_cell 尊重大夜規則開關")
 print("=" * 70)
 
-# 全月 D → 無開關時 H12 應違規；ignore_all 時應回傳空
+# v1.4.0：大夜規則預設關閉（ignore_all=True）→ 全月 D 預設回傳空；
+# 明確關閉 ALL 並開啟 H12 後才觸發 H12；關閉 H12 後不再觸發
 for day in range(1, 32):
     schedule_service.upsert_cell(db, chen.id, 2026, 8, day, "D")
 r = schedule_service.validate_cell(db, chen.id, 2026, 8, 9, "D")
-check("14. 無開關：全 D 月份觸發 H12", any(v["rule"] == "H12" for v in r["violations"]))
+check("14. 預設（大夜規則關閉）：validate_cell 回傳無違規", r["violations"] == [] and r["warnings"] == [])
 
-db.add(NightRuleOverride(employee_id=chen.id, rule_name="ALL", enabled=1))
+db.add(NightRuleOverride(employee_id=chen.id, rule_name="ALL", enabled=0))
+db.add(NightRuleOverride(employee_id=chen.id, rule_name="H12", enabled=1))
 db.commit()
 r = schedule_service.validate_cell(db, chen.id, 2026, 8, 9, "D")
-check("15. ignore_all：validate_cell 回傳無違規", r["violations"] == [] and r["warnings"] == [])
+check("15. 明確開啟大夜規則 H12：全 D 月份觸發 H12", any(v["rule"] == "H12" for v in r["violations"]))
 
-db.delete(db.scalars(select(NightRuleOverride).where(
-    NightRuleOverride.employee_id == chen.id, NightRuleOverride.rule_name == "ALL"
-)).first())
-db.add(NightRuleOverride(employee_id=chen.id, rule_name="H12", enabled=0))
+ov_h12 = db.scalars(select(NightRuleOverride).where(
+    NightRuleOverride.employee_id == chen.id, NightRuleOverride.rule_name == "H12"
+)).first()
+ov_h12.enabled = 0
 db.commit()
 r = schedule_service.validate_cell(db, chen.id, 2026, 8, 9, "D")
 check("16. 關閉 H12：H12 不檢查", not any(v["rule"] == "H12" for v in r["violations"]))

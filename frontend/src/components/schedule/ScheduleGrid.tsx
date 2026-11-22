@@ -149,6 +149,9 @@ export function ScheduleGrid({
                   <div className="flex flex-col items-start justify-center gap-0.5">
                     {emp?.tag && <Badge tone="warning">{emp.tag}</Badge>}
                     {emp?.role === 'trainee' && <Badge tone="info">見習</Badge>}
+                    {emp && !emp.tag && emp.role !== 'housekeeping' && emp.role !== 'night' && emp.scheduling_mode === 'manual' && (
+                      <Badge>手動</Badge>
+                    )}
                     {emp?.resign_date && (
                       <span title={`最後上班日 ${emp.resign_date}`}>
                         <Badge>離職</Badge>

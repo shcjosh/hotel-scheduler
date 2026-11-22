@@ -10,8 +10,8 @@ router = APIRouter()
 
 
 def _source_for(emp, day, shift, data) -> str:
-    if emp.role == "night":
-        return "night_input"
+    if emp.scheduling_mode == "manual":
+        return "night_input" if emp.role == "night" else "manual"
     if day in data.designated_off_days.get(emp.id, []):
         return "designated"
     if day in data.special_leaves.get(emp.id, []):
@@ -30,11 +30,11 @@ def _coverage_gaps(data) -> list[dict]:
     """
     gaps: list[dict] = []
     capable_a = any(
-        "A" in e.available_shifts and e.role not in ("night", "trainee")
+        e.scheduling_mode == "auto" and "A" in e.available_shifts and e.role != "trainee"
         for e in data.employees
     )
     capable_c = any(
-        "C" in e.available_shifts and e.role not in ("night", "trainee")
+        e.scheduling_mode == "auto" and "C" in e.available_shifts and e.role != "trainee"
         for e in data.employees
     )
     if not capable_a:
@@ -84,9 +84,11 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
             )
 
     if result.success and result.schedule:
-        name_to_emp = {e.name: e for e in data.employees}
+        # 僅覆寫「自動排班」員工的格位；手動模式員工（含大夜、PT）、房務與二館支援完全保留不動。
+        auto_emps = [e for e in data.employees if e.scheduling_mode == "auto"]
+        auto_ids = [e.id for e in auto_emps]
         entries = []
-        for emp in data.employees:
+        for emp in auto_emps:
             row = result.schedule.get(emp.name)
             if not row:
                 continue
@@ -99,7 +101,9 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
                         "source": _source_for(emp, d_idx + 1, shift, data),
                     }
                 )
-        schedule_service.replace_month_schedule(db, req.year, req.month, entries)
+        schedule_service.replace_month_schedule(
+            db, req.year, req.month, entries, employee_ids=auto_ids
+        )
         snapshot_service.create_snapshot(db, req.year, req.month, name="自動排班結果")
 
     stats_service.store_solve_meta(

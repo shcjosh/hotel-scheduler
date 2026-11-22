@@ -48,7 +48,7 @@ export function CellEditModal({
   const isSupport = availableShifts.includes('A1')
   const shiftOptions = isSupport
     ? [...availableShifts, 'EMPTY']
-    : [...availableShifts.filter((s) => s !== 'SPECIAL'), 'OFF']
+    : [...availableShifts.filter((s) => s !== 'SPECIAL'), 'OFF', 'EMPTY']
 
   function effectiveShift() {
     return selected.startsWith(LT_PREFIX) ? 'SPECIAL' : selected

@@ -43,7 +43,7 @@ export function DBackupRequestPanel({
       <div className="flex items-start gap-2 rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
         <Info className="mt-0.5 h-4 w-4 flex-shrink-0" />
         <span>
-          標記為 D 班備援日時，依序由 C+D 備援人員、管理職當天改排 D 班，系統會自動找人遞補 C 班。
+          標記為 D 班備援日時，依序由勾選 D 班的非管理職自動排班人員、管理職當天改排 D 班，系統會自動找人遞補 C 班。
         </span>
       </div>
 
@@ -108,7 +108,7 @@ export function DBackupRequestPanel({
                             : 'bg-emerald-100 text-emerald-700',
                         )}
                       >
-                        {request.assignee_role === 'manager' ? '管理職 ' : 'CD備援 '}
+                        {request.assignee_role === 'manager' ? '管理職 ' : '櫃台備援 '}
                         {request.assignee_name}
                       </span>
                     ) : (

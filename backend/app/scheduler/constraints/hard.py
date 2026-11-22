@@ -4,15 +4,17 @@ COVERAGE_BACKUP_SHIFTS = ["A", "B", "C", "D"]
 REST_SHIFTS = ["OFF", "SPECIAL"]
 
 
+def _is_manual(emp) -> bool:
+    return getattr(emp, "scheduling_mode", "auto") == "manual"
+
+
 def _rule_enabled(data, emp, rule):
-    """Night employees have fully fixed cells (H13) — applying these rules in
-    the solver can only make the model INFEASIBLE, never change the solution.
-    The per-rule switches (night_rule_overrides) therefore only affect the
-    validation report (validator.py / diagnostics.py), not the solve.
+    """手動排班員工（含大夜專職與 PT 等）豁免所有個人規則（H2/H3/H4/H8/H9/H12）；
+    其已輸入的格位由 H13 固定，仍計入當日 H1 覆蓋人數與 H15 同行資格。
 
     月中離職員工同理：最後上班日之後固定不排班，其週休/連休計數已不完整，
     故不套用 H2/H3/H4/H12（含依 H2 的 H9）。"""
-    if emp.role == "night":
+    if _is_manual(emp):
         return False
     if rule in ("H2", "H3", "H4", "H12") and emp.id in getattr(
         data, "resign_cutoff", {}
@@ -87,6 +89,8 @@ def add_h4_max_consecutive_work(model, x, data, fixed):
 def add_h5_shift_transition_hard(model, x, data, fixed):
     n = len(data.employees)
     for i in range(n):
+        if _is_manual(data.employees[i]):
+            continue
         for d in range(data.num_days - 1):
             model.Add(x[i][d]["C"] + x[i][d + 1]["A"] <= 1)
             model.Add(x[i][d]["D"] + x[i][d + 1]["A"] <= 1)
@@ -98,15 +102,22 @@ def add_h6_designated_off(model, x, data, fixed):
     idx = data.emp_index()
     for emp_id, days in data.designated_off_days.items():
         i = idx.get(emp_id)
-        if i is None:
+        if i is None or _is_manual(data.employees[i]):
             continue
         for day in days:
             model.Add(x[i][day - 1]["OFF"] == 1)
 
 
 def add_h7_available_shifts(model, x, data, fixed):
+    """H7：自動排班員工只能排「已勾選的可上班班次 ∪ OFF」。
+
+    v1.4.0：D 班不納入一般自動排班，僅於 D 班備援日由 H11/fixed 鎖定為 D；
+    非備援日一律禁止自動排 D。手動排班員工由 H13 固定格位，豁免 H7。
+    """
     for i, emp in enumerate(data.employees):
-        avail = set(emp.available_shifts)
+        if _is_manual(emp):
+            continue
+        avail = set(emp.available_shifts) - {"D"}
         for d in range(data.num_days):
             if (i, d) in fixed:
                 continue
@@ -267,16 +278,22 @@ def add_h12_consecutive_off(model, x, data, fixed):
 
 
 def add_h13_night_manual(model, x, data, fixed):
-    idx = data.emp_index()
-    for emp in data.employees:
-        if emp.role != "night":
+    """H13：手動排班員工（含大夜專職與其他 manual 員工）固定使用已輸入班別，未輸入日視為 OFF。"""
+    manual_all = getattr(data, "manual_schedule", {})
+    night_all = getattr(data, "night_schedule", {})
+    for i, emp in enumerate(data.employees):
+        if not _is_manual(emp):
             continue
-        i = idx[emp.id]
-        nights = data.night_schedule.get(emp.id, {})
+        sched = manual_all.get(emp.id)
+        if sched is None:
+            sched = night_all.get(emp.id, {})
+        special = set(data.special_leaves.get(emp.id, []))
         for d in range(data.num_days):
-            shift = nights.get(d + 1, "OFF")
-            if shift in ALL_SHIFTS:
-                model.Add(x[i][d][shift] == 1)
+            day = d + 1
+            shift = sched.get(day)
+            if shift not in ALL_SHIFTS:
+                shift = "SPECIAL" if day in special else "OFF"
+            model.Add(x[i][d][shift] == 1)
 
 
 def add_h15_trainee_mentor(model, x, data, fixed):
@@ -286,14 +303,15 @@ def add_h15_trainee_mentor(model, x, data, fixed):
     - C 班：同日 C 班需有非見習人員（C 15:30-23:30 的晚間無人重疊）。
     - B 班：B 11:30-19:30 與 A（至 15:30）及 C（15:30 起）重疊，
       因此同日 A、C 都要有非見習人員；B 本身仍維持最多 1 人。
+    - 非見習之本館員工（含手動 PT 等）皆具同行資格；二館支援（tag）與房務不在 data.employees 內。
     """
     mentor_idx = [
         j
         for j, emp in enumerate(data.employees)
-        if emp.role not in ("trainee", "night")
+        if emp.role != "trainee"
     ]
     for i, emp in enumerate(data.employees):
-        if emp.role != "trainee":
+        if emp.role != "trainee" or _is_manual(emp):
             continue
         for d in range(data.num_days):
             mentor_a = sum(x[j][d]["A"] for j in mentor_idx)
@@ -314,7 +332,7 @@ def add_manager_backup_cap(model, x, data, fixed):
     if cap is None:
         return
     for i, emp in enumerate(data.employees):
-        if emp.role != "manager":
+        if emp.role != "manager" or _is_manual(emp):
             continue
         model.Add(
             sum(x[i][d]["A"] + x[i][d]["C"] for d in range(data.num_days)) <= cap

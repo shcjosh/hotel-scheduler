@@ -49,6 +49,8 @@ class ShiftScheduleData:
     d_backup_requests: list[int]
     d_backup_assignments: dict[int, int]
     d_backup_unfillable: dict[int, str] = field(default_factory=dict)
+    # 所有手動模式員工（含大夜專職與一般手動如 PT）當月已輸入格位：emp_id -> {day: shift}
+    manual_schedule: dict[int, dict[int, str]] = field(default_factory=dict)
     night_rule_overrides: dict[int, set[str]] = field(default_factory=dict)
     night_ignore_all: set[int] = field(default_factory=set)
     external_support: dict[int, set[str]] = field(default_factory=dict)
@@ -70,14 +72,14 @@ class ShiftScheduleData:
         return shift in self.external_support_all or shift in self.external_support.get(day, set())
 
 
-def _backup_unfillable_reason(cd_ids: list[int], mgr_ids: list[int]) -> str:
-    if not cd_ids and not mgr_ids:
-        return "無 CD 備援或管理職人員"
-    if not cd_ids:
-        return "無 CD 備援人員，且管理職當日無法補 D"
+def _backup_unfillable_reason(non_mgr_ids: list[int], mgr_ids: list[int]) -> str:
+    if not non_mgr_ids and not mgr_ids:
+        return "無勾選 D 班的自動排班人員"
+    if not non_mgr_ids:
+        return "無非管理職可上 D 班人員，且管理職當日無法補 D"
     if not mgr_ids:
-        return "CD 備援人員當日無法補 D，且無管理職人員"
-    return "CD 備援與管理職人員當日均無法補 D"
+        return "可上 D 班的櫃台人員當日無法補 D，且無可上 D 班的管理職"
+    return "可上 D 班的櫃台與管理職人員當日均無法補 D"
 
 
 def load(db: Session, year: int, month: int) -> ShiftScheduleData:
@@ -158,19 +160,24 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         ]
 
     night_schedule: dict[int, dict[int, str]] = {}
-    night_ids = [e.id for e in employees if e.role == "night"]
-    if night_ids:
+    manual_schedule: dict[int, dict[int, str]] = {}
+    manual_ids = [e.id for e in employees if e.scheduling_mode == "manual"]
+    night_ids = {e.id for e in employees if e.role == "night"}
+    if manual_ids:
         for row in db.scalars(
             select(ScheduleEntry).where(
-                ScheduleEntry.employee_id.in_(night_ids),
+                ScheduleEntry.employee_id.in_(manual_ids),
                 ScheduleEntry.year == year,
                 ScheduleEntry.month == month,
-                ScheduleEntry.source == "night_input",
             )
         ):
-            night_schedule.setdefault(row.employee_id, {})[row.day] = row.shift
-        for nid in night_ids:
-            night_schedule.setdefault(nid, {})
+            manual_schedule.setdefault(row.employee_id, {})[row.day] = row.shift
+            if row.employee_id in night_ids:
+                night_schedule.setdefault(row.employee_id, {})[row.day] = row.shift
+        for mid in manual_ids:
+            manual_schedule.setdefault(mid, {})
+    for nid in night_ids:
+        night_schedule.setdefault(nid, {})
 
     d_backup_requests: list[int] = []
     d_backup_assignments: dict[int, int] = {}
@@ -183,15 +190,28 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         if row.assigned_employee_id is not None:
             d_backup_assignments[row.day] = row.assigned_employee_id
 
-    # 指派鏈：CD 備援 → 管理職 → 無法指派
+    # 指派鏈（v1.4.0）：所有「自動排班且勾選 D 班（排除見習生）」的人員；
+    # 順位：非管理職櫃台 → 管理職 → 無法指派
     d_backup_unfillable: dict[int, str] = {}
-    cd_backup_ids = [e.id for e in employees if e.role == "cd_backup"]
-    manager_ids = [e.id for e in employees if e.role == "manager"]
+    non_mgr_d_ids = [
+        e.id
+        for e in employees
+        if e.scheduling_mode == "auto"
+        and "D" in e.available_shifts
+        and e.role not in ("manager", "trainee")
+    ]
+    manager_d_ids = [
+        e.id
+        for e in employees
+        if e.scheduling_mode == "auto"
+        and "D" in e.available_shifts
+        and e.role == "manager"
+    ]
     for day in sorted(d_backup_requests):
         if day in d_backup_assignments:
             continue
         assigned = None
-        for eid in cd_backup_ids:
+        for eid in non_mgr_d_ids:
             if (
                 day not in designated.get(eid, [])
                 and day not in special.get(eid, [])
@@ -200,7 +220,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 assigned = eid
                 break
         if assigned is None:
-            for eid in manager_ids:
+            for eid in manager_d_ids:
                 if (
                     day not in designated.get(eid, [])
                     and day not in special.get(eid, [])
@@ -209,18 +229,26 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                     assigned = eid
                     break
         if assigned is None:
-            d_backup_unfillable[day] = _backup_unfillable_reason(cd_backup_ids, manager_ids)
+            d_backup_unfillable[day] = _backup_unfillable_reason(non_mgr_d_ids, manager_d_ids)
         else:
             d_backup_assignments[day] = assigned
 
+    # 大夜規則開關：v1.4.0 起預設關閉（ignore_all=True，個別規則預設 False）
+    raw_overrides: dict[int, dict[str, bool]] = {}
+    for row in db.scalars(select(NightRuleOverride)):
+        raw_overrides.setdefault(row.employee_id, {})[row.rule_name] = bool(row.enabled)
+
     night_rule_overrides: dict[int, set[str]] = {}
     night_ignore_all: set[int] = set()
-    for row in db.scalars(select(NightRuleOverride)):
-        if row.rule_name == "ALL":
-            if row.enabled:
-                night_ignore_all.add(row.employee_id)
-        elif row.enabled:
-            night_rule_overrides.setdefault(row.employee_id, set()).add(row.rule_name)
+    for emp in employees:
+        if emp.role != "night":
+            continue
+        emp_ov = raw_overrides.get(emp.id, {})
+        if emp_ov.get("ALL", True):
+            night_ignore_all.add(emp.id)
+        night_rule_overrides[emp.id] = {
+            r for r in ("H2", "H3", "H4", "H12") if emp_ov.get(r, False)
+        }
 
     external_support: dict[int, set[str]] = {}
     external_support_all: set[str] = set()
@@ -312,6 +340,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         special_leaves=special,
         previous_month=previous_month,
         night_schedule=night_schedule,
+        manual_schedule=manual_schedule,
         d_backup_requests=sorted(d_backup_requests),
         d_backup_assignments=d_backup_assignments,
         d_backup_unfillable=d_backup_unfillable,

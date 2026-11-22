@@ -1,6 +1,6 @@
 # 飯店排班系統 (Hotel Shift Scheduler) — 規格書（現況）
 
-- 系統版本：`1.3.3-beta`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
+- 系統版本：`1.4.0-beta`（單一來源 `backend/app/version.py`，FastAPI `/health` 與打包 artifact 命名共用）
 - 本檔只描述**現況**（對應實際程式碼）。
 - 版本演進與歷史見 `RELEASE-NOTES.md`；未實作方向與備選方案見 `ROADMAP.md`。
 
@@ -47,23 +47,28 @@
   A1 sky / C1 fuchsia / D1 slate(白字) / 休 紅 / 特休 紫紅；指定休假酒紅；
   自訂假別用 `leave_types` 表的自訂色
 
-## 3. 員工角色
+## 3. 員工角色與排班模式（v1.4.0 脫鉤模型）
 
-| 角色 | role 值 | 排班方式 | 可上班班次 | 說明 |
+v1.4.0 起「身分（`role`）」、「可上班班次（`available_shifts`）」與「排班方式（`scheduling_mode`）」彼此脫鉤：
+- **所有本館櫃台人員**皆可自由勾選 `A / B / C / D / M`（納入自動排班），並自由切換「自動排班（`auto`）／手動輸入（`manual`）」。
+- 切換身分僅帶入建議預設值，不再鎖死班次或模式（唯 `housekeeping` 房務與帶 `tag` 之二館支援固定為手動）。
+- **手動模式（`scheduling_mode=manual`）**：不參與求解器重排（既有格位固定保留、未填日不寫入 `OFF`）、**豁免所有個人規則**（H2~H9/H12 與軟性規則）；其已排之 `A/B/C/D` 仍計入當日 H1 人數覆蓋（非見習之本館手動人員亦計入 H15 見習同行）。
+- **畫筆與點格編輯**：本館櫃台每個人皆可手動排 `A / B / C / D / M / OFF / 假別 / 空白`，不阻擋存檔；若自動人員排入未勾選班別，格位檢查與整月驗證顯示 **H7 軟性警告（可略過）**。
+
+| 角色 | role 值 | 預設排班方式 | 預設班次 | 角色專屬邏輯 |
 |---|---|---|---|---|
-| 日班櫃台 | `general` | 自動 | A/B/C | 主要排班對象 |
-| 大夜專職 | `night` | 手動（格位輸入，source=night_input） | D/OFF/假別 | 班表上直接輸入；假別寫入 `SPECIAL` + `special_leaves`（含颱風假等自訂假別）；求解器豁免 H2/H3/H4/H8/H9/H12（格位固定，見 §4 末） |
-| C+D 備援 | `cd_backup` | 自動 | C/D（偏好 C） | D 備援日被指派時固定排 D |
-| 管理職 | `manager` | 自動（可手動排 D） | M/ABCD（偏好 M） | S8 權重鼓勵上 M；覆蓋不足時可備援（受店長卡班上限約束，見 §4）；班表畫筆與點擊修改皆可手動排 D 班 |
-| 見習生 | `trainee` | 自動（可手動改格） | A/B/C | 全職，休假規則比照一般櫃台；**不能單獨卡班（H15）**：A/C 同班需有非見習人員，B 班需同日 A、C 都有非見習人員；仍受 A≤2、C≤2、B≤1 人數上限（見 §4） |
-| 外部支援 | 任意 + `tag` | 完全手動 | A1/C1/D1 | 帶標籤（如「二館」）員工：豁免所有個人規則、不參與求解，其支援班次計入當日覆蓋 |
-| 房務 | `housekeeping` | 完全手動（畫筆） | A | 只上 A（09:00-18:00）／假別（SPECIAL）／休；與櫃台互不干涉：不進求解/驗證/統計/休假/跨月，分群查詢（見 §11）；支援假別，現階段僅特休（SPECIAL）計入週年制/統計（見 §7.1） |
+| 一般櫃台 | `general` | `auto` | A/B/C | 無特殊限制；舊資料 `cd_backup` 相容視為一般櫃台（表單不再新增） |
+| 大夜專職 | `night` | `manual`（`source=night_input`） | D（偏好 D） | 清空班表時唯獨保留 `night_input`（須由「清空大夜」清除）；大夜規則開關預設全關閉（`ignore_all=true`） |
+| 管理職 | `manager` | `auto` | M/A/B/C/D（偏好 M） | S8 權重（-15）鼓勵上 M；受每月店長卡班上限約束；D 班備援次順位；PDF 的 M 班預設留白 |
+| 見習生 | `trainee` | `auto` | A/B/C | 自動排班時受 **H15 見習同行**約束（不能單獨卡班，見 §4）；不具同行資格、不納入 D 班備援 |
+| 外部支援 | 任意 + `tag` | 完全手動 | A1/C1/D1 | 帶標籤（如「二館」）員工：獨立規則，僅可排 `A1/C1/D1/空`（不可排假別）、豁免個人規則、不進求解／PDF 統計／特休／跨月，支援班次計入當日 H1 下限覆蓋 |
+| 房務 | `housekeeping` | 完全手動（畫筆） | A | 固定只上 A（09:00-18:00）／假別（SPECIAL）／休；與櫃台互不干涉：不進求解/驗證/統計/休假/跨月，分群查詢（見 §11）；支援假別，現階段僅特休（SPECIAL）計入週年制/統計（見 §7.1） |
 
 - 員工欄位另含：`nickname`（暱稱，顯示與 PDF 用）、`sort_order`（自訂排序，
   排班表/統計/PDF 依序顯示）、`available_shifts`（JSON）、`preferred_shift`、
-  `resign_date`（最後上班日 YYYY-MM-DD，見 §3.1）、`hire_date`（到職日 YYYY-MM-DD，
-  供特休週年制計算，見 §7.1）
-- D 班備援指派鏈（求解前自動）：CD 備援（當日無請假者）→ 管理職 → 無法指派；
+  `scheduling_mode`（`auto`｜`manual`）、`resign_date`（最後上班日 YYYY-MM-DD，見 §3.1）、
+  `hire_date`（到職日 YYYY-MM-DD，供特休週年制計算，見 §7.1）
+- **D 班備援指派鏈**（求解前自動）：所有「`scheduling_mode=auto` 且 `available_shifts` 含 `D`（排除見習生）」的人員，順位為 **非管理職櫃台 → 管理職 → 無法指派**（避開當日休假／請假／已離職者）；
   無法指派時求解直接失敗並列出該日與原因，UI 可「略過該備援日並重排」
 
 ### 3.1 離職員工（`resign_date`）
@@ -93,7 +98,7 @@
   （= 最多連續上班 5 天；請假/特休可中斷累計）。
 - **H5 班次銜接禁止**（隔 1 天休/特休即可）：C→A、D→A、D→C、D→M。
 - **H6 指定休假**：指定休當日固定為 OFF。
-- **H7 可用班次**：只能排 `available_shifts ∪ OFF`。
+- **H7 可用班次**：自動排班時，非固定格只能排 `(available_shifts - {'D'}) ∪ OFF`（**非 D 班備援日一律禁止自動排 D**，即使有勾選 D 亦僅於 D 班備援日由 H11 指派）。於班表手動改格排入未勾選班別時，不阻擋存檔，格位檢查與整月驗證改以 **H7 軟性警告（可略過）** 呈現；手動模式員工完全豁免。
 - **H8 跨月銜接**：載入上月最後 6 天。①上月末日班次 → 本月首日套用 H5；
   ②跨月連續上班視窗（上月尾段無休 → 本月開頭 6 天視窗內至少 1 天休/特休）。
 - **H9 跨月週**：本月首週 = 上月部分（previous_month_links 的 OFF 天數，最多 6 天）+
@@ -101,38 +106,33 @@
   求解失敗診斷（v1.3.1）會檢查「本月可用天數不足」與「指定休假超過應休額度」，
   回報 `h9_cross_month_off` 並建議調整上月最後一週或本月跨月週的休假。
 - **H10 一人一天一班**：每人每天恰好 1 個班次（含 OFF）。
-- **H11 D 班備援**：備援日被指派者（CD 備援或管理職）固定排 D，且當日 C 班由他人或外部支援遞補
+- **H11 D 班備援**：備援日被指派者（勾選 D 班之非管理職自動人員 → 管理職）固定排 D，且當日 C 班由他人（含手動人員）或外部支援遞補
   （館內無人可遞補 C 時，自動支援偵測會產生當日 C 班支援請求並繼續求解）。
 - **H12 連休**：每人每月 1~2 次「連休」（定義見 §8）。
-- **H13 大夜固定**：大夜專職班次 = 班表上手動輸入值（source=night_input，
-  可為 D/OFF/假別），無輸入的日子視為 OFF；假別以 SPECIAL 表示並視為休息日。
+- **H13 手動排班固定**：所有 `scheduling_mode=manual` 員工（含大夜專職與一般手動人員如 PT）在求解模型中固定為班表已輸入值（未輸入日於求解模型內視為 OFF，但不寫回 DB）；其已排之 A/B/C/D 仍計入當日 H1 覆蓋人數。
 - **H14 一天最多一個支援請求**：同日（day>0）最多只能有一筆支援請求（A/C 合計）。
   自動偵測缺班（`diagnose_support_needs` / `_coverage_gaps`）以「最小化需要支援的天數」
   為目標，同日 A、C 都缺時只產生一筆、**外部優先 A**（他們比較喜歡上 A 班）；
   另一班（店長等內部人力優先補 C）必須由求解器在日內自行吸收，
   真的排不出就求解失敗並在診斷/驗證中呈現。手動/自動建立請求皆受此限制（同日已有請求 → 擋下）；
   全月請求（day=0）不受限。驗證報告以 H14 列出違規。
-- **H15 見習同行**：見習生不能單獨卡班。
+- **H15 見習同行**：見習生（自動模式）不能單獨卡班。
   - A 班（07:30–15:30）：同日 A 班至少一位非見習人員（上午時段無其他班可重疊）。
   - C 班（15:30–23:30）：同日 C 班至少一位非見習人員（晚間時段無其他班可重疊）。
   - B 班（11:30–19:30）：與 A（至 15:30）及 C（15:30 起）重疊，因此同日 A、C
     都要有非見習人員；B 班本身仍維持最多 1 人（可以是見習生）。
-  - 導師不指定專人：`general`／`manager` 可帶 A/B/C；`cd_backup` 可在 C 班帶。
-    另一位見習生、大夜、房務、二館支援（tag）都不算同行人員。
+  - 導師不指定專人：所有非見習之本館員工（含手動人員如 PT）皆可帶；
+    另一位見習生、房務、二館支援（tag）都不算同行人員。
   - 因見習生佔名額，A/C 最多 2 人（含見習生）、B 最多 1 人；每個班別每天最多
     一位見習生。
 - **店長卡班上限（MCAP；非 H 編號）**：每月設定 `manager_backup_cap:{y}:{m}` =
-  每位管理職（店長）可被排 A/C 的格數上限，留空 = 不限制。求解時為硬性上限；
+  每位自動排班管理職（店長）可被排 A/C 的格數上限，留空 = 不限制。求解時為硬性上限；
   超過上限的缺口由 solve 流程自動轉為支援請求（見 §13.3）。僅約束求解，
   不列入驗證報告（validator 的 H1~H15）。
 
-**大夜規則開關**（`night_rule_overrides` 表，UI 在員工管理編輯表單）：
-- 逐人逐條 H2/H3/H4/H12 開關 + 「無視所有規則」（rule_name='ALL'）
-- **v1.1.4 起語義**：大夜人員格位全部固定，對其套用個人化約束只會造成無解、
-  不會改變結果，因此**求解器一律豁免大夜的 H2/H3/H4/H8/H9/H12**；
-  規則開關只影響「驗證報告 / 大夜驗證 / 格位即時驗證」的顯示與過濾
-  （「無視所有規則」者整份報告排除、顯示「已略過所有規則檢驗 ✓」）。
-  H5/H8 銜接、H10、H13 不受開關影響。
+**手動模式豁免與大夜規則開關**（`night_rule_overrides` 表，UI 在員工管理編輯表單）：
+- **手動模式（`scheduling_mode=manual`）**：求解器、驗證報告、格位即時檢查一律豁免所有個人規則（H2~H9/H12 與軟性規則）。
+- **大夜規則開關**（`role=night`）：逐人逐條 H2/H3/H4/H12 開關 + 「無視所有規則」（`rule_name='ALL'`），**v1.4.0 起預設全部關閉（`ignore_all=true`）**；僅在使用者明確取消勾選「無視所有規則」並開啟個別規則時，才於驗證報告／大夜驗證／格位即時檢查中呈現。
 
 ## 5. 軟性約束（S1~S3、S5~S10，最大化目標函數）
 
@@ -144,9 +144,9 @@
 | S2 | B→A 避免 | -5 | 含跨月（上月末日為 B → 本月首日 A） |
 | S3 | C→B 避免 | -5 | 含跨月 |
 | S5 | 偏好班次 | +5 | 非固定格排到 preferred_shift |
-| S6 | 公平分配 | -3 | 各員工總上班天數 (max-min) |
-| S7 | D 備援最小化 | -2 | cd_backup 於非備援日排 D |
-| S8 | 管理職備援最小化 | -15 | manager 排 A/B/C/D（>S5，確保優先上 M；覆蓋不足仍可備援）；另受 §4 店長卡班上限硬性約束 |
+| S6 | 公平分配 | -3 | 各自動排班員工總上班天數 (max-min)（排除手動模式員工） |
+| S7 | D 備援最小化（已併入 H7） | 0 | v1.4.0 起非備援日已硬性禁止自動排 D，保留統計鍵值向後相容 |
+| S8 | 管理職備援最小化 | -15 | 自動排班之 manager 排 A/B/C/D（>S5，確保優先上 M；覆蓋不足仍可備援）；另受 §4 店長卡班上限硬性約束 |
 | S9 | 連休 2 次優先 | +8 | 每人連休次數；**跨月公平（K.1 B 級）**：上月連休 <2 次者權重提高為 +14 |
 | S10 | 白天班組合 | 見下 | 五六：恰 2A+2C（B=0）+18、恰 1A+1B+1C +15、M 每人 +6；平日：恰 1A+1B+1C +5、白天班 ≥4 人 -10 |
 
@@ -272,9 +272,9 @@
   （PUT 可設 `resign_date` 設離職；DELETE 為真刪，僅限無班表/休假歷史者，否則 400）
 - **班表** `schedules`：GET `/schedules/{y}/{m}`（回 schedule+sources+leave_details+leave_sequence+leave_base+status；
   `?group=front`（預設，排除房務）|`housekeeping`（只看房務））、
-  PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；大夜可改 D/OFF/假別、source 維持 night_input；
-  房務只允許 A/OFF/空、source=manual、跳過規則；鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
-  DELETE `/schedules/{y}/{m}`（清空當月，保留 night_input；`?group=housekeeping` 只清房務、
+  PUT `/schedules/{emp}/{y}/{m}/{d}`（格位微調；本館櫃台人員皆可排 A/B/C/D/M/OFF/假別/空，大夜手動模式維持 `source=night_input`，其餘 `source=manual`；
+  房務只允許 A/OFF/假別/空、二館支援只允許 A1/C1/D1/空；鎖定月份 403；已發布月份可填調班原因並寫入 change log）、
+  DELETE `/schedules/{y}/{m}`（清空當月：清自動人員、一般手動人員如 PT 與二館支援，**唯獨保留大夜專職 `night_input`**；`?group=housekeeping` 只清房務、
   不動櫃台、並清除房務假別紀錄；兩種清空**連同該月支援請求（手動/自動）全清**、
   月狀態回 draft；鎖定月份 403、須先解鎖）、
   POST `/schedules/validate-cell`（假設性格位檢查，含 H4 視窗/H5 前後銜接/H7/H12+S2/S3，
@@ -479,7 +479,7 @@ cd frontend && npm run dev
 # 單一後端模式（服務前端 build）
 cd frontend && npm run build && cd ../backend && .venv/bin/python run.py
 # 測試（逐檔執行，各自帶 assert 與 temp DB_PATH，非 pytest）
-cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_night_leave、test_manager_cap、test_resign、test_annual_leave、test_trainee、test_database_export、test_database_import）
+cd backend && .venv/bin/python tests/test_phase2.py   # 硬性約束（另有 phase3~8、test_night_merge、test_night_leave、test_manager_cap、test_resign、test_annual_leave、test_trainee、test_decoupled_roles、test_database_export、test_database_import）
 # 測試資料
 cd backend && .venv/bin/python tests/seed_dev.py
 ```
@@ -488,8 +488,8 @@ cd backend && .venv/bin/python tests/seed_dev.py
 
 ## 17. 已知限制
 
-1. **員工人數上限約 7 人（非大夜）**：H1 每日上班上限 A2+B1+C2=5 工班
-   （D 歸大夜、M 不計），每人每週 5 工天 → 每週 35 工班 ÷ 5 = 7 人。
+1. **自動排班員工人數上限約 7 人**：H1 每日上班上限 A2+B1+C2=5 工班
+   （D 歸大夜／備援、M 不計），每人每週 5 工天 → 每週 35 工班 ÷ 5 = 7 人。
    超過會 INFEASIBLE，診斷報 `over_capacity`。
 2. M 班無每日上限（管理職通常 0~1 人）；多管理職需自行評估。
 3. `previous_month_links` 存 6 天（v1.2.0）：解決「本月 1 日為週日」時跨月週（週一制）

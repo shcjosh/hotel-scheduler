@@ -3,7 +3,7 @@ import { Drawer } from '../ui/drawer'
 import { Field, controlClassName } from '../ui/field'
 import { Button } from '../ui/button'
 import { getShiftStyle } from '../../utils/shift'
-import { ROLE_DEFAULTS, ROLE_LABELS, ALL_SHIFTS } from '../../utils/roles'
+import { ROLE_DEFAULTS, ROLE_LABELS, SELECTABLE_ROLES, ALL_SHIFTS } from '../../utils/roles'
 import { getRuleOverrides, type NightRuleState } from '../../api/night'
 import { useUIStore } from '../../stores/uiStore'
 import { cn } from '../../utils/cn'
@@ -11,7 +11,7 @@ import type { Employee, EmployeeRole, SchedulingMode } from '../../types'
 import type { EmployeePayload } from '../../api/employees'
 
 const DEFAULT_NIGHT_RULES: NightRuleState = {
-  H2: true, H3: true, H4: true, H12: true, ignore_all: false,
+  H2: false, H3: false, H4: false, H12: false, ignore_all: true,
 }
 const NIGHT_RULE_LABELS: Record<'H2' | 'H3' | 'H4' | 'H12', string> = {
   H2: '每週休2天',
@@ -94,15 +94,21 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
     setRole(next)
     setShifts(def.shifts)
     setMode(def.mode)
-    setPreferred((cur) => (cur && def.shifts.includes(cur) ? cur : null))
+    setPreferred(def.preferred)
   }
 
   function toggleShift(s: string) {
-    setShifts((cur) =>
-      cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s],
-    )
-    setPreferred((cur) => (cur && !shifts.includes(cur) ? null : cur))
+    const next = shifts.includes(s) ? shifts.filter((x) => x !== s) : [...shifts, s]
+    setShifts(next)
+    setPreferred((cur) => (cur && !next.includes(cur) ? null : cur))
   }
+
+  const roleOptions: EmployeeRole[] =
+    employee?.role === 'cd_backup' && !SELECTABLE_ROLES.includes('cd_backup')
+      ? [...SELECTABLE_ROLES, 'cd_backup']
+      : SELECTABLE_ROLES
+  const isSupportTag = tag.trim() !== ''
+  const isModeLocked = role === 'housekeeping' || isSupportTag
 
   async function handleSubmit() {
     if (!name.trim()) {
@@ -130,7 +136,7 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           role,
           available_shifts: shifts,
           preferred_shift: preferred,
-          scheduling_mode: mode,
+          scheduling_mode: isModeLocked ? 'manual' : mode,
         },
         role === 'night' ? nightRules : null,
       )
@@ -223,14 +229,18 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           />
         </Field>
 
-        <Field label="角色" htmlFor={`${baseId}-role`}>
+        <Field
+          label="身分"
+          htmlFor={`${baseId}-role`}
+          hint="切換身分會帶入建議預設值，下方班次與自動/手動模式皆可自由調整。"
+        >
           <select
             id={`${baseId}-role`}
             value={role}
             onChange={(e) => handleRoleChange(e.target.value as EmployeeRole)}
             className={controlClassName}
           >
-            {(Object.keys(ROLE_LABELS) as EmployeeRole[]).map((r) => (
+            {roleOptions.map((r) => (
               <option key={r} value={r}>
                 {ROLE_LABELS[r]}
               </option>
@@ -238,14 +248,12 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           </select>
         </Field>
 
-        <Field label="可上班班次" hint="至少勾選 1 個；房務固定只能上 A，見習生只能上 A/B/C。">
+        <Field
+          label="可上班班次"
+          hint="至少勾選 1 個；自動排班僅排已勾選的班別（勾選 D 班將於 D 班備援日納入候選）；房務固定為 A。"
+        >
           <div className="flex flex-wrap gap-2">
-            {(role === 'housekeeping'
-              ? ['A']
-              : role === 'trainee'
-                ? ['A', 'B', 'C']
-                : ALL_SHIFTS
-            ).map((s) => {
+            {(role === 'housekeeping' ? ['A'] : ALL_SHIFTS).map((s) => {
               const on = shifts.includes(s)
               const style = getShiftStyle(s)
               return (
@@ -284,10 +292,46 @@ export function EmployeeForm({ open, employee, onClose, onSubmit }: EmployeeForm
           </select>
         </Field>
 
-        <Field label="排班方式" hint="依角色自動設定：一般／管理職／見習生自動排班，房務／二館支援手動。">
-          <div className="rounded-md bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
-            {mode === 'auto' ? '自動排班' : '手動輸入'}
-          </div>
+        <Field
+          label="排班方式"
+          hint={
+            isModeLocked
+              ? '房務與二館支援（帶標籤）固定為手動輸入。'
+              : '自動排班套用規則並由系統填班；手動輸入由人工排班並豁免所有個人規則（已排班次仍計入當日人數覆蓋）。'
+          }
+        >
+          {isModeLocked ? (
+            <div className="rounded-md bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
+              手動輸入
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              {(
+                [
+                  { value: 'auto', label: '自動排班' },
+                  { value: 'manual', label: '手動輸入' },
+                ] as const
+              ).map((opt) => {
+                const active = mode === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setMode(opt.value)}
+                    className={cn(
+                      'flex-1 rounded-md border px-3 py-1.5 text-sm font-medium transition',
+                      active
+                        ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </Field>
 
         {role === 'night' && nightRules && (

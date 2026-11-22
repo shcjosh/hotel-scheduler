@@ -26,9 +26,20 @@ def _ignored_night(data, emp):
     return emp.role == "night" and emp.id in getattr(data, "night_ignore_all", set())
 
 
+def _exempt_manual(data, emp):
+    """手動模式員工豁免所有個人規則。
+    大夜專職（night）若明確關閉了「無視所有規則」（不在 night_ignore_all），
+    仍依其大夜規則開關進行檢查；預設 ignore_all=True，故預設亦豁免。"""
+    if getattr(emp, "scheduling_mode", "auto") != "manual":
+        return False
+    if emp.role == "night" and emp.id not in getattr(data, "night_ignore_all", set()):
+        return False
+    return True
+
+
 def _mentor_eligible(emp):
-    """可帶見習生的非見習人員。大夜只上 D，不列入 A/B/C 同行判定。"""
-    return emp.role not in ("trainee", "night")
+    """可帶見習生的非見習人員（含本館手動人員如 PT，不含見習生）。"""
+    return emp.role != "trainee"
 
 
 def _partial_resign(data, emp):
@@ -74,7 +85,7 @@ def validate(data, schedule):
 
     # H15 見習同行：A/C 同班需有非見習；B 需 A、C 都有非見習（B 時段與 A/C 重疊）。
     for emp in data.employees:
-        if emp.role != "trainee":
+        if emp.role != "trainee" or _exempt_manual(data, emp):
             continue
         for d in range(data.num_days):
             s = _shift_at(schedule, emp.id, d)
@@ -113,7 +124,7 @@ def validate(data, schedule):
 
     for w_i, w in enumerate(data.weeks):
         for emp in data.employees:
-            if _ignored_night(data, emp) or _partial_resign(data, emp):
+            if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
                 continue
             curr_off = sum(1 for d in w if _shift_at(schedule, emp.id, d) == "OFF")
             if w_i == 0:
@@ -147,7 +158,7 @@ def validate(data, schedule):
                     violations.append(_v("H2", emp, None, f"不完整週休 {curr_off} 天（應 <=2）"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
             continue
         sat_off = sum(1 for d in data.saturdays if _shift_at(schedule, emp.id, d) == "OFF")
         sun_off = sum(1 for d in data.sundays if _shift_at(schedule, emp.id, d) == "OFF")
@@ -159,7 +170,7 @@ def validate(data, schedule):
             violations.append(_v("H3", emp, None, f"週末休假 {total} 天（應 =2）"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         prev = prev_cache[emp.id]
@@ -182,7 +193,7 @@ def validate(data, schedule):
                 violations.append(_v("H4", emp, real_start, "連續 6 天上班（含跨月）"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         for d in range(data.num_days - 1):
@@ -198,29 +209,14 @@ def validate(data, schedule):
                 violations.append(_v("H5", emp, d + 1, f"{d+1}→{d+2} D→M 禁止"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         for day in data.designated_off_days.get(emp.id, []):
             if _shift_at(schedule, emp.id, day - 1) != "OFF":
                 violations.append(_v("H6", emp, day, "應為指定休假"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
-            continue
-        avail = set(emp.available_shifts)
-        if emp.role == "manager":
-            avail = avail | {"D"}
-        for d in range(data.num_days):
-            s = _shift_at(schedule, emp.id, d)
-            if s is None or s == "OFF" or s == "SPECIAL":
-                continue
-            if s == "D" and data.d_backup_assignments.get(d + 1) == emp.id:
-                continue
-            if s not in avail:
-                violations.append(_v("H7", emp, d + 1, f"排 {s} 不在可用班次"))
-
-    for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         prev = prev_cache[emp.id]
@@ -236,7 +232,7 @@ def validate(data, schedule):
             violations.append(_v("H8", emp, 1, "上月末 D→本月首 M"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         for d in range(data.num_days):
@@ -259,7 +255,7 @@ def validate(data, schedule):
             violations.append(_v("H11", None, day, f"{day} 號備援日無人遞補 C 班"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]
@@ -270,7 +266,7 @@ def validate(data, schedule):
     for emp in data.employees:
         if emp.role != "night":
             continue
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         nights = data.night_schedule.get(emp.id, {})
         for d in range(data.num_days):
@@ -300,15 +296,25 @@ def _prev_day1(data, emp_id):
 
 
 def validate_soft(data, schedule):
-    """Returns soft warnings (S1-S3, S7-S10). S5/S6 computed separately by caller."""
+    """Returns soft warnings (H7 manual override warning + S1-S3, S8-S10). S5/S6 computed separately by caller."""
     warnings = []
-    backup_days = set(data.d_backup_requests)
 
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         prev_day1 = _prev_day1(data, emp.id)
+
+        # H7: 手動排了不在可用班次的班 → 顯示為警告（可略過）
+        avail = set(emp.available_shifts)
+        for d in range(data.num_days):
+            s = _shift_at(schedule, emp.id, d)
+            if s is None or s in ("OFF", "SPECIAL"):
+                continue
+            if s == "D" and data.d_backup_assignments.get(d + 1) == emp.id:
+                continue
+            if s not in avail:
+                warnings.append(_v("H7", emp, d + 1, f"排 {s} 不在可上班班次（可略過）"))
 
         # S1: avoid 5 consecutive work
         for d in range(data.num_days - 4):
@@ -336,18 +342,9 @@ def validate_soft(data, schedule):
         if prev_day1 is not None and cur0 is not None:
             check_transition(prev_day1, cur0, 1)
 
-        # S7: cd_backup non-backup D
-        if emp.role == "cd_backup":
-            for d in range(data.num_days):
-                if (d + 1) in backup_days:
-                    continue
-                s = _shift_at(schedule, emp.id, d)
-                if s == "D":
-                    warnings.append(_v("S7", emp, d + 1, "非備援日排 D"))
-
     # S8: manager on A/B/C/D (backup) — warn per occurrence
     for emp in data.employees:
-        if emp.role != "manager":
+        if emp.role != "manager" or _exempt_manual(data, emp):
             continue
         for d in range(data.num_days):
             s = _shift_at(schedule, emp.id, d)
@@ -356,7 +353,7 @@ def validate_soft(data, schedule):
 
     # S9: 連休 2 次優先 — 僅 1 次連休者（建議 2 次）
     for emp in data.employees:
-        if _ignored_night(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]
@@ -388,7 +385,7 @@ def validate_soft(data, schedule):
 def count_preferred_unsatisfied(data, schedule) -> int:
     count = 0
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         if not emp.preferred_shift:
             continue
@@ -404,7 +401,7 @@ def count_preferred_unsatisfied(data, schedule) -> int:
 def compute_fairness_spread(data, schedule) -> int:
     totals = []
     for emp in data.employees:
-        if _ignored_night(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         totals.append(sum(1 for s in shifts if _is_work(s)))
@@ -416,12 +413,12 @@ def compute_fairness_spread(data, schedule) -> int:
 RULE_DESCRIPTIONS = {
     "H1": "每日班次覆蓋", "H2": "每週休 2 天", "H3": "週末休假限制（六+日=2）",
     "H4": "連續上班上限", "H5": "班次銜接禁止", "H6": "指定休假",
-    "H7": "可用班次限制", "H8": "跨月班次銜接", "H9": "跨月週連續性",
+    "H7": "可用班次提醒（手動調整可略過）", "H8": "跨月班次銜接", "H9": "跨月週連續性",
     "H10": "一天一班", "H11": "D 班備援邏輯", "H12": "連休 1~2 次",
-    "H13": "大夜專職手動", "H14": "一天最多一個支援請求",
+    "H13": "手動排班固定", "H14": "一天最多一個支援請求",
     "H15": "見習同行（見習生不能單獨卡班）",
     "S1": "避免連續 5 天上班", "S2": "B→A 盡量避免", "S3": "C→B 盡量避免",
     "S5": "偏好班次", "S6": "公平分配",
-    "S7": "D 班備援最小化", "S8": "管理職備援最小化",
+    "S7": "D 班備援最小化（已併入 H7）", "S8": "管理職備援最小化",
     "S9": "連休 2 次優先", "S10": "五六2A2C/ABC＋平日ABC、避免4人",
 }

@@ -36,12 +36,24 @@ def _status_name(status: int) -> str:
 
 def build_fixed(data: ShiftScheduleData) -> dict[tuple[int, int], str]:
     fixed: dict[tuple[int, int], str] = {}
+    manual_all = getattr(data, "manual_schedule", {})
+    night_all = getattr(data, "night_schedule", {})
     for i, emp in enumerate(data.employees):
+        is_manual = getattr(emp, "scheduling_mode", "auto") == "manual"
+        sched = manual_all.get(emp.id) if is_manual else None
+        if is_manual and sched is None:
+            sched = night_all.get(emp.id, {})
         for d in range(data.num_days):
             day = d + 1
             shift = None
-            if emp.role == "night":
-                shift = data.night_schedule.get(emp.id, {}).get(day, "OFF")
+            if is_manual:
+                raw = sched.get(day)
+                if raw in ALL_SHIFTS:
+                    shift = raw
+                elif day in data.special_leaves.get(emp.id, []):
+                    shift = "SPECIAL"
+                else:
+                    shift = "OFF"
             elif day in data.designated_off_days.get(emp.id, []):
                 shift = "OFF"
             elif day in data.special_leaves.get(emp.id, []):

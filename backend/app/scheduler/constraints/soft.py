@@ -1,6 +1,7 @@
 from app.scheduler.constraints.hard import (
     COVERAGE_BACKUP_SHIFTS,
     WORK_SHIFTS,
+    _is_manual,
     _rule_enabled,
     build_off_block_counters,
 )
@@ -10,8 +11,9 @@ from app.scheduler.validator import _prev_day1
 def add_s1_avoid_5_consecutive(model, x, data, fixed):
     terms = []
     stat_vars = []
-    n = len(data.employees)
-    for e in range(n):
+    for e, emp in enumerate(data.employees):
+        if _is_manual(emp):
+            continue
         for d in range(data.num_days - 4):
             work_count = sum(
                 x[e][d + i][s] for i in range(5) for s in WORK_SHIFTS
@@ -36,6 +38,8 @@ def add_s2_avoid_b_to_a(model, x, data, fixed):
     terms = []
     stat_vars = []
     for e, emp in enumerate(data.employees):
+        if _is_manual(emp):
+            continue
         avail = set(emp.available_shifts)
         if not ({"A", "B"} <= avail):
             continue
@@ -55,6 +59,8 @@ def add_s3_avoid_c_to_b(model, x, data, fixed):
     terms = []
     stat_vars = []
     for e, emp in enumerate(data.employees):
+        if _is_manual(emp):
+            continue
         avail = set(emp.available_shifts)
         if not ({"B", "C"} <= avail):
             continue
@@ -74,6 +80,8 @@ def add_s5_preferred_shift(model, x, data, fixed):
     terms = []
     stat_vars = []
     for e, emp in enumerate(data.employees):
+        if _is_manual(emp):
+            continue
         p = emp.preferred_shift
         if p is None:
             continue
@@ -86,12 +94,12 @@ def add_s5_preferred_shift(model, x, data, fixed):
 
 
 def add_s6_fairness(model, x, data, fixed):
-    n = len(data.employees)
-    if n <= 1:
+    auto_indices = [e for e, emp in enumerate(data.employees) if not _is_manual(emp)]
+    if len(auto_indices) <= 1:
         return [], {"s6_max": None, "s6_min": None}
     totals = [
         sum(x[e][d][s] for d in range(data.num_days) for s in WORK_SHIFTS)
-        for e in range(n)
+        for e in auto_indices
     ]
     max_t = model.NewIntVar(0, data.num_days, "s6_max_work")
     min_t = model.NewIntVar(0, data.num_days, "s6_min_work")
@@ -101,25 +109,15 @@ def add_s6_fairness(model, x, data, fixed):
 
 
 def add_s7_d_backup_minimize(model, x, data, fixed):
-    terms = []
-    stat_vars = []
-    backup_days = set(data.d_backup_requests)
-    for e, emp in enumerate(data.employees):
-        if emp.role != "cd_backup":
-            continue
-        for d in range(data.num_days):
-            if (d + 1) in backup_days:
-                continue
-            terms.append(x[e][d]["D"] * (-2))
-            stat_vars.append(x[e][d]["D"])
-    return terms, {"s7": stat_vars}
+    """v1.4.0 起非 D 班備援日已於 H7 硬性禁止自動排 D，此軟性項固定為 0（保留欄位向後相容）。"""
+    return [], {"s7": []}
 
 
 def add_s8_manager_backup_minimize(model, x, data, fixed):
     terms = []
     stat_vars = []
     for e, emp in enumerate(data.employees):
-        if emp.role != "manager":
+        if emp.role != "manager" or _is_manual(emp):
             continue
         for d in range(data.num_days):
             for s in COVERAGE_BACKUP_SHIFTS:

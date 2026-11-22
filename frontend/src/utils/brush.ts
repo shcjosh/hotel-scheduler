@@ -31,10 +31,7 @@ export function toolFromKey(key: string | null): BrushTool | null {
  * 規則與後端格位限制一致：
  * - 房務：只允許 A / OFF / 假別
  * - 二館支援（tag）：只允許 A1 / C1 / D1，不能塗假別
- * - 大夜：只允許 D / OFF / 假別
- * - 見習生：只允許 A / B / C / OFF / 假別
- * - 管理職：允許 A / B / C / D / M / OFF / 假別（可手動排 D）
- * - 其他：不可塗 D（D 由大夜或備援指派）
+ * - 本館櫃台（含一般／大夜／管理職／見習）：A / B / C / D / M / OFF / 假別皆可排
  */
 export function targetForTool(
   tool: BrushTool,
@@ -53,21 +50,7 @@ export function targetForTool(
 
   if (tool.kind === 'leave') return { shift: 'SPECIAL', leaveType: tool.code }
 
-  if (employee.role === 'night') {
-    return tool.shift === 'D' || tool.shift === 'OFF' ? { shift: tool.shift } : null
-  }
-
-  // 見習生只能上日班櫃台 A/B/C（不能 M）。
-  if (employee.role === 'trainee') {
-    return ['A', 'B', 'C', 'OFF'].includes(tool.shift) ? { shift: tool.shift } : null
-  }
-
-  // 管理職可手動排 A/B/C/D/M/OFF。
-  if (employee.role === 'manager') {
-    return { shift: tool.shift }
-  }
-
-  return tool.shift === 'D' ? null : { shift: tool.shift }
+  return ['A', 'B', 'C', 'D', 'M', 'OFF'].includes(tool.shift) ? { shift: tool.shift } : null
 }
 
 /** 要塗的值與現況相同 → 視為「取消這格的暫存」。 */

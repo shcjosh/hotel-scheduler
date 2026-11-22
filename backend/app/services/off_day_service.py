@@ -215,12 +215,13 @@ def remove_designated_off(
 def _sync_night_schedule(
     db: Session, emp: Employee, year: int, month: int, day: int, shift: str
 ) -> None:
-    """大夜假別與班表格位同步（source 一律 night_input）。
+    """手動模式員工（含大夜專職）假別與班表格位同步。
 
-    一般員工的假別是排班輸入資料，求解後才反映到格位；大夜格位為手動輸入、
-    不會再經求解覆蓋，因此休假管理新增/移除假別時直接同步該日格位。
+    自動排班員工的假別是排班輸入資料，求解後才反映到格位；
+    手動模式員工格位不會經求解覆蓋，因此休假管理新增/移除假別時直接同步該日格位。
+    大夜專職維持 source=night_input（清空班表時保留），其他手動員工使用 source=manual。
     """
-    if emp.role != "night":
+    if emp.scheduling_mode != "manual":
         return
     # 二館支援（tag）維持 A1/C1/D1 手動支援班，不寫入 D/OFF/假別格位。
     if emp.tag:
@@ -229,8 +230,9 @@ def _sync_night_schedule(
     from app.services import status_service
 
     if status_service.get_status(db, year, month) == "locked":
-        raise PermissionError("班表已鎖定，請先解鎖才能調整大夜假別")
+        raise PermissionError("班表已鎖定，請先解鎖才能調整手動排班假別")
 
+    entry_source = "night_input" if emp.role == "night" else "manual"
     existing = db.scalars(
         select(ScheduleEntry).where(
             ScheduleEntry.employee_id == emp.id,
@@ -247,12 +249,12 @@ def _sync_night_schedule(
                 month=month,
                 day=day,
                 shift=shift,
-                source="night_input",
+                source=entry_source,
             )
         )
     else:
         existing.shift = shift
-        existing.source = "night_input"
+        existing.source = entry_source
         existing.updated_at = now_iso()
 
 

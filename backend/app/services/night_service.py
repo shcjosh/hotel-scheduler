@@ -299,8 +299,9 @@ def get_rule_overrides(db: Session) -> dict:
     result = {}
     for nid in night_ids:
         emp_rules = by_emp.get(nid, {})
-        entry = {rule: emp_rules.get(rule, True) for rule in NIGHT_RULES}
-        entry["ignore_all"] = emp_rules.get(IGNORE_ALL_RULE, False)
+        # v1.4.0 起大夜規則預設關閉（ignore_all=True，各規則預設 False）
+        entry = {rule: emp_rules.get(rule, False) for rule in NIGHT_RULES}
+        entry["ignore_all"] = emp_rules.get(IGNORE_ALL_RULE, True)
         result[str(nid)] = entry
     return result
 
@@ -312,13 +313,11 @@ def _set_ignore_all(db: Session, emp_id: int, enabled: bool) -> None:
             NightRuleOverride.rule_name == IGNORE_ALL_RULE,
         )
     ).first()
-    if enabled:
-        if existing is None:
-            db.add(NightRuleOverride(employee_id=emp_id, rule_name=IGNORE_ALL_RULE, enabled=1))
-        else:
-            existing.enabled = 1
-    elif existing is not None:
-        db.delete(existing)
+    val = 1 if enabled else 0
+    if existing is None:
+        db.add(NightRuleOverride(employee_id=emp_id, rule_name=IGNORE_ALL_RULE, enabled=val))
+    else:
+        existing.enabled = val
     db.commit()
 
 
@@ -333,7 +332,7 @@ def update_rule_overrides(db: Session, emp_id: int, payload: dict) -> dict:
         rules = payload.get("rules", payload)
 
     for rule in NIGHT_RULES:
-        enabled = 1 if rules.get(rule, True) else 0
+        enabled = 1 if rules.get(rule, False) else 0
         existing = db.scalars(
             select(NightRuleOverride).where(
                 NightRuleOverride.employee_id == emp_id,
