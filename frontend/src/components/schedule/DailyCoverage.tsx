@@ -1,17 +1,28 @@
-import type { MonthScheduleView } from '../../types'
+import { useMemo } from 'react'
+import type { Employee, MonthScheduleView } from '../../types'
 import { isWeekend } from '../../utils/date'
+import { isEmployedOn } from '../../utils/employee'
 import { cn } from '../../utils/cn'
 
 interface DailyCoverageProps {
   view: MonthScheduleView
+  employees?: Employee[]
 }
 
 // A1 / C1 為二館支援班，視為 A / C 覆蓋；D、D1 一律不列入覆蓋。
-function dayCoverage(schedule: Record<string, string[]>, d: number) {
+function dayCoverage(
+  schedule: Record<string, string[]>,
+  empByName: Map<string, Employee>,
+  year: number,
+  month: number,
+  d: number,
+) {
   let a = 0
   let b = 0
   let c = 0
-  for (const row of Object.values(schedule)) {
+  for (const [name, row] of Object.entries(schedule)) {
+    const emp = empByName.get(name)
+    if (emp && !isEmployedOn(emp, year, month, d + 1)) continue
     const s = row[d]
     if (s === 'A' || s === 'A1') a += 1
     else if (s === 'C' || s === 'C1') c += 1
@@ -20,8 +31,9 @@ function dayCoverage(schedule: Record<string, string[]>, d: number) {
   return { a, b, c }
 }
 
-export function DailyCoverage({ view }: DailyCoverageProps) {
+export function DailyCoverage({ view, employees = [] }: DailyCoverageProps) {
   const { schedule, num_days: numDays, year, month } = view
+  const empByName = useMemo(() => new Map(employees.map((e) => [e.name, e])), [employees])
 
   return (
     <tfoot className="sticky bottom-0">
@@ -32,7 +44,7 @@ export function DailyCoverage({ view }: DailyCoverageProps) {
         {Array.from({ length: numDays }, (_, d) => {
           const day = d + 1
           const weekend = isWeekend(year, month, day)
-          const { a, b, c } = dayCoverage(schedule, d)
+          const { a, b, c } = dayCoverage(schedule, empByName, year, month, d)
           const okA = a > 0
           const okC = c > 0
           const covered = okA && okC

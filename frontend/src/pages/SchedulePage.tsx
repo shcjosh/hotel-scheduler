@@ -57,6 +57,7 @@ import {
   avatarColor,
   avatarText,
   displayName,
+  isEmployedOn,
   isHousekeeping,
   isVisibleInMonth,
 } from '../utils/employee'
@@ -168,6 +169,8 @@ export function SchedulePage() {
 
   const brush = useScheduleBrush({
     group,
+    year,
+    month,
     employees,
     getOriginal,
     patch: pendingApi.patch,
@@ -179,9 +182,11 @@ export function SchedulePage() {
   const openEditor = useCallback(
     (empName: string, day: number) => {
       if (readOnly) return
+      const emp = employees.find((item) => item.name === empName)
+      if (emp && !isEmployedOn(emp, year, month, day)) return
       setEditing({ empName, day })
     },
-    [readOnly],
+    [employees, month, readOnly, year],
   )
 
   const selection = useGridSelection(names, numDays, openEditor)

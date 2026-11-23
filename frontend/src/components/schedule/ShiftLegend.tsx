@@ -40,6 +40,10 @@ export function ShiftLegend({ leaveTypes = [] }: { leaveTypes?: LeaveType[] }) {
           <span>{lt.name}</span>
         </div>
       ))}
+      <div className="flex items-center gap-1.5">
+        <span className="inline-flex h-5 w-7 items-center justify-center rounded bg-slate-900" />
+        <span>未到職／已離職</span>
+      </div>
       <span className="mx-1 h-4 w-px bg-gray-300" />
       <span className="text-gray-400">覆蓋：</span>
       <div className="flex items-center gap-1.5">

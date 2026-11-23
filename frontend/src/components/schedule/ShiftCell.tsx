@@ -1,4 +1,5 @@
 import { getShiftStyle, getLeaveTypeStyle, getDesignatedOffStyle } from '../../utils/shift'
+import type { OutOfEmploymentReason } from '../../utils/employee'
 import { cn } from '../../utils/cn'
 
 interface ShiftCellProps {
@@ -8,6 +9,7 @@ interface ShiftCellProps {
   pending?: boolean
   selected?: boolean
   disabled?: boolean
+  outOfEmployment?: OutOfEmploymentReason
   leaveType?: { name?: string; color_bg?: string; color_text?: string } | null
   /** 整天特休的「特 N」編號（僅 leave_type=SPECIAL 時傳入） */
   sequence?: number | null
@@ -23,12 +25,29 @@ export function ShiftCell({
   pending,
   selected,
   disabled,
+  outOfEmployment = null,
   leaveType,
   sequence,
   onClick,
   onPointerDown,
   onPointerEnter,
 }: ShiftCellProps) {
+  if (outOfEmployment !== null) {
+    const reasonText =
+      outOfEmployment === 'before_hire' ? '尚未到職（不可排班）' : '已離職（不可排班）'
+    return (
+      <div
+        role="img"
+        aria-label={reasonText}
+        title={reasonText}
+        className={cn(
+          'flex items-center justify-center rounded bg-slate-900 text-xs font-semibold text-slate-500 cursor-not-allowed select-none',
+          dense ? 'h-6 w-9' : 'h-7 w-9',
+        )}
+      />
+    )
+  }
+
   const leaveStyle = shift === 'SPECIAL' ? getLeaveTypeStyle(leaveType) : null
   const designatedStyle = shift === 'OFF' && source === 'designated' ? getDesignatedOffStyle() : null
   const style = leaveStyle ?? designatedStyle ?? getShiftStyle(shift)

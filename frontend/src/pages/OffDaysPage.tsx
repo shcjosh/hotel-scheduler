@@ -20,6 +20,7 @@ import {
   avatarColor,
   avatarText,
   displayName,
+  isEmployedOn,
   isHousekeeping,
   isVisibleInMonth,
 } from '../utils/employee'
@@ -160,6 +161,7 @@ export function OffDaysPage() {
   async function toggleDay(day: number) {
     if (empId === null) return
     if (isMobile) return
+    if (selectedEmp && !isEmployedOn(selectedEmp, year, month, day)) return
     if (locked) {
       setError('本月班表已鎖定，請先到班表頁解鎖')
       return
@@ -423,6 +425,7 @@ export function OffDaysPage() {
                 year={year}
                 month={month}
                 numDays={numDays}
+                employee={selectedEmp}
                 designatedDays={designatedSet}
                 specialDays={specialSet}
                 leaveInfoByDay={leaveInfoByDay}

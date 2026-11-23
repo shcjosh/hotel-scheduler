@@ -66,13 +66,20 @@ def _weekly_off_shortage(data, emp_id) -> list[dict]:
     return issues
 
 
+def _is_partial_month(data, emp) -> bool:
+    return (
+        emp.id in getattr(data, "resign_cutoff", {})
+        or emp.id in getattr(data, "hire_start", {})
+    )
+
+
 def _h9_cross_month_off(data, emp) -> dict | None:
     """H9：跨月週（週一制）的休假日數是否還有調整空間。
 
-    solver 的 H9 只套用在非大夜、非月中離職員工（hard._rule_enabled），
+    solver 的 H9 只套用在非手動、非月中到職/離職員工（hard._rule_enabled），
     這裡必須用同一範圍，避免把不會造成求解失敗的情境報成原因。
     """
-    if getattr(emp, "scheduling_mode", "auto") == "manual" or emp.id in getattr(data, "resign_cutoff", {}):
+    if getattr(emp, "scheduling_mode", "auto") == "manual" or _is_partial_month(data, emp):
         return None
     if not data.weeks:
         return None
@@ -162,7 +169,9 @@ def diagnose_detailed(data):
                 return (
                     day not in data.designated_off_days.get(emp.id, [])
                     and day not in data.special_leaves.get(emp.id, [])
-                    and day <= data.resign_cutoff.get(emp.id, data.num_days)
+                    and getattr(data, "hire_start", {}).get(emp.id, 1)
+                    <= day
+                    <= data.resign_cutoff.get(emp.id, data.num_days)
                 )
 
             day_a = [e for e in a_capable if available(e)] + [
@@ -203,6 +212,8 @@ def diagnose_detailed(data):
 
     # H3 weekend-off conflict: too many weekday leaves force weekend rest
     for emp in auto_emps:
+        if _is_partial_month(data, emp):
+            continue
         mandatory = _mandatory_weekend_off(data, emp.id)
         if mandatory > 2:
             causes.append(_cause("leave_weekend_conflict", "critical",
@@ -211,6 +222,8 @@ def diagnose_detailed(data):
 
     # H2 weekly-off shortage: special leave covering a whole week leaves no OFF
     for emp in auto_emps:
+        if _is_partial_month(data, emp):
+            continue
         for issue in _weekly_off_shortage(data, emp.id):
             days = issue["days"]
             first, last = days[0], days[-1]
@@ -255,6 +268,8 @@ def diagnose_detailed(data):
         })
 
     for emp in auto_emps:
+        if emp.id in getattr(data, "hire_start", {}):
+            continue
         prev = data.previous_month.get(emp.id)
         if not prev:
             continue

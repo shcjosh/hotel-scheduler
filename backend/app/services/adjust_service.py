@@ -23,6 +23,8 @@ def _validate(db: Session, data: data_loader.ShiftScheduleData, employee_id: int
     for d in days:
         if d < 1 or d > data.num_days:
             raise ValueError(f"日期無效：{d}")
+        if not data.is_employed_on(employee_id, d):
+            raise ValueError(f"{data.month}/{d} 不在該員工在職期間內")
     today = date.today()
     if (today.year, today.month) == (data.year, data.month):
         for d in days:
@@ -33,6 +35,7 @@ def _validate(db: Session, data: data_loader.ShiftScheduleData, employee_id: int
 
 
 def _diff(
+    data: data_loader.ShiftScheduleData,
     current: dict[str, list[str]],
     new: dict[str, list[str]],
     name_to_id: dict[str, int],
@@ -43,9 +46,11 @@ def _diff(
     for name, new_row in new.items():
         emp_id = name_to_id.get(name)
         old_row = current.get(name)
-        if old_row is None:
+        if old_row is None or emp_id is None:
             continue
         for d, ns in enumerate(new_row):
+            if not data.is_employed_on(emp_id, d + 1):
+                continue
             os_ = old_row[d] if d < len(old_row) else None
             if os_ != ns:
                 changes.append({
@@ -83,7 +88,7 @@ def preview(db: Session, year: int, month: int, employee_id: int, days: list[int
             "affected_count": 0,
         }
 
-    changes = _diff(current, result.schedule, name_to_id, employee_id, leave_type)
+    changes = _diff(data, current, result.schedule, name_to_id, employee_id, leave_type)
     affected = sorted({c["employee_id"] for c in changes if c["employee_id"] != employee_id})
     return {
         "success": True,

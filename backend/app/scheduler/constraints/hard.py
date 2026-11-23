@@ -8,17 +8,32 @@ def _is_manual(emp) -> bool:
     return getattr(emp, "scheduling_mode", "auto") == "manual"
 
 
+def _is_partial_month(data, emp) -> bool:
+    """月中到職或月中離職：該員本月在職天數不完整。"""
+    return (
+        emp.id in getattr(data, "resign_cutoff", {})
+        or emp.id in getattr(data, "hire_start", {})
+    )
+
+
+def _is_employed_day(data, emp, day: int) -> bool:
+    """day 為 1-based 日期；判斷員工當日是否在職。"""
+    first = getattr(data, "hire_start", {}).get(emp.id, 1)
+    last = getattr(data, "resign_cutoff", {}).get(emp.id, data.num_days)
+    return first <= day <= last
+
+
 def _rule_enabled(data, emp, rule):
     """手動排班員工（含大夜專職與 PT 等）豁免所有個人規則（H2/H3/H4/H8/H9/H12）；
     其已輸入的格位由 H13 固定，仍計入當日 H1 覆蓋人數與 H15 同行資格。
 
-    月中離職員工同理：最後上班日之後固定不排班，其週休/連休計數已不完整，
-    故不套用 H2/H3/H4/H12（含依 H2 的 H9）。"""
+    月中到職／離職員工同理：非在職日固定不排班，其週休/連休計數已不完整，
+    故不套用 H2/H3/H4/H12（含依 H2 的 H9）；月中到職另跳過 H8 跨月銜接。"""
     if _is_manual(emp):
         return False
-    if rule in ("H2", "H3", "H4", "H12") and emp.id in getattr(
-        data, "resign_cutoff", {}
-    ):
+    if rule in ("H2", "H3", "H4", "H12") and _is_partial_month(data, emp):
+        return False
+    if rule == "H8" and emp.id in getattr(data, "hire_start", {}):
         return False
     return True
 
@@ -290,9 +305,12 @@ def add_h13_night_manual(model, x, data, fixed):
         special = set(data.special_leaves.get(emp.id, []))
         for d in range(data.num_days):
             day = d + 1
-            shift = sched.get(day)
-            if shift not in ALL_SHIFTS:
-                shift = "SPECIAL" if day in special else "OFF"
+            if not _is_employed_day(data, emp, day):
+                shift = "OFF"
+            else:
+                shift = sched.get(day)
+                if shift not in ALL_SHIFTS:
+                    shift = "SPECIAL" if day in special else "OFF"
             model.Add(x[i][d][shift] == 1)
 
 
@@ -340,15 +358,18 @@ def add_manager_backup_cap(model, x, data, fixed):
 
 
 def add_resign_cutoff(model, x, data, fixed):
-    """月中離職：最後上班日之後的格位固定為 OFF（不排班）。"""
+    """月中到職／離職：到職日之前與最後上班日之後的格位固定為 OFF（不排班）。"""
+    hire_start = getattr(data, "hire_start", {})
+    resign_cutoff = getattr(data, "resign_cutoff", {})
     for i, emp in enumerate(data.employees):
-        last = data.resign_cutoff.get(emp.id)
-        if last is None:
-            continue
-        for d in range(last, data.num_days):
-            if (i, d) in fixed:
-                continue
-            model.Add(x[i][d]["OFF"] == 1)
+        first = hire_start.get(emp.id)
+        if first is not None:
+            for d in range(0, min(first - 1, data.num_days)):
+                model.Add(x[i][d]["OFF"] == 1)
+        last = resign_cutoff.get(emp.id)
+        if last is not None:
+            for d in range(max(last, 0), data.num_days):
+                model.Add(x[i][d]["OFF"] == 1)
 
 
 CONSTRAINT_FUNCTIONS = [

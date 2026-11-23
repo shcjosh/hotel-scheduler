@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Employee } from '../types'
+import { isEmployedOn } from '../utils/employee'
 import {
   isNoopChange,
   pendingKey,
@@ -11,6 +12,8 @@ import {
 
 interface UseScheduleBrushOptions {
   group: ScheduleGroup
+  year: number
+  month: number
   employees: Employee[]
   /** 取得該格目前（未暫存前）的班別與假別代碼。 */
   getOriginal: (empName: string, day: number) => { shift: string; leaveType?: string | null }
@@ -22,7 +25,14 @@ interface UseScheduleBrushOptions {
  * 點在「已經相同」的格子上會取消該格暫存（與舊行為一致）。
  * 拖曳時 mouseup 後緊接的 click 會被吞掉，避免把剛塗好的格子又取消。
  */
-export function useScheduleBrush({ group, employees, getOriginal, patch }: UseScheduleBrushOptions) {
+export function useScheduleBrush({
+  group,
+  year,
+  month,
+  employees,
+  getOriginal,
+  patch,
+}: UseScheduleBrushOptions) {
   const [tool, setTool] = useState<BrushTool | null>(null)
   const dragRef = useRef(false)
   const suppressClickRef = useRef(false)
@@ -35,6 +45,7 @@ export function useScheduleBrush({ group, employees, getOriginal, patch }: UseSc
       if (!activeTool) return
       const employee = employees.find((item) => item.name === empName)
       if (!employee) return
+      if (!isEmployedOn(employee, year, month, day)) return
       const change = targetForTool(activeTool, employee, group)
       if (!change) return
       const original = getOriginal(empName, day)
@@ -42,7 +53,7 @@ export function useScheduleBrush({ group, employees, getOriginal, patch }: UseSc
       if (isNoopChange(change, original.shift, original.leaveType)) patch(key, null)
       else patch(key, change)
     },
-    [employees, getOriginal, group, patch],
+    [employees, getOriginal, group, month, patch, year],
   )
 
   useEffect(() => {

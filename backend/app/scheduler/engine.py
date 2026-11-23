@@ -46,7 +46,10 @@ def build_fixed(data: ShiftScheduleData) -> dict[tuple[int, int], str]:
         for d in range(data.num_days):
             day = d + 1
             shift = None
-            if is_manual:
+            if not data.is_employed_on(emp.id, day):
+                if is_manual:
+                    shift = "OFF"
+            elif is_manual:
                 raw = sched.get(day)
                 if raw in ALL_SHIFTS:
                     shift = raw
@@ -221,8 +224,9 @@ def solve_adjust(
         row = current_idx.get(i)
         if row is None:
             continue
+        emp = data.employees[i]
         for d in range(first_free):
-            if (i, d) in fixed:
+            if (i, d) in fixed or not data.is_employed_on(emp.id, d + 1):
                 continue
             cur = row[d] if d < len(row) else None
             if cur in ALL_SHIFTS:

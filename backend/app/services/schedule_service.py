@@ -15,6 +15,7 @@ from app.schemas.schedule import ScheduleEntryCreate, ScheduleEntryUpdate
 from app.scheduler.off_count import count_off_blocks
 from app.services.employee_service import (
     HOUSEKEEPING_ROLE,
+    employment_window_error,
     group_clause,
     is_schedulable_on,
     visible_in_month_clause,
@@ -250,8 +251,9 @@ def upsert_cell(
         raise ValueError("員工不存在或已停用")
     if shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{shift}")
-    if not is_schedulable_on(emp, year, month, day):
-        raise ValueError("該員工已離職，無法排班")
+    emp_err = employment_window_error(emp, year, month, day)
+    if emp_err is not None:
+        raise ValueError(emp_err)
 
     is_support = bool(emp.tag)
     is_night = emp.role == "night"
@@ -364,6 +366,13 @@ def validate_cell(
     if new_shift not in VALID_CELL_SHIFTS:
         raise ValueError(f"無效班次：{new_shift}")
 
+    emp_err = employment_window_error(emp, year, month, day)
+    if emp_err is not None:
+        return {
+            "violations": [{"rule": "EMPLOYMENT", "severity": "hard", "message": emp_err}],
+            "warnings": [],
+        }
+
     # 二館支援人員完全豁免規則檢驗
     if emp.tag:
         return {"violations": [], "warnings": []}
@@ -454,6 +463,8 @@ def validate_cell(
         # 二館支援（tag）與房務不計入櫃台每日覆蓋；本館非見習人員（含手動 PT）皆計入覆蓋與同行。
         if other.tag or other.role == HOUSEKEEPING_ROLE:
             continue
+        if not is_schedulable_on(other, year, month, day):
+            continue
         other_shift = day_shifts.get(other.id)
         is_mentor = other.id != emp_id and other.role != "trainee"
         if other_shift == "A":
@@ -517,21 +528,29 @@ def validate_cell(
     if next_shift is not None:
         soft_trans(new_shift, next_shift, f"{month}/{day}→次日")
 
-    # H4: 6-day windows containing the cell (extended with prev 5)
-    extended = prev_shifts + shifts
-    cell_idx = day + 4  # index in extended
-    for start in range(max(0, cell_idx - 5), min(len(extended) - 5, cell_idx) + 1):
-        window = extended[start:start + 6]
-        if None in window:
-            continue
-        if not any(s in ("OFF", "SPECIAL") for s in window):
-            v("H4", f"連續 6 天上班（含跨月）含 {month}/{day}")
-            break
+    # 月中到職或月中離職者，在職天數不完整，跳過 H4 與 H12
+    mk = f"{year:04d}-{month:02d}"
+    is_partial_month = (
+        (emp.hire_date is not None and emp.hire_date[:7] == mk and int(emp.hire_date[8:10]) > 1)
+        or (emp.resign_date is not None and emp.resign_date[:7] == mk and int(emp.resign_date[8:10]) < num_days)
+    )
 
-    # H12: recompute 連休 blocks
-    runs, _ = count_off_blocks(shifts)
-    if runs != 2:
-        v("H12", f"連休 {runs} 次（應為 2）")
+    if not is_partial_month:
+        # H4: 6-day windows containing the cell (extended with prev 5)
+        extended = prev_shifts + shifts
+        cell_idx = day + 4  # index in extended
+        for start in range(max(0, cell_idx - 5), min(len(extended) - 5, cell_idx) + 1):
+            window = extended[start:start + 6]
+            if None in window:
+                continue
+            if not any(s in ("OFF", "SPECIAL") for s in window):
+                v("H4", f"連續 6 天上班（含跨月）含 {month}/{day}")
+                break
+
+        # H12: recompute 連休 blocks
+        runs, _ = count_off_blocks(shifts)
+        if runs != 2:
+            v("H12", f"連休 {runs} 次（應為 2）")
 
     if disabled_night:
         violations = [x for x in violations if x["rule"] not in disabled_night]
@@ -550,7 +569,10 @@ def get_validation_report(db: Session, year: int, month: int) -> dict:
         if e.employee_id in by_emp:
             by_emp[e.employee_id][e.day] = e.shift
     schedule = {
-        emp.id: [by_emp[emp.id].get(d) for d in range(1, num_days + 1)]
+        emp.id: [
+            by_emp[emp.id].get(d) if data.is_employed_on(emp.id, d) else None
+            for d in range(1, num_days + 1)
+        ]
         for emp in data.employees
     }
 

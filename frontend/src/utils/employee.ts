@@ -32,15 +32,42 @@ export function avatarColor(id: number): string {
   return AVATAR_COLORS[id % AVATAR_COLORS.length]
 }
 
-/** 員工在指定月份是否可見（已離職者在最後上班月及之前可見）。 */
+/** 員工在指定月份是否可見（到職月及之後、最後上班月及之前可見）。 */
 export function isVisibleInMonth(
-  e: Pick<Employee, 'resign_date'>,
+  e: Pick<Employee, 'hire_date' | 'resign_date'>,
   year: number,
   month: number,
 ): boolean {
-  if (!e.resign_date) return true
   const key = `${year}-${String(month).padStart(2, '0')}`
-  return e.resign_date.slice(0, 7) >= key
+  if (e.resign_date && e.resign_date.slice(0, 7) < key) return false
+  if (e.hire_date && e.hire_date.slice(0, 7) > key) return false
+  return true
+}
+
+export type OutOfEmploymentReason = 'before_hire' | 'after_resign' | null
+
+/** 判斷指定日期是否落在員工到職日之前或離職日之後（含到職日與最後上班日當天為在職）。 */
+export function outOfEmploymentReason(
+  e: Pick<Employee, 'hire_date' | 'resign_date'> | undefined,
+  year: number,
+  month: number,
+  day: number,
+): OutOfEmploymentReason {
+  if (!e) return null
+  const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  if (e.hire_date && iso < e.hire_date) return 'before_hire'
+  if (e.resign_date && iso > e.resign_date) return 'after_resign'
+  return null
+}
+
+/** 員工在指定日期是否在職。 */
+export function isEmployedOn(
+  e: Pick<Employee, 'hire_date' | 'resign_date'> | undefined,
+  year: number,
+  month: number,
+  day: number,
+): boolean {
+  return outOfEmploymentReason(e, year, month, day) === null
 }
 
 /** 是否為房務（與櫃台班表互不干涉，櫃台相關頁面需排除）。 */

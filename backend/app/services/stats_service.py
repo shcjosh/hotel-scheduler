@@ -90,12 +90,16 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     weekend_set = set(saturdays + sundays)
     ly, lm = _prev_month(year, month)
 
+    emp_by_id = {e.id: e for e in employees}
     leave_counts_by_emp: dict[int, dict[str, int]] = {}
     for lv in db.scalars(
         select(SpecialLeave).where(
             SpecialLeave.year == year, SpecialLeave.month == month
         )
     ):
+        emp_obj = emp_by_id.get(lv.employee_id)
+        if emp_obj is not None and not employee_service.is_schedulable_on(emp_obj, year, month, lv.day):
+            continue
         leave_counts_by_emp.setdefault(lv.employee_id, {}).setdefault(lv.leave_type, 0)
         leave_counts_by_emp[lv.employee_id][lv.leave_type] += 1
     active_leave_types = [
@@ -103,10 +107,16 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
         for lt in leave_type_service.list_leave_types(db)
     ]
 
-    # per_employee
+    # 僅統計員工在職日（到職日之前與離職日之後皆不記入上班/休假/請假統計）
+    eff_schedule: dict[str, list[str | None]] = {}
     per_employee = []
     for emp in employees:
-        row = schedule.get(emp.name, [None] * num_days)
+        raw_row = schedule.get(emp.name, [None] * num_days)
+        row = [
+            s if employee_service.is_schedulable_on(emp, year, month, i + 1) else None
+            for i, s in enumerate(raw_row)
+        ]
+        eff_schedule[emp.name] = row
         counts: dict[str, int] = {s: 0 for s in ALL_COUNT_SHIFTS}
         for s in row:
             if s in counts:
@@ -114,13 +124,15 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
         work_days = sum(counts[s] for s in WORK_SHIFTS)
         weekend_work = sum(1 for i, s in enumerate(row) if (i + 1) in weekend_set and s in WORK_SHIFTS)
         consec_off = off_day_service.count_consecutive_off(db, emp.id, year, month)[0]
-        has_prev = db.scalars(
-            select(ScheduleEntry.id).where(
-                ScheduleEntry.employee_id == emp.id,
-                ScheduleEntry.year == ly,
-                ScheduleEntry.month == lm,
-            ).limit(1)
-        ).first() is not None
+        has_prev = employee_service.is_visible_in_month(emp, ly, lm) and (
+            db.scalars(
+                select(ScheduleEntry.id).where(
+                    ScheduleEntry.employee_id == emp.id,
+                    ScheduleEntry.year == ly,
+                    ScheduleEntry.month == lm,
+                ).limit(1)
+            ).first() is not None
+        )
         last_off = (
             off_day_service.count_consecutive_off(db, emp.id, ly, lm)[0]
             if has_prev else None
@@ -149,7 +161,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     per_shift: dict[str, dict] = {}
     for s in WORK_SHIFTS:
         day_counts = [
-            sum(1 for row in schedule.values() if row[d] == s)
+            sum(1 for row in eff_schedule.values() if row[d] == s)
             for d in range(num_days)
         ]
         total = sum(day_counts)
@@ -164,7 +176,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
     daily_coverage = []
     for d in range(num_days):
         day = d + 1
-        c = {s: sum(1 for row in schedule.values() if row[d] == s) for s in WORK_SHIFTS}
+        c = {s: sum(1 for row in eff_schedule.values() if row[d] == s) for s in WORK_SHIFTS}
         daily_coverage.append({
             "day": day,
             "weekday": date(year, month, day).weekday(),
@@ -177,7 +189,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
         workers = []
         shifts = []
         for emp in employees:
-            s = schedule.get(emp.name, [None] * num_days)[day - 1]
+            s = eff_schedule.get(emp.name, [None] * num_days)[day - 1]
             if s in WORK_SHIFTS:
                 workers.append(emp.name)
                 shifts.append(s)
@@ -200,7 +212,7 @@ def get_month_stats(db: Session, year: int, month: int) -> dict:
 
     has_data = any(
         any(s in WORK_SHIFTS for s in row)
-        for row in schedule.values()
+        for row in eff_schedule.values()
     )
     solve_status = meta["status"] or ("solved" if has_data else "no_data")
 

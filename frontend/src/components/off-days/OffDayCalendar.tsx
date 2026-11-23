@@ -1,10 +1,13 @@
 import { getWeekday, isWeekend } from '../../utils/date'
+import { outOfEmploymentReason } from '../../utils/employee'
+import type { Employee } from '../../types'
 import { cn } from '../../utils/cn'
 
 interface OffDayCalendarProps {
   year: number
   month: number
   numDays: number
+  employee?: Pick<Employee, 'hire_date' | 'resign_date'> | null
   designatedDays: Set<number>
   specialDays: Set<number>
   leaveInfoByDay?: Record<number, { label: string; bg: string; text: string }>
@@ -19,6 +22,7 @@ export function OffDayCalendar({
   year,
   month,
   numDays,
+  employee,
   designatedDays,
   specialDays,
   leaveInfoByDay,
@@ -53,6 +57,21 @@ export function OffDayCalendar({
             return <div key={`b-${idx}`} className="aspect-square" />
           }
           const weekend = isWeekend(year, month, day)
+          const outReason = outOfEmploymentReason(employee ?? undefined, year, month, day)
+          if (outReason !== null) {
+            const label = outReason === 'before_hire' ? '未到職' : '已離職'
+            return (
+              <div
+                key={day}
+                title={`${month} 月 ${day} 日（${label}）`}
+                aria-label={`${month} 月 ${day} 日，${label}`}
+                className="relative flex aspect-square flex-col items-center justify-start rounded-md border border-slate-900 bg-slate-900 p-1 text-slate-500 cursor-not-allowed select-none"
+              >
+                <span className="text-sm font-medium">{day}</span>
+                <span className="mt-1 text-[9px] leading-none text-slate-400">{label}</span>
+              </div>
+            )
+          }
           const designated = designatedDays.has(day)
           const special = specialDays.has(day)
           const isRun = runDays.has(day)

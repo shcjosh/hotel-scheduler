@@ -42,9 +42,19 @@ def _mentor_eligible(emp):
     return emp.role != "trainee"
 
 
-def _partial_resign(data, emp):
-    """月中離職：該員當月最後上班日後固定不排班，週休/連休計數不完整，跳過個人規則。"""
-    return emp.id in getattr(data, "resign_cutoff", {})
+def _partial_month(data, emp):
+    """月中到職或月中離職：該員本月在職天數不完整，跳過週休/週末/連班/連休等月規則。"""
+    return (
+        emp.id in getattr(data, "resign_cutoff", {})
+        or emp.id in getattr(data, "hire_start", {})
+    )
+
+
+def _is_employed_on(data, emp, day: int) -> bool:
+    """day 為 1-based 日期；判斷員工當日是否在職。"""
+    first = getattr(data, "hire_start", {}).get(emp.id, 1)
+    last = getattr(data, "resign_cutoff", {}).get(emp.id, data.num_days)
+    return first <= day <= last
 
 
 def _v(rule, emp, day, message):
@@ -65,7 +75,7 @@ def validate(data, schedule):
     for d in range(data.num_days):
         counts = {s: 0 for s in ALL_SHIFTS}
         for emp in data.employees:
-            if _ignored_night(data, emp):
+            if _ignored_night(data, emp) or not _is_employed_on(data, emp, d + 1):
                 continue
             s = _shift_at(schedule, emp.id, d)
             if s in counts:
@@ -88,6 +98,8 @@ def validate(data, schedule):
         if emp.role != "trainee" or _exempt_manual(data, emp):
             continue
         for d in range(data.num_days):
+            if not _is_employed_on(data, emp, d + 1):
+                continue
             s = _shift_at(schedule, emp.id, d)
             if s not in ("A", "B", "C"):
                 continue
@@ -96,6 +108,7 @@ def validate(data, schedule):
                 for other in data.employees
                 if other.id != emp.id
                 and _mentor_eligible(other)
+                and _is_employed_on(data, other, d + 1)
                 and _shift_at(schedule, other.id, d) == "A"
             )
             mentor_c = sum(
@@ -103,6 +116,7 @@ def validate(data, schedule):
                 for other in data.employees
                 if other.id != emp.id
                 and _mentor_eligible(other)
+                and _is_employed_on(data, other, d + 1)
                 and _shift_at(schedule, other.id, d) == "C"
             )
             if s == "A" and mentor_a < 1:
@@ -124,7 +138,7 @@ def validate(data, schedule):
 
     for w_i, w in enumerate(data.weeks):
         for emp in data.employees:
-            if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
+            if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_month(data, emp):
                 continue
             curr_off = sum(1 for d in w if _shift_at(schedule, emp.id, d) == "OFF")
             if w_i == 0:
@@ -158,7 +172,7 @@ def validate(data, schedule):
                     violations.append(_v("H2", emp, None, f"不完整週休 {curr_off} 天（應 <=2）"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_month(data, emp):
             continue
         sat_off = sum(1 for d in data.saturdays if _shift_at(schedule, emp.id, d) == "OFF")
         sun_off = sum(1 for d in data.sundays if _shift_at(schedule, emp.id, d) == "OFF")
@@ -170,7 +184,7 @@ def validate(data, schedule):
             violations.append(_v("H3", emp, None, f"週末休假 {total} 天（應 =2）"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_month(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         prev = prev_cache[emp.id]
@@ -197,6 +211,8 @@ def validate(data, schedule):
             continue
         shifts = schedule.get(emp.id, [])
         for d in range(data.num_days - 1):
+            if not _is_employed_on(data, emp, d + 1) or not _is_employed_on(data, emp, d + 2):
+                continue
             cur = shifts[d] if d < len(shifts) else None
             nxt = shifts[d + 1] if d + 1 < len(shifts) else None
             if cur == "C" and nxt == "A":
@@ -212,11 +228,13 @@ def validate(data, schedule):
         if _ignored_night(data, emp) or _exempt_manual(data, emp):
             continue
         for day in data.designated_off_days.get(emp.id, []):
+            if not _is_employed_on(data, emp, day):
+                continue
             if _shift_at(schedule, emp.id, day - 1) != "OFF":
                 violations.append(_v("H6", emp, day, "應為指定休假"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp) or _exempt_manual(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or emp.id in getattr(data, "hire_start", {}):
             continue
         shifts = schedule.get(emp.id, [])
         prev = prev_cache[emp.id]
@@ -255,7 +273,7 @@ def validate(data, schedule):
             violations.append(_v("H11", None, day, f"{day} 號備援日無人遞補 C 班"))
 
     for emp in data.employees:
-        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_month(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]
@@ -270,6 +288,8 @@ def validate(data, schedule):
             continue
         nights = data.night_schedule.get(emp.id, {})
         for d in range(data.num_days):
+            if not _is_employed_on(data, emp, d + 1):
+                continue
             expected = nights.get(d + 1, "OFF")
             actual = _shift_at(schedule, emp.id, d)
             if actual != expected:
@@ -308,6 +328,8 @@ def validate_soft(data, schedule):
         # H7: 手動排了不在可用班次的班 → 顯示為警告（可略過）
         avail = set(emp.available_shifts)
         for d in range(data.num_days):
+            if not _is_employed_on(data, emp, d + 1):
+                continue
             s = _shift_at(schedule, emp.id, d)
             if s is None or s in ("OFF", "SPECIAL"):
                 continue
@@ -318,7 +340,10 @@ def validate_soft(data, schedule):
 
         # S1: avoid 5 consecutive work
         for d in range(data.num_days - 4):
-            window = [shifts[d + i] if d + i < len(shifts) else None for i in range(5)]
+            window = [
+                (shifts[d + i] if (d + i < len(shifts) and _is_employed_on(data, emp, d + i + 1)) else None)
+                for i in range(5)
+            ]
             if None in window:
                 continue
             if all(_is_work(s) for s in window):
@@ -332,6 +357,8 @@ def validate_soft(data, schedule):
                 warnings.append(_v("S3", emp, day, "C→B 盡量避免"))
 
         for d in range(data.num_days - 1):
+            if not _is_employed_on(data, emp, d + 1) or not _is_employed_on(data, emp, d + 2):
+                continue
             cur = shifts[d] if d < len(shifts) else None
             nxt = shifts[d + 1] if d + 1 < len(shifts) else None
             if cur is None or nxt is None:
@@ -339,7 +366,7 @@ def validate_soft(data, schedule):
             check_transition(cur, nxt, d + 1)
 
         cur0 = shifts[0] if shifts else None
-        if prev_day1 is not None and cur0 is not None:
+        if emp.id not in getattr(data, "hire_start", {}) and prev_day1 is not None and cur0 is not None:
             check_transition(prev_day1, cur0, 1)
 
     # S8: manager on A/B/C/D (backup) — warn per occurrence
@@ -347,13 +374,15 @@ def validate_soft(data, schedule):
         if emp.role != "manager" or _exempt_manual(data, emp):
             continue
         for d in range(data.num_days):
+            if not _is_employed_on(data, emp, d + 1):
+                continue
             s = _shift_at(schedule, emp.id, d)
             if s in COVERAGE_BACKUP_SHIFTS:
                 warnings.append(_v("S8", emp, d + 1, f"管理職備援排 {s}（建議上 M 班）"))
 
     # S9: 連休 2 次優先 — 僅 1 次連休者（建議 2 次）
     for emp in data.employees:
-        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_resign(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_month(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
         row = [shifts[d] if d < len(shifts) else None for d in range(data.num_days)]
@@ -364,9 +393,9 @@ def validate_soft(data, schedule):
     # S10: 白天班組合偏好（五六 2A2C/ABC、平日 ABC/避免4人）
     fri_sat = set(data.fridays) | set(data.saturdays)
     for d in range(data.num_days):
-        a = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "A")
-        b = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "B")
-        c = sum(1 for emp in data.employees if _shift_at(schedule, emp.id, d) == "C")
+        a = sum(1 for emp in data.employees if _is_employed_on(data, emp, d + 1) and _shift_at(schedule, emp.id, d) == "A")
+        b = sum(1 for emp in data.employees if _is_employed_on(data, emp, d + 1) and _shift_at(schedule, emp.id, d) == "B")
+        c = sum(1 for emp in data.employees if _is_employed_on(data, emp, d + 1) and _shift_at(schedule, emp.id, d) == "C")
         total_day = a + b + c
         if d in fri_sat:
             if total_day >= 4 and not (a == 2 and c == 2 and b == 0):
@@ -390,6 +419,8 @@ def count_preferred_unsatisfied(data, schedule) -> int:
         if not emp.preferred_shift:
             continue
         for d in range(data.num_days):
+            if not _is_employed_on(data, emp, d + 1):
+                continue
             s = _shift_at(schedule, emp.id, d)
             if s is None or s in ("OFF", "SPECIAL"):
                 continue
@@ -401,10 +432,16 @@ def count_preferred_unsatisfied(data, schedule) -> int:
 def compute_fairness_spread(data, schedule) -> int:
     totals = []
     for emp in data.employees:
-        if _ignored_night(data, emp) or _exempt_manual(data, emp):
+        if _ignored_night(data, emp) or _exempt_manual(data, emp) or _partial_month(data, emp):
             continue
         shifts = schedule.get(emp.id, [])
-        totals.append(sum(1 for s in shifts if _is_work(s)))
+        totals.append(
+            sum(
+                1
+                for d, s in enumerate(shifts)
+                if _is_employed_on(data, emp, d + 1) and _is_work(s)
+            )
+        )
     if not totals:
         return 0
     return max(totals) - min(totals)

@@ -1,6 +1,7 @@
 import { useMemo, useState, type KeyboardEvent, type Ref } from 'react'
 import type { Employee, LeaveType, MonthScheduleView } from '../../types'
 import { getWeekday, getWeekdayLabel, isWeekend } from '../../utils/date'
+import { outOfEmploymentReason } from '../../utils/employee'
 import type { PendingMap } from '../../utils/brush'
 import { ShiftCell } from './ShiftCell'
 import { DailyCoverage } from './DailyCoverage'
@@ -143,6 +144,8 @@ export function ScheduleGrid({
           {names.map((name) => {
             const emp = empByName.get(name)
             const seqMap = sequenceForEmp(name)
+            const monthPrefix = `${year}-${pad(month)}`
+            const hiredThisMonth = Boolean(emp?.hire_date && emp.hire_date.slice(0, 7) === monthPrefix)
             return (
               <tr key={name} className="hover:bg-brand-50/40">
                 <th className="sticky left-0 z-10 w-32 border-b border-r border-slate-200 bg-white px-2 py-1 text-left text-sm font-medium text-slate-700">
@@ -151,6 +154,11 @@ export function ScheduleGrid({
                     {emp?.role === 'trainee' && <Badge tone="info">見習</Badge>}
                     {emp && !emp.tag && emp.role !== 'housekeeping' && emp.role !== 'night' && emp.scheduling_mode === 'manual' && (
                       <Badge>手動</Badge>
+                    )}
+                    {hiredThisMonth && emp?.hire_date && (
+                      <span title={`到職日 ${emp.hire_date}`}>
+                        <Badge tone="info">到職</Badge>
+                      </span>
                     )}
                     {emp?.resign_date && (
                       <span title={`最後上班日 ${emp.resign_date}`}>
@@ -176,6 +184,7 @@ export function ScheduleGrid({
                   const day = d + 1
                   const weekend = isWeekend(year, month, day)
                   const monday = getWeekday(year, month, day) === 1
+                  const outReason = outOfEmploymentReason(emp, year, month, day)
                   const cellKey = `${name}_${day}`
                   const pending = pendingChanges[cellKey]
                   const shift = pending ? pending.shift : originalShift
@@ -204,11 +213,12 @@ export function ScheduleGrid({
                         pending={!!pending}
                         selected={isSelected?.(name, day)}
                         disabled={locked}
+                        outOfEmployment={outReason}
                         leaveType={leaveType}
                         sequence={sequence}
-                        onClick={() => onCellClick?.(name, day)}
-                        onPointerDown={() => onCellPointerDown?.(name, day)}
-                        onPointerEnter={() => onCellPointerEnter?.(name, day)}
+                        onClick={outReason ? undefined : () => onCellClick?.(name, day)}
+                        onPointerDown={outReason ? undefined : () => onCellPointerDown?.(name, day)}
+                        onPointerEnter={outReason ? undefined : () => onCellPointerEnter?.(name, day)}
                       />
                     </td>
                   )
@@ -217,7 +227,7 @@ export function ScheduleGrid({
             )
           })}
         </tbody>
-        {showCoverage && <DailyCoverage view={view} />}
+        {showCoverage && <DailyCoverage view={view} employees={employees} />}
       </table>
     </div>
   )

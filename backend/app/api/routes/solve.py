@@ -93,12 +93,15 @@ def solve(req: SolveRequest, db: Session = Depends(get_db)):
             if not row:
                 continue
             for d_idx, shift in enumerate(row):
+                day = d_idx + 1
+                if not data.is_employed_on(emp.id, day):
+                    continue
                 entries.append(
                     {
                         "employee_id": emp.id,
-                        "day": d_idx + 1,
+                        "day": day,
                         "shift": shift,
-                        "source": _source_for(emp, d_idx + 1, shift, data),
+                        "source": _source_for(emp, day, shift, data),
                     }
                 )
         schedule_service.replace_month_schedule(

@@ -11,7 +11,12 @@ from app.database.models import (
     now_iso,
 )
 from app.scheduler.off_count import count_off_blocks
-from app.services.employee_service import not_housekeeping_clause, visible_in_month_clause
+from app.services.employee_service import (
+    employment_window_error,
+    is_schedulable_on,
+    not_housekeeping_clause,
+    visible_in_month_clause,
+)
 
 
 def _num_days(year: int, month: int) -> int:
@@ -71,10 +76,19 @@ def count_consecutive_off(
     """Return (run_count, run_days) where run_days are days in counted 連休 blocks.
 
     連休 = 連續非上班日（OFF + SPECIAL）長度 >=2 且含至少 1 天 OFF。
+    員工到職日之前與離職日之後不計入連休。
     """
     num_days = _num_days(year, month)
+    emp = db.get(Employee, emp_id)
     designated, special, sched = _load_sets(db, emp_id, year, month)
-    shifts = [_day_status(d, designated, special, sched) for d in range(1, num_days + 1)]
+    shifts = [
+        (
+            _day_status(d, designated, special, sched)
+            if (emp is None or is_schedulable_on(emp, year, month, d))
+            else None
+        )
+        for d in range(1, num_days + 1)
+    ]
     count, run_days = count_off_blocks(shifts)
     return count, [d + 1 for d in run_days]
 
@@ -122,18 +136,24 @@ def get_off_day_summary(db: Session, year: int, month: int) -> dict:
             .order_by(Employee.id)
         )
     )
+    emp_by_id = {e.id: e for e in employees}
     leave_by_emp: dict[int, dict[str, int]] = {}
     for row in db.scalars(
         select(SpecialLeave).where(
             SpecialLeave.year == year, SpecialLeave.month == month
         )
     ):
+        emp_obj = emp_by_id.get(row.employee_id)
+        if emp_obj is not None and not is_schedulable_on(emp_obj, year, month, row.day):
+            continue
         leave_by_emp.setdefault(row.employee_id, {}).setdefault(row.leave_type, 0)
         leave_by_emp[row.employee_id][row.leave_type] += 1
 
     summary: dict[str, dict] = {}
     for emp in employees:
         designated, special, _ = _load_sets(db, emp.id, year, month)
+        designated = {d for d in designated if is_schedulable_on(emp, year, month, d)}
+        special = {d for d in special if is_schedulable_on(emp, year, month, d)}
         count, run_days = count_consecutive_off(db, emp.id, year, month)
         leave_counts = leave_by_emp.get(emp.id, {})
         summary[str(emp.id)] = {
@@ -150,10 +170,14 @@ def get_off_day_summary(db: Session, year: int, month: int) -> dict:
 def add_designated_off(
     db: Session, emp_id: int, year: int, month: int, day: int
 ) -> DesignatedOffDay:
-    if db.get(Employee, emp_id) is None:
+    emp = db.get(Employee, emp_id)
+    if emp is None:
         raise ValueError("員工不存在")
     if day < 1 or day > _num_days(year, month):
         raise ValueError("日期無效")
+    emp_err = employment_window_error(emp, year, month, day)
+    if emp_err is not None:
+        raise ValueError(emp_err)
 
     existing = list(
         db.scalars(
@@ -266,6 +290,9 @@ def add_special_leave(
         raise ValueError("員工不存在")
     if day < 1 or day > _num_days(year, month):
         raise ValueError("日期無效")
+    emp_err = employment_window_error(emp, year, month, day)
+    if emp_err is not None:
+        raise ValueError(emp_err)
     from app.database.models import LeaveType
 
     if db.get(LeaveType, leave_type) is None:

@@ -2,6 +2,7 @@ from app.scheduler.constraints.hard import (
     COVERAGE_BACKUP_SHIFTS,
     WORK_SHIFTS,
     _is_manual,
+    _is_partial_month,
     _rule_enabled,
     build_off_block_counters,
 )
@@ -49,7 +50,7 @@ def add_s2_avoid_b_to_a(model, x, data, fixed):
             )
             terms.append(term)
             stat_vars.append(var)
-        if _prev_day1(data, emp.id) == "B":
+        if emp.id not in getattr(data, "hire_start", {}) and _prev_day1(data, emp.id) == "B":
             terms.append(x[e][0]["A"] * (-5))
             stat_vars.append(x[e][0]["A"])
     return terms, {"s2": stat_vars}
@@ -70,7 +71,7 @@ def add_s3_avoid_c_to_b(model, x, data, fixed):
             )
             terms.append(term)
             stat_vars.append(var)
-        if _prev_day1(data, emp.id) == "C":
+        if emp.id not in getattr(data, "hire_start", {}) and _prev_day1(data, emp.id) == "C":
             terms.append(x[e][0]["B"] * (-5))
             stat_vars.append(x[e][0]["B"])
     return terms, {"s3": stat_vars}
@@ -94,7 +95,11 @@ def add_s5_preferred_shift(model, x, data, fixed):
 
 
 def add_s6_fairness(model, x, data, fixed):
-    auto_indices = [e for e, emp in enumerate(data.employees) if not _is_manual(emp)]
+    auto_indices = [
+        e
+        for e, emp in enumerate(data.employees)
+        if not _is_manual(emp) and not _is_partial_month(data, emp)
+    ]
     if len(auto_indices) <= 1:
         return [], {"s6_max": None, "s6_min": None}
     totals = [

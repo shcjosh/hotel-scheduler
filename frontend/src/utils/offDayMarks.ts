@@ -1,4 +1,5 @@
-import type { MonthScheduleView } from '../types'
+import type { Employee, MonthScheduleView } from '../types'
+import { isEmployedOn } from './employee'
 
 /**
  * PDF 休假線條規則（與櫃台 xlsx 一致）：
@@ -39,10 +40,12 @@ export function buildOffIndex(
   views: MonthScheduleView[],
   employeeName: string,
   extraOffDates: OffDate[] = [],
+  employee?: Pick<Employee, 'hire_date' | 'resign_date'>,
 ): Map<string, number> {
   const weeks = new Map<string, Set<string>>()
 
   function addOff(year: number, month: number, day: number) {
+    if (employee && !isEmployedOn(employee, year, month, day)) return
     const iso = isoDate(year, month, day)
     const week = mondayKey(year, month, day)
     let dates = weeks.get(week)
@@ -78,10 +81,19 @@ export function buildOffIndexByEmployee(
   views: MonthScheduleView[],
   employeeNames: string[],
   extraOffDatesByEmployee?: Record<string, OffDate[]>,
+  employeesByName?: Map<string, Pick<Employee, 'hire_date' | 'resign_date'>>,
 ): Map<string, Map<string, number>> {
   const result = new Map<string, Map<string, number>>()
   for (const name of employeeNames) {
-    result.set(name, buildOffIndex(views, name, extraOffDatesByEmployee?.[name] ?? []))
+    result.set(
+      name,
+      buildOffIndex(
+        views,
+        name,
+        extraOffDatesByEmployee?.[name] ?? [],
+        employeesByName?.get(name),
+      ),
+    )
   }
   return result
 }

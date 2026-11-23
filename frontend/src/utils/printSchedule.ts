@@ -1,5 +1,6 @@
 import type { Employee, LeaveType, MonthScheduleView } from '../types'
 import { getMonthDays, getWeekday, getWeekdayLabel } from './date'
+import { isEmployedOn } from './employee'
 import { buildOffIndexByEmployee, isoDate, type OffDate } from './offDayMarks'
 
 function esc(s: string): string {
@@ -276,6 +277,9 @@ export function buildPrintStats(
       let offDays = 0
       const leaveCounts: Record<string, number> = {}
       for (let d = 0; d < view.num_days; d++) {
+        if (employee && !isEmployedOn(employee, view.year, view.month, d + 1)) {
+          continue
+        }
         const shift = scheduleRow[d] ?? ''
         if (STATS_WORK_SHIFTS.has(shift)) {
           workDays += 1
@@ -354,6 +358,9 @@ function renderGroupRows(
       const offIndex = offIndexByEmployee.get(name)
       const cells = cols.map((col, index) => {
         const cls = dayClass(col, index, cols, showWeekendTint)
+        if (employee && !isEmployedOn(employee, col.year, col.month, col.day)) {
+          return `<td class="shift-cell ${cls} not-employed"></td>`
+        }
         const view = viewMap.get(`${col.year}-${col.month}`)
         const scheduleRow = view?.schedule?.[name]
         if (!view || !scheduleRow) return `<td class="${cls}"></td>`
@@ -415,11 +422,18 @@ function rangeLabel(cols: PrintColumn[]): string {
   return `${first.month}/${first.day} ~ ${last.month}/${last.day}`
 }
 
-function collectUsedLeaveCodes(views: MonthScheduleView[]): Set<string> {
+function collectUsedLeaveCodes(
+  views: MonthScheduleView[],
+  employeesByName: Map<string, Employee>,
+): Set<string> {
   const used = new Set<string>()
   for (const view of views) {
-    for (const details of Object.values(view.leave_details ?? {})) {
-      for (const code of Object.values(details)) used.add(code)
+    for (const [name, details] of Object.entries(view.leave_details ?? {})) {
+      const emp = employeesByName.get(name)
+      for (const [dayStr, code] of Object.entries(details)) {
+        if (emp && !isEmployedOn(emp, view.year, view.month, Number(dayStr))) continue
+        used.add(code)
+      }
     }
   }
   return used
@@ -428,6 +442,8 @@ function collectUsedLeaveCodes(views: MonthScheduleView[]): Set<string> {
 function renderFooter(
   opts: PrintScheduleOptions,
   views: MonthScheduleView[],
+  employeesByName: Map<string, Employee>,
+  hasNotEmployedCell: boolean,
 ): string {
   const {
     includeHousekeeping,
@@ -451,11 +467,14 @@ function renderFooter(
     `<span class="lg"><span class="sw sw-off">/</span>每週第一休</span>`,
     `<span class="lg"><span class="sw sw-off">X</span>每週第二休</span>`,
   ]
+  if (hasNotEmployedCell) {
+    offItems.push(`<span class="lg"><span class="sw sw-black"></span>未到職／已離職</span>`)
+  }
   if (managerBlank) {
     offItems.push(`<span class="lg">空白＝<b>M 主管班 09:00-17:00</b></span>`)
   }
 
-  const usedLeaveCodes = collectUsedLeaveCodes(views)
+  const usedLeaveCodes = collectUsedLeaveCodes(views, employeesByName)
   const leaveItems = leaveTypes
     .filter((lt) => usedLeaveCodes.has(lt.code))
     .map((lt) => {
@@ -519,6 +538,8 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
   const frontMap = buildViewMap(frontViews)
   const hkMap = buildViewMap(hkViews)
 
+  const employeesByName = new Map(employees.map((e) => [e.name, e]))
+
   const frontRows = buildRows(frontView, employees)
   const hkRows = housekeepingView ? buildRows(housekeepingView, employees) : []
 
@@ -526,10 +547,13 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
     frontViews,
     frontRows.map((r) => r.name),
     previousMonthOffDates,
+    employeesByName,
   )
   const hkOff = buildOffIndexByEmployee(
     hkViews,
     hkRows.map((r) => r.name),
+    undefined,
+    employeesByName,
   )
 
   const leaveNameByCode = new Map(leaveTypes.map((lt) => [lt.code, lt.name]))
@@ -567,7 +591,13 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
       ? renderOccupancyRow(cols, showWeekendTint)
       : ''
 
-  const hasManagerRow = [...frontRows, ...hkRows].some((r) => managerNames.has(r.name))
+  const renderedRows = includeHousekeeping ? [...frontRows, ...hkRows] : frontRows
+  const hasManagerRow = renderedRows.some((r) => managerNames.has(r.name))
+  const hasNotEmployedCell = renderedRows.some(
+    (r) =>
+      r.employee != null &&
+      cols.some((col) => !isEmployedOn(r.employee, col.year, col.month, col.day)),
+  )
   const hasAnyRow =
     frontRows.length > 0 || (includeHousekeeping && hkRows.length > 0)
   const table = hasAnyRow
@@ -681,6 +711,7 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
   .week-end { border-right: 1.5px solid #7030A0; }
   .weekend { background: #f7f7f7; }
   .other-month { color: #aaa; background: #fbfbfb; }
+  td.not-employed { background: #000 !important; color: #000; }
   .occupancy td { height: 20px; }
   .off-cell { position: relative; }
   .off-mark {
@@ -738,6 +769,7 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
   }
   .sw-shift { background: #fff; }
   .sw-off { background: #fff; font-size: 10px; }
+  .sw-black { background: #000; border-color: #000; }
   .notes { margin-top: 3px; line-height: 1.35; }
   .signatures {
     display: flex;
@@ -765,6 +797,8 @@ export function buildPrintHtml(opts: PrintScheduleOptions): string {
   ${renderFooter(
     { ...opts, managerBlank: managerBlank && hasManagerRow },
     [...frontViews, ...hkViews],
+    employeesByName,
+    hasNotEmployedCell,
   )}
 </body>
 </html>`

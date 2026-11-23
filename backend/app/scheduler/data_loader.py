@@ -18,7 +18,12 @@ from app.database.models import (
     SupportRequest,
 )
 from app.scheduler.off_count import count_off_blocks
-from app.services.employee_service import _from_json, not_housekeeping_clause, visible_in_month_clause
+from app.services.employee_service import (
+    _from_json,
+    is_schedulable_on,
+    not_housekeeping_clause,
+    visible_in_month_clause,
+)
 
 
 @dataclass
@@ -64,9 +69,18 @@ class ShiftScheduleData:
     # 離職月內「月中離職」的員工：emp_id -> 最後上班日（1-based）。
     # 這些員工在該月最後上班日之後固定不排班，且不套用 H2/H3/H4/H12。
     resign_cutoff: dict[int, int] = field(default_factory=dict)
+    # 到職月內「月中到職」的員工：emp_id -> 到職日（1-based，> 1）。
+    # 這些員工在該月到職日之前固定不排班，且不套用 H2/H3/H4/H8/H9/H12。
+    hire_start: dict[int, int] = field(default_factory=dict)
 
     def emp_index(self) -> dict[int, int]:
         return {emp.id: i for i, emp in enumerate(self.employees)}
+
+    def is_employed_on(self, emp_id: int, day: int) -> bool:
+        """員工在當月第 day 日（1-based）是否在職。"""
+        first = self.hire_start.get(emp_id, 1)
+        last = self.resign_cutoff.get(emp_id, self.num_days)
+        return first <= day <= last
 
     def is_external(self, day: int, shift: str) -> bool:
         return shift in self.external_support_all or shift in self.external_support.get(day, set())
@@ -97,7 +111,9 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
     fridays = [i for i, dt in enumerate(dates) if dt.weekday() == 4]
 
     employees: list[EmployeeData] = []
+    emp_models_by_id: dict[int, Employee] = {}
     resign_cutoff: dict[int, int] = {}
+    hire_start: dict[int, int] = {}
     for e in db.scalars(
         select(Employee)
         .where(
@@ -108,6 +124,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         )
         .order_by(Employee.sort_order.asc(), Employee.id.asc())
     ):
+        emp_models_by_id[e.id] = e
         employees.append(
             EmployeeData(
                 id=e.id,
@@ -118,6 +135,15 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 scheduling_mode=e.scheduling_mode,
             )
         )
+        # 月中到職（到職日在該月內且非 1 日）：設定排班起始日
+        if e.hire_date:
+            h_year, h_month, h_day = (
+                int(e.hire_date[0:4]),
+                int(e.hire_date[5:7]),
+                int(e.hire_date[8:10]),
+            )
+            if h_year == year and h_month == month and h_day > 1:
+                hire_start[e.id] = h_day
         # 月中離職（最後上班日在該月內且非月底）：設定排班截止日
         if e.resign_date:
             r_year, r_month, r_day = (
@@ -128,12 +154,17 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             if r_year == year and r_month == month and r_day < num_days:
                 resign_cutoff[e.id] = r_day
 
+    def _in_employment(eid: int, day: int) -> bool:
+        return hire_start.get(eid, 1) <= day <= resign_cutoff.get(eid, num_days)
+
     designated: dict[int, list[int]] = {}
     for row in db.scalars(
         select(DesignatedOffDay).where(
             DesignatedOffDay.year == year, DesignatedOffDay.month == month
         )
     ):
+        if row.employee_id in emp_models_by_id and not _in_employment(row.employee_id, row.day):
+            continue
         designated.setdefault(row.employee_id, []).append(row.day)
 
     special: dict[int, list[int]] = {}
@@ -142,6 +173,8 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             SpecialLeave.year == year, SpecialLeave.month == month
         )
     ):
+        if row.employee_id in emp_models_by_id and not _in_employment(row.employee_id, row.day):
+            continue
         special.setdefault(row.employee_id, []).append(row.day)
 
     previous_month: dict[int, list[str | None]] = {}
@@ -171,6 +204,8 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 ScheduleEntry.month == month,
             )
         ):
+            if not _in_employment(row.employee_id, row.day):
+                continue
             manual_schedule.setdefault(row.employee_id, {})[row.day] = row.shift
             if row.employee_id in night_ids:
                 night_schedule.setdefault(row.employee_id, {})[row.day] = row.shift
@@ -215,7 +250,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             if (
                 day not in designated.get(eid, [])
                 and day not in special.get(eid, [])
-                and day <= resign_cutoff.get(eid, num_days)
+                and _in_employment(eid, day)
             ):
                 assigned = eid
                 break
@@ -224,7 +259,7 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 if (
                     day not in designated.get(eid, [])
                     and day not in special.get(eid, [])
-                    and day <= resign_cutoff.get(eid, num_days)
+                    and _in_employment(eid, day)
                 ):
                     assigned = eid
                     break
@@ -267,8 +302,8 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             support_requests.setdefault(row.day, set()).add(row.shift)
 
     # 二館支援：帶 tag 的員工為外部支援，手動排的 A1/C1/D1 計入該日該班覆蓋
-    support_ids = [
-        e.id
+    support_emps = {
+        e.id: e
         for e in db.scalars(
             select(Employee).where(
                 Employee.is_active == 1,
@@ -278,15 +313,18 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
                 visible_in_month_clause(year, month),
             )
         )
-    ]
-    if support_ids:
+    }
+    if support_emps:
         for row in db.scalars(
             select(ScheduleEntry).where(
-                ScheduleEntry.employee_id.in_(support_ids),
+                ScheduleEntry.employee_id.in_(list(support_emps.keys())),
                 ScheduleEntry.year == year,
                 ScheduleEntry.month == month,
             )
         ):
+            sup_emp = support_emps.get(row.employee_id)
+            if sup_emp is not None and not is_schedulable_on(sup_emp, year, month, row.day):
+                continue
             shift = row.shift
             if shift in ("A1", "C1", "D1"):
                 base = shift[0]  # A1->A, C1->C, D1->D
@@ -310,7 +348,15 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
             prev_by_emp.setdefault(pe.employee_id, {})[pe.day] = pe.shift
         for emp in employees:
             if emp.id in prev_by_emp:
-                shifts = [prev_by_emp[emp.id].get(d, "OFF") for d in range(1, prev_days + 1)]
+                emp_model = emp_models_by_id.get(emp.id)
+                shifts = [
+                    (
+                        prev_by_emp[emp.id].get(d, "OFF")
+                        if (emp_model is None or is_schedulable_on(emp_model, prev_y, prev_m, d))
+                        else None
+                    )
+                    for d in range(1, prev_days + 1)
+                ]
                 cnt, _ = count_off_blocks(shifts)
                 last_month_off[emp.id] = cnt
 
@@ -352,4 +398,5 @@ def load(db: Session, year: int, month: int) -> ShiftScheduleData:
         last_month_consecutive_off=last_month_off,
         manager_backup_cap=manager_backup_cap,
         resign_cutoff=resign_cutoff,
+        hire_start=hire_start,
     )
